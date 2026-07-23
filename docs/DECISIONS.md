@@ -2,6 +2,11 @@
 
 Append-only log of choices worth remembering, and *why*. Newest at the bottom. Keep entries short — a sentence or two of reasoning is enough for future us to avoid re-litigating this cold. See [STATUS.md](../STATUS.md) for current state and [CLAUDE.md](../CLAUDE.md) for architecture.
 
+> **Note on names.** Two games were renamed on 2026-07-22 (see the entry at the
+> bottom): **Breakout → Angle Iron**, **Snake → Live Wire**. Entries written
+> before then use the old names; they're left as written, because rewriting an
+> append-only log would misrepresent what was actually decided at the time.
+
 ## 2026-07-22 — Phone app path: PWA first, native later
 
 Stretch goal is a phone app. Decided to target a PWA (manifest + service worker on top of the existing canvas games) rather than starting with React Native or a game engine, since the games are already touch-first and plain JS/canvas ports to a PWA with no rewrite. Revisit native wrapping (e.g. Capacitor) only if app-store distribution becomes a real requirement — Capacitor can wrap the same HTML/JS later without redoing the games.
@@ -129,3 +134,23 @@ Reasons: each game already owns its own board size, layout selection, and input 
 Each game header gained a `← Arcade` link. `build.mjs` strips it when generating the standalone, because that file is meant to travel on its own where `../../index.html` resolves to nothing.
 
 The cards carry no scores or "continue" state — that needs score persistence, which does not exist yet.
+
+## 2026-07-22 — Targeting both app stores, which makes Apple's 4.2 bar a design constraint
+
+Decided to aim for the App Store *and* Google Play eventually, not just a PWA. Consequences worth writing down, because they change what "finished" means:
+
+Neither store accepts a PWA directly — both want a native binary (a signed `.ipa`, an `.aab`). So a wrapper is required eventually: Bubblewrap/TWA or Capacitor for Play, Capacitor for Apple. Costs are $99/year plus a Mac for Apple, $25 once for Google.
+
+**Apple Guideline 4.2 (minimum functionality) is the real risk.** Apple rejects apps it considers thin or not offering a lasting experience, and simple arcade games are squarely in that zone. This reframes several items previously filed as "polish" — score persistence, audio, more games, progression — as *entry requirements* rather than nice-to-haves. Google Play is much more permissive here; if Apple were dropped, most of that pressure would go with it.
+
+What the project already gets right, and should keep: no tracking, no ads, no accounts, no network calls at all. That makes Apple's privacy nutrition label "Data Not Collected" and Play's Data Safety form nearly empty, which is where most submission pain usually lives. No third-party SDKs to disclose. Keep it that way — adding an analytics or ads SDK later would import a whole compliance surface we currently don't have.
+
+## 2026-07-22 — Renamed Breakout → Angle Iron, Snake → Live Wire
+
+Renamed both games everywhere — directories, files, titles, and the `w.snake` data structure (now `w.wire`) — rather than keeping internal names that differ from published ones.
+
+The reason is trademark exposure on store listings: "Breakout" is an Atari mark and "Snake" carries Nokia history. Gameplay itself isn't copyrightable and these are original implementations, but a *store listing name* is exactly where a complaint would land. Doing it now, with three games and no listing, costs an afternoon; doing it after publishing means migrating a live listing.
+
+The new names follow Serpent Battery's industrial/electrical register. **Angle Iron** is a real structural steel section and names the actual mechanic — the paddle sets the ball's angle. **Live Wire** fits the electrical theme and describes what the game is: a lengthening wire that kills you.
+
+Serpent Battery's own use of "snake" was left alone throughout — its enemies genuinely are serpents crawling a path, which is its own theme rather than a reference to the other game.

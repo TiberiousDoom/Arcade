@@ -1,4 +1,5 @@
-/* Breakout — pure logic core.
+/* Angle Iron — pure logic core.
+   A brick-breaker: the paddle sets the ball's outgoing angle.
    No DOM, no canvas, no timers, no randomness. Everything here is deterministic
    and testable; the HTML shell owns rendering, input, and the frame loop. */
 

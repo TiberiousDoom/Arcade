@@ -1,4 +1,4 @@
-/* Snake — pure logic core.
+/* Live Wire — pure logic core.
    No DOM, no canvas, no timers. The only randomness is a seeded LCG (`rand`),
    so a given seed replays a run exactly — which is what makes food placement
    testable. The HTML shell owns rendering, input, and the frame loop. */
@@ -7,7 +7,7 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /* ---------- board ---------- */
 
-/** A 32x24 grid of 25px cells — 800x600, matching Breakout's board so the two
+/** A 32x24 grid of 25px cells — 800x600, matching Angle Iron's board so the two
  *  games can share a cabinet frame later without rescaling. */
 export const LAYOUT = {
   COLS: 32, ROWS: 24, CELL: 25,
@@ -17,13 +17,13 @@ export const LAYOUT = {
 
 /** Portrait phones get a taller, narrower grid at the same cell size.
  *
- *  No pace adjustment is needed, unlike Breakout: the tick rate is seconds
+ *  No pace adjustment is needed, unlike Angle Iron: the tick rate is seconds
  *  *per cell*, so reaction time per move — which is the whole difficulty curve
  *  — is identical on any grid. A portrait board is a slightly shorter game
  *  simply because there are fewer cells to fill.
  *
  *  No thumb-rest band either: steering is a flick, not a hold, so a finger is
- *  never parked over the board the way it is in Breakout or Serpent Battery. */
+ *  never parked over the board the way it is in Angle Iron or Serpent Battery. */
 export const LAYOUT_TALL = {
   // 450x850, a touch squarer than a modern phone so it doesn't letterbox on
   // wider devices. 612 cells against the landscape board's 768 — a marginally
@@ -38,7 +38,7 @@ export const inBounds = (L, x, y) => x >= 0 && y >= 0 && x < L.COLS && y < L.ROW
 
 /* ---------- pace ---------- */
 
-/** Seconds per tick. The snake speeds up as it eats, which is the entire
+/** Seconds per tick. The wire speeds up as it eats, which is the entire
  *  difficulty curve — there are no levels, just an ever-shorter reaction time. */
 export const START_TICK = 0.145;
 export const TICK_STEP = 0.0025;
@@ -66,11 +66,11 @@ export function rand(w) {
   return (w.seed = (w.seed * 1103515245 + 12345) & 0x7fffffff);
 }
 
-/** Every cell not occupied by the snake, the food, or the bonus. Returned in a
+/** Every cell not occupied by the wire, the food, or the bonus. Returned in a
  *  stable order so a seed picks the same cell every replay. */
 export function freeCells(w) {
   const L = w.L;
-  const taken = new Set(w.snake.map(s => idx(L, s.x, s.y)));
+  const taken = new Set(w.wire.map(s => idx(L, s.x, s.y)));
   if (w.food) taken.add(idx(L, w.food.x, w.food.y));
   if (w.bonus) taken.add(idx(L, w.bonus.x, w.bonus.y));
   const out = [];
@@ -83,7 +83,7 @@ export function freeCells(w) {
 }
 
 /** Place the next food. Returns false when the board is full — which means the
- *  snake has eaten everything, the one way to actually win. */
+ *  wire has eaten everything, the one way to actually win. */
 export function spawnFood(w) {
   const cells = freeCells(w);
   if (cells.length === 0) { w.food = null; return false; }
@@ -103,9 +103,9 @@ export function spawnBonus(w) {
 
 export const START_LEN = 4;
 
-/** The opening snake: laid out horizontally in the middle of the board, head
+/** The opening wire: laid out horizontally in the middle of the board, head
  *  at index 0, already moving right. */
-function startSnake(L) {
+function startWire(L) {
   const y = Math.floor(L.ROWS / 2);
   const x = Math.floor(L.COLS / 3);
   const cells = [];
@@ -117,7 +117,7 @@ export function createWorld(opts = {}) {
   const L = { ...LAYOUT, ...(opts.layout || {}) };
   const w = {
     L,
-    snake: startSnake(L),
+    wire: startWire(L),
     dir: { x: 1, y: 0 },
     queue: [],
     grow: 0,
@@ -133,7 +133,7 @@ export function createWorld(opts = {}) {
 }
 
 export function resetGame(w) {
-  w.snake = startSnake(w.L);
+  w.wire = startWire(w.L);
   w.dir = { x: 1, y: 0 };
   w.queue = [];
   w.grow = 0;
@@ -152,7 +152,7 @@ export function resetGame(w) {
  *  a mashed key queue up a long string of moves you no longer want. */
 export const MAX_QUEUE = 2;
 
-/** Queue a direction change. Rejects reversals — the snake can't turn back
+/** Queue a direction change. Rejects reversals — the wire can't turn back
  *  into its own neck — and duplicates, which would waste a queue slot.
  *  Validates against the last *queued* direction, not the current one, so a
  *  buffered pair of turns is checked as the player will actually experience it. */
@@ -176,24 +176,24 @@ function die(w) {
 
 /* ---------- one discrete tick ---------- */
 
-/** Advance the snake exactly one cell. Exported so tests can drive precise
+/** Advance the wire exactly one cell. Exported so tests can drive precise
  *  steps without going through the time accumulator. */
 export function tick(w) {
   if (w.over) return;
 
   if (w.queue.length) w.dir = w.queue.shift();
 
-  const head = w.snake[0];
+  const head = w.wire[0];
   const nx = head.x + w.dir.x, ny = head.y + w.dir.y;
 
   if (!inBounds(w.L, nx, ny)) { die(w); return; }
 
-  // The tail cell frees up this tick unless the snake is mid-growth, so moving
+  // The tail cell frees up this tick unless the wire is mid-growth, so moving
   // into it is legal — without this, following your own tail is a false death.
-  const body = w.grow === 0 ? w.snake.slice(0, -1) : w.snake;
+  const body = w.grow === 0 ? w.wire.slice(0, -1) : w.wire;
   if (body.some(s => s.x === nx && s.y === ny)) { die(w); return; }
 
-  w.snake.unshift({ x: nx, y: ny });
+  w.wire.unshift({ x: nx, y: ny });
 
   if (w.food && w.food.x === nx && w.food.y === ny) {
     w.score += FOOD_SCORE;
@@ -210,7 +210,7 @@ export function tick(w) {
   }
 
   if (w.grow > 0) w.grow--;
-  else w.snake.pop();
+  else w.wire.pop();
 
   if (w.bonus) {
     w.bonus.ttl--;
@@ -237,7 +237,7 @@ export function step(w, dt) {
 }
 
 /** Fraction of the way to the next tick, for the shell to interpolate the
- *  snake's slide between cells. Purely presentational, but derived from engine
+ *  wire's slide between cells. Purely presentational, but derived from engine
  *  state so the two can't drift apart. */
 export function tickProgress(w) {
   return clamp(w.acc / tickRate(w), 0, 1);

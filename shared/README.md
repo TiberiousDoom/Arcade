@@ -16,7 +16,7 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
   mutate it in place when it swaps to a portrait layout. `extra` reserves room
   for furniture below the board (Serpent Battery's touch pad).
 - **[fx.js](fx.js)** — `makeFx({ reduce, gravity })` gives particles and a
-  screen-flash value. Used by Breakout and Snake. **Serpent Battery does not
+  screen-flash value. Used by Angle Iron and Live Wire. **Serpent Battery does not
   use it**: its bits and floaters live on the world object and are stepped
   inside its engine, which predates this module and wasn't worth churning.
 

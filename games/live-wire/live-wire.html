@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Snake</title>
+<title>Live Wire</title>
 <link rel="stylesheet" href="../../shared/theme.css">
 <style>
-  /* Snake runs green rather than brass, on an 800x600 board. */
+  /* Wire runs green rather than brass, on an 800x600 board. */
   :root{
     --accent:var(--scale);
     --accent-hot:#5fc9a4;
@@ -17,7 +17,7 @@
   <header>
     <div class="titles">
       <a class="back" href="../../index.html">&larr; Arcade</a>
-      <h1>Sn<span>ake</span></h1>
+      <h1>Live <span>Wire</span></h1>
     </div>
     <div class="meta">
       <div>Score <b id="uiScore">0</b></div>
@@ -29,7 +29,7 @@
   <div id="stage">
     <canvas id="cv" width="800" height="600"></canvas>
     <div id="banner">
-      <h2>Snake</h2>
+      <h2>Live Wire</h2>
       <p id="hint">Steer with <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> or <kbd>WASD</kbd> — on a touch screen, swipe. Every meal makes you longer and the board faster. The gold bonus is worth five meals, but it won't wait.</p>
       <button id="go">Begin</button>
     </div>
@@ -93,7 +93,7 @@ addEventListener('keydown', e => {
   E.turn(world, d[0], d[1]);
 });
 
-/* Touch: a swipe picks the dominant axis. Snake is unplayable on a phone
+/* Touch: a swipe picks the dominant axis. Wire is unplayable on a phone
    without this, and a grid game makes the gesture unambiguous. */
 let swipe = null;
 const SWIPE_MIN = 24;      // px of travel before a flick counts
@@ -145,7 +145,7 @@ function frame(now) {
   E.step(world, dt);
   if (world.over && !wasOver) {
     if (world.won) showBanner('Board Cleared', `You filled the grid. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Play again');
-    else showBanner('Game Over', `Score <b style="color:var(--brass)">${world.score}</b> · length ${world.snake.length} · ${world.eaten} eaten`, 'Play again');
+    else showBanner('Game Over', `Score <b style="color:var(--brass)">${world.score}</b> · length ${world.wire.length} · ${world.eaten} eaten`, 'Play again');
   }
   if (world.running) sync();
 
@@ -157,7 +157,7 @@ function frame(now) {
 
 function sync() {
   $('uiScore').textContent = world.score;
-  $('uiLen').textContent = world.snake.length;
+  $('uiLen').textContent = world.wire.length;
   $('uiEaten').textContent = world.eaten;
 }
 
@@ -171,7 +171,7 @@ function draw() {
 
   if (world.food) drawFood(world.food);
   if (world.bonus) drawBonus(world.bonus);
-  drawSnake();
+  drawWire();
 
   gfx.draw(ctx);
 
@@ -197,8 +197,8 @@ function drawGrid() {
  *  from and the tail retracts into the next one, so motion reads as continuous
  *  rather than a row of jumps. Both come from the engine's tick progress, so
  *  the animation can't drift out of sync with the simulation. */
-function drawSnake() {
-  const s = world.snake, n = s.length;
+function drawWire() {
+  const s = world.wire, n = s.length;
   const p = world.running && !world.over ? E.tickProgress(world) : 1;
   const pad = 2;
 
