@@ -56,9 +56,17 @@ Neither store takes a PWA directly — both need a native binary, so a wrapper (
 - [ ] Score persistence (localStorage — no backend, no privacy surface)
 - [ ] Audio, at least hit/death blips
 - [ ] More depth: powerups, more games, or progression
-- [ ] Real-device testing (never done — see the portrait caveat below)
+- [ ] Real-device testing — **unblocked**: the app is deployed to GitHub Pages, so it can be opened on a phone directly. See the portrait caveat below for what to actually check.
 
 **Guard this:** no tracking, no ads, no accounts, no network calls. That keeps Apple's privacy label "Data Not Collected" and Play's Data Safety form near-empty, which is where most submission pain lives. Adding an analytics or ads SDK imports that whole compliance surface.
+
+## Hosting
+
+Deployed to GitHub Pages at **https://tiberiousdoom.github.io/Arcade/** — from the `main` branch, root directory. Pushing to `main` redeploys; there is no build step.
+
+Pages serves project sites from a **subpath** (`/Arcade/`, not a domain root), which is why every path in the app is relative — `start_url`/`scope` of `./`, relative precache entries, and a worker URL resolved from `import.meta.url`. This was verified by serving a copy under `/Arcade/` locally and confirming the worker registers at the right scope and the app still runs with the server stopped. **An absolute path anywhere would break the deployment**, so keep them relative.
+
+`.nojekyll` is present so Pages serves files verbatim instead of running them through Jekyll.
 
 ## Open decisions (not yet settled)
 
