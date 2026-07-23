@@ -2,72 +2,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Breakout</title>
+<link rel="stylesheet" href="../../shared/theme.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;600;700&family=Archivo+Black&display=swap');
-
-  :root{
-    --void:#0b1418;
-    --deep:#122229;
-    --brass:#c9a227;
-    --scale:#3fae8f;
-    --alarm:#e0503c;
-    --bone:#e6e9e2;
-    --dim:#63797f;
-    --line:#23383f;
-  }
-
-  *{
-    box-sizing:border-box;margin:0;padding:0;
-    -webkit-tap-highlight-color:transparent;
-    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
-  }
-  html,body{height:100%;overscroll-behavior:none}
-  body{
-    background:var(--void);color:var(--bone);
-    font-family:'Chivo Mono',ui-monospace,monospace;
-    display:flex;align-items:center;justify-content:center;
-    padding:16px;overflow:hidden;
-  }
-
-  #shell{width:100%;max-width:800px;display:flex;flex-direction:column;gap:10px}
-
-  header{
-    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-    flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px;
-  }
-  h1{
-    font-family:'Archivo Black',system-ui,sans-serif;
-    font-size:clamp(14px,3.4vw,21px);letter-spacing:-.02em;text-transform:uppercase;
-  }
-  h1 span{color:var(--brass)}
-  .meta{display:flex;gap:14px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-  .meta b{color:var(--bone);font-weight:600;letter-spacing:.04em}
-
-  #stage{
-    position:relative;width:100%;border:1px solid var(--line);
-    background:radial-gradient(120% 80% at 50% 0%, #16303a 0%, var(--deep) 55%, var(--void) 100%);
-  }
-  canvas{display:block;width:100%;height:auto;touch-action:none;margin:0 auto}
-
-  #banner{
-    position:absolute;inset:0;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;gap:14px;
-    background:rgba(11,20,24,.9);text-align:center;padding:20px;
-  }
-  #banner.hide{display:none}
-  #banner h2{font-family:'Archivo Black',sans-serif;font-size:clamp(20px,5vw,34px);text-transform:uppercase;letter-spacing:-.02em}
-  #banner p{font-size:12px;color:var(--dim);max-width:40ch;line-height:1.7}
-  #banner kbd{background:#1b2f36;border:1px solid #2c4650;padding:1px 5px;font:inherit;font-size:11px;color:var(--bone)}
-  button{
-    font:600 12px/1 'Chivo Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
-    background:var(--brass);color:#1a1405;border:0;padding:12px 24px;cursor:pointer;
-  }
-  button:hover{background:#e3b929}
-  button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
-
-  footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
-  @media (max-width:560px){ body{padding:8px;align-items:flex-start} footer{display:none} }
-  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  /* Breakout keeps the default brass accent, on an 800x600 board. */
+  :root{ --board-max:800px }
 </style>
 
 <div id="shell">
@@ -98,27 +36,24 @@
 
 <script type="module">
 import * as E from './engine.js';
+import { makeFit } from '../../shared/fit.js';
+import { makeFx } from '../../shared/fx.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
 const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
 const $ = id => document.getElementById(id);
 
-/* purely cosmetic particles live in the shell, not the engine */
-const bits = [];
+const gfx = makeFx({ reduce });
+
+/* purely cosmetic — the engine never sees these */
 const fx = {
   brick(x, y, row) {
-    if (reduce) return;
-    const col = BRICK_COL[Math.min(row, BRICK_COL.length - 1)] || '#e6e9e2';
-    for (let i = 0; i < 12; i++) {
-      const a = Math.random() * TAU, sp = 40 + Math.random() * 150;
-      bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .35 + Math.random() * .35, col });
-    }
+    gfx.burst(x, y, BRICK_COL[Math.min(row, BRICK_COL.length - 1)] || '#e6e9e2');
   },
   bounce() {},
-  lose() { flash = 0.5; },
+  lose() { gfx.hit(.5); },
 };
-let flash = 0;
 
 const world = E.createWorld({ fx });
 
@@ -154,20 +89,7 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
-/* Fit the board into whatever height is left below the header. */
-function fitStage() {
-  const header = document.querySelector('header');
-  const chrome = header.getBoundingClientRect().height + 34;
-  const avail = Math.max(200, innerHeight - chrome);
-  const stageW = $('stage').clientWidth || innerWidth;
-  const byWidth = stageW / (W / H);
-  const h = Math.min(avail, byWidth);
-  cv.style.height = h + 'px';
-  cv.style.width = (h * (W / H)) + 'px';
-  cv.style.maxWidth = '100%';
-}
-addEventListener('resize', fitStage);
-if (window.visualViewport) visualViewport.addEventListener('resize', fitStage);
+const fitStage = makeFit({ canvas: cv, stage: $('stage'), board: { w: W, h: H } });
 
 /* ---------- banner ---------- */
 function showBanner(h, p, btn) {
@@ -185,6 +107,7 @@ $('go').addEventListener('click', () => {
   if (world.over) E.resetGame(world);
   else if (world.levelClear) E.nextLevel(world);
   world.running = true;
+  gfx.clear();               // don't let a death flash bleed into the next run
   hideBanner();
 });
 
@@ -211,12 +134,7 @@ function frame(now) {
   }
 
   // cosmetic particles + hit flash decay regardless of pause
-  for (let i = bits.length - 1; i >= 0; i--) {
-    const b = bits[i];
-    b.life -= dt; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 220 * dt;
-    if (b.life <= 0) bits.splice(i, 1);
-  }
-  if (flash > 0) flash = Math.max(0, flash - dt * 1.5);
+  gfx.step(dt, 1.5);
 
   draw();
   requestAnimationFrame(frame);
@@ -239,8 +157,8 @@ function draw() {
   ctx.strokeRect(L.WALL, L.WALL, W - 2 * L.WALL, H - L.WALL);
 
   // a lost-ball flash tints the floor red
-  if (flash > 0) {
-    ctx.fillStyle = `rgba(224,80,60,${flash * 0.4})`;
+  if (gfx.flash > 0) {
+    ctx.fillStyle = `rgba(224,80,60,${gfx.flash * 0.4})`;
     ctx.fillRect(0, H - 60, W, 60);
   }
 
@@ -269,13 +187,7 @@ function draw() {
   ctx.fillStyle = 'rgba(230,233,226,.25)';
   ctx.fillRect(p.x - p.w / 2, L.PADDLE_Y, p.w, 3);
 
-  // particles
-  for (const b of bits) {
-    ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2.5));
-    ctx.fillStyle = b.col;
-    ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
-  }
-  ctx.globalAlpha = 1;
+  gfx.draw(ctx);
 
   // balls — either the live ones, or the racked ball waiting on the paddle
   ctx.fillStyle = '#e6e9e2';
@@ -292,7 +204,6 @@ function ball(x, y, r) {
   ctx.fill();
 }
 
-sync();
-fitStage();
+sync();                      // makeFit already performed the first fit
 requestAnimationFrame(frame);
 </script>

@@ -4,9 +4,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createCanvas } from 'canvas';
 
-const OUT = new URL('./serpent-battery-standalone.html', import.meta.url).pathname;
+// fileURLToPath, not .pathname — on Windows the latter yields a leading slash
+// and percent-encoded spaces ("/C:/Users/Thulsa%20Doom/..."), which fs rejects.
+const OUT = fileURLToPath(new URL('./serpent-battery-standalone.html', import.meta.url));
 
 function bootReal() {
   let html = readFileSync(OUT, 'utf8')

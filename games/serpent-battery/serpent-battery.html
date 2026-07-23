@@ -2,64 +2,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Serpent Battery</title>
+<link rel="stylesheet" href="../../shared/theme.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;600;700&family=Archivo+Black&display=swap');
-
+  /* Serpent Battery keeps the default brass accent on an 880-wide board, and
+     adds the touch pad, heat gauge, shop, and legend that only it has. */
   :root{
-    --void:#0b1418;
-    --deep:#122229;
-    --brass:#c9a227;
-    --scale:#3fae8f;
-    --alarm:#e0503c;
-    --bone:#e6e9e2;
-    --dim:#63797f;
-    --line:#23383f;
+    --board-max:880px;
     --padH:52px;
   }
 
-  *{
-    box-sizing:border-box;margin:0;padding:0;
-    -webkit-tap-highlight-color:transparent;
-    /* a long press must not select text or raise the iOS callout —
-       the whole page is a control surface */
-    -webkit-user-select:none;user-select:none;
-    -webkit-touch-callout:none;
-  }
-
-  html,body{height:100%;overscroll-behavior:none}
-  body{
-    background:var(--void);
-    color:var(--bone);
-    font-family:'Chivo Mono',ui-monospace,monospace;
-    display:flex;align-items:center;justify-content:center;
-    padding:16px;overflow:hidden;
-  }
-
-  #shell{width:100%;max-width:880px;display:flex;flex-direction:column;gap:10px}
-
-  header{
-    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-    flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px;
-  }
-  h1{
-    font-family:'Archivo Black',system-ui,sans-serif;
-    font-size:clamp(14px,3.4vw,21px);
-    letter-spacing:-.02em;text-transform:uppercase;
-  }
-  h1 span{color:var(--brass)}
-  .meta{display:flex;gap:14px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-  .meta b{color:var(--bone);font-weight:600;letter-spacing:.04em}
   #uiBuild{display:flex;gap:6px;align-items:center}
   #uiBuild span{display:flex;gap:1px;align-items:center}
   #uiBuild i{width:3px;height:8px;background:#1b3038;display:inline-block}
   #uiBuild i.on{background:var(--scale)}
-
-  #stage{
-    position:relative;width:100%;
-    border:1px solid var(--line);
-    background:radial-gradient(120% 80% at 50% 0%, #16303a 0%, var(--deep) 55%, var(--void) 100%);
-  }
-  canvas{display:block;width:100%;height:auto;touch-action:none;margin:0 auto}
 
   #heat{position:absolute;left:12px;bottom:12px;width:min(150px,38vw)}
   #heatLabel{
@@ -71,22 +26,6 @@
   #heatFill{position:absolute;inset:0 auto 0 0;width:0%;background:var(--scale);transition:background .18s linear}
   #heatTicks{position:absolute;inset:0;pointer-events:none}
   #heatTicks i{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
-
-  #banner{
-    position:absolute;inset:0;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;gap:14px;
-    background:rgba(11,20,24,.9);text-align:center;padding:20px;
-  }
-  #banner.hide{display:none}
-  #banner h2{font-family:'Archivo Black',sans-serif;font-size:clamp(20px,5vw,34px);text-transform:uppercase;letter-spacing:-.02em}
-  #banner p{font-size:12px;color:var(--dim);max-width:38ch;line-height:1.7}
-  #banner kbd{background:#1b2f36;border:1px solid #2c4650;padding:1px 5px;font:inherit;font-size:11px;color:var(--bone)}
-  button{
-    font:600 12px/1 'Chivo Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
-    background:var(--brass);color:#1a1405;border:0;padding:12px 24px;cursor:pointer;
-  }
-  button:hover{background:#e3b929}
-  button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 
   /* ---- touch controls: hidden until a touch is detected ---- */
   #pad{display:none;gap:10px;align-items:stretch;
@@ -134,15 +73,6 @@
     text-transform:uppercase;border:0;cursor:pointer;background:var(--brass);color:#1a1405}
   .buy:disabled{background:#1b3038;color:#4d6068;cursor:default}
   #shopGo{align-self:center;margin-top:2px}
-
-  footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
-
-  @media (max-width:560px){
-    body{padding:8px;align-items:flex-start}
-    .meta{gap:10px;font-size:9px}
-    footer{display:none}
-  }
-  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
 <div id="shell">
@@ -208,6 +138,7 @@
 
 <script type="module">
 import * as E from './engine.js';
+import { makeFit } from '../../shared/fit.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -322,29 +253,16 @@ holdBtn($('tLeft'), -1);
 holdBtn($('tRight'), 1);
 
 /* Fit the board into whatever height is left after the header and the touch
-   pad, so the whole play area is visible without scrolling. */
-function fitStage() {
-  const header = document.querySelector('header');
-  const pad = $('pad');
-  const isTouchLayout = document.body.classList.contains('touch');
-
-  const chrome = header.getBoundingClientRect().height
-    + (isTouchLayout ? pad.getBoundingClientRect().height : 0)
-    + 34;                                   // gaps + body padding
-  const avail = Math.max(200, innerHeight - chrome);
-
-  // keep the board's aspect ratio while fitting both dimensions
-  const stageW = $('stage').clientWidth || innerWidth;
-  const byWidth = stageW / (LAY.W / LAY.H);
-  const h = Math.min(avail, byWidth);
-
-  cv.style.height = h + 'px';
-  cv.style.width = (h * (LAY.W / LAY.H)) + 'px';
-  cv.style.maxWidth = '100%';
-}
-addEventListener('resize', fitStage);
-addEventListener('orientationchange', () => setTimeout(fitStage, 150));
-if (window.visualViewport) visualViewport.addEventListener('resize', fitStage);
+   pad, so the whole play area is visible without scrolling. The pad only
+   exists on touch layouts, hence the `extra` hook. */
+const fitStage = makeFit({
+  canvas: cv,
+  stage: $('stage'),
+  board: { w: LAY.W, h: LAY.H },
+  extra: () => document.body.classList.contains('touch')
+    ? $('pad').getBoundingClientRect().height
+    : 0,
+});
 
 /* ---------- loop ---------- */
 let last = performance.now();

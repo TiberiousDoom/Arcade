@@ -71,3 +71,21 @@ Three things block a shippable phone app, recorded so they aren't rediscovered l
 3. **There is no cabinet** — three unrelated pages, no menu or shared identity, so there's no "app" yet.
 
 Agreed order: extract `shared/` first (already overdue), fold self-hosted fonts into it, then portrait layouts for Breakout and Snake, then the cabinet, then the PWA manifest and service worker. The extraction goes first specifically so portrait gets fixed once in shared CSS instead of three times in three divergent copies.
+
+## 2026-07-22 — `shared/` extracted: theme, fit, fx — and what was left out
+
+With three games duplicating the same shell code, extracted `shared/theme.css` (palette, reset, header, stage, banner, buttons, footer, media queries), `shared/fit.js` (`makeFit`), and `shared/fx.js` (`makeFx` — particles plus a screen-flash value). Per-game visual variation goes through CSS custom properties (`--accent`, `--board-max`, …) so shells never redeclare shared rules.
+
+Two things were deliberately *not* extracted despite looking like duplication:
+
+**Banner show/hide.** Serpent Battery's variant hides a legend and two separate hint paragraphs and reuses the first `<p>`; the other two just set `innerHTML` on `#hint`. Sharing it would have meant a config-heavy wrapper around roughly six lines per game — more indirection than duplication.
+
+**Serpent Battery's particles.** Its bits and floaters live on the world object and are stepped inside its engine, predating `shared/fx.js`. Rewiring it would have touched engine semantics for purely cosmetic gain, so it keeps its own. `shared/fx.js` documents this so the inconsistency reads as a decision rather than an oversight.
+
+## 2026-07-22 — `build.mjs` written; the standalone is generated, not hand-synced
+
+The extraction forced this. `serpent-battery-standalone.html` must inline everything it uses, which now includes the shared stylesheet and `shared/fit.js` — and `render-test.mjs` boots the *standalone*, so leaving it hand-synced meant the render test would silently validate stale code. Wrote the `build.mjs` that had been referenced-but-missing since the first commit.
+
+It inlines each ES module as an IIFE returning **all** top-level names, not just exported ones, because the shell reaches for a few internals (`fireGun`, `_segId`) that were never formally exported — matching what the original generator evidently did. It throws if a JS `import` survives; that guard matches `^\s*import\s` rather than a plain substring, because CSS's legitimate `@import url(...)` tripped the naive version on the first run.
+
+Also fixed a latent Windows bug in `render-test.mjs`: it derived its path from `new URL(...).pathname`, which on Windows produces `/C:/Users/Thulsa%20Doom/...` — a leading slash and percent-encoded spaces that `fs` rejects. The render test had apparently never been run on this machine. It passes now, which is what made it possible to verify the regenerated standalone properly.

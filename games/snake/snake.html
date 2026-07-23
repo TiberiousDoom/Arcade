@@ -2,76 +2,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Snake</title>
+<link rel="stylesheet" href="../../shared/theme.css">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;600;700&family=Archivo+Black&display=swap');
-
+  /* Snake runs green rather than brass, on an 800x600 board. */
   :root{
-    --void:#0b1418;
-    --deep:#122229;
-    --brass:#c9a227;
-    --scale:#3fae8f;
-    --alarm:#e0503c;
-    --bone:#e6e9e2;
-    --dim:#63797f;
-    --line:#23383f;
-  }
-
-  *{
-    box-sizing:border-box;margin:0;padding:0;
-    -webkit-tap-highlight-color:transparent;
-    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
-  }
-  html,body{height:100%;overscroll-behavior:none}
-  body{
-    background:var(--void);color:var(--bone);
-    font-family:'Chivo Mono',ui-monospace,monospace;
-    display:flex;align-items:center;justify-content:center;
-    padding:16px;overflow:hidden;
-  }
-
-  #shell{width:100%;max-width:800px;display:flex;flex-direction:column;gap:10px}
-
-  header{
-    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-    flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px;
-  }
-  h1{
-    font-family:'Archivo Black',system-ui,sans-serif;
-    font-size:clamp(14px,3.4vw,21px);letter-spacing:-.02em;text-transform:uppercase;
-  }
-  h1 span{color:var(--scale)}
-  .meta{display:flex;gap:14px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-  .meta b{color:var(--bone);font-weight:600;letter-spacing:.04em}
-
-  #stage{
-    position:relative;width:100%;
-    border:1px solid var(--line);
-    background:radial-gradient(120% 80% at 50% 0%, #16303a 0%, var(--deep) 55%, var(--void) 100%);
-  }
-  canvas{display:block;width:100%;height:auto;touch-action:none;margin:0 auto}
-
-  #banner{
-    position:absolute;inset:0;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;gap:14px;
-    background:rgba(11,20,24,.9);text-align:center;padding:20px;
-  }
-  #banner.hide{display:none}
-  #banner h2{font-family:'Archivo Black',sans-serif;font-size:clamp(20px,5vw,34px);text-transform:uppercase;letter-spacing:-.02em}
-  #banner p{font-size:12px;color:var(--dim);max-width:38ch;line-height:1.7}
-  #banner kbd{background:#1b2f36;border:1px solid #2c4650;padding:1px 5px;font:inherit;font-size:11px;color:var(--bone)}
-  button{
-    font:600 12px/1 'Chivo Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
-    background:var(--scale);color:#06201a;border:0;padding:12px 24px;cursor:pointer;
-  }
-  button:hover{background:#5fc9a4}
-  button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
-
-  footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
-
-  @media (max-width:560px){
-    body{padding:8px;align-items:flex-start}
-    .meta{gap:10px;font-size:9px}
-    footer{display:none}
+    --accent:var(--scale);
+    --accent-hot:#5fc9a4;
+    --accent-ink:#06201a;
+    --board-max:800px;
   }
 </style>
 
@@ -103,29 +41,26 @@
 
 <script type="module">
 import * as E from './engine.js';
+import { makeFit } from '../../shared/fit.js';
+import { makeFx } from '../../shared/fx.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
 const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-/* cosmetic only — the engine never sees these */
-const bits = [];
-const fx = {
-  eat(x, y) { burst(x, y, '#c9a227', 10); },
-  bonus(x, y) { burst(x, y, '#e6e9e2', 20); flash = .5; },
-  die() { flash = .8; },
-};
-let flash = 0;
+const gfx = makeFx({ reduce, gravity: 200 });
 
-function burst(cx, cy, col, n) {
-  if (reduce) return;
-  const L = world.L;
-  const px = (cx + .5) * L.CELL, py = (cy + .5) * L.CELL;
-  for (let i = 0; i < n; i++) {
-    const a = Math.random() * Math.PI * 2, sp = 30 + Math.random() * 120;
-    bits.push({ x: px, y: py, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .3 + Math.random() * .35, col });
-  }
-}
+/* Translate grid coordinates to pixels before handing off to the shared
+   particle layer, which works in pixels like every other shell's does. */
+const cellBurst = (cx, cy, col, n) =>
+  gfx.burst((cx + .5) * L.CELL, (cy + .5) * L.CELL, col, n, 120);
+
+/* cosmetic only — the engine never sees these */
+const fx = {
+  eat(x, y) { cellBurst(x, y, '#c9a227', 10); },
+  bonus(x, y) { cellBurst(x, y, '#e6e9e2', 20); gfx.hit(.5); },
+  die() { gfx.hit(.8); },
+};
 
 const world = E.createWorld({ fx, seed: Date.now() & 0x7fffffff });
 const L = world.L;
@@ -182,25 +117,13 @@ function showBanner(h, p, btn) {
 function start() {
   if (world.over) E.resetGame(world);
   world.running = true;
-  flash = 0;                 // don't let the death flash bleed into a fresh run
-  bits.length = 0;
+  gfx.clear();               // don't let the death flash bleed into a fresh run
   $('banner').classList.add('hide');
   sync();
 }
 $('go').addEventListener('click', start);
 
-/* Fit the board into whatever height is left below the header. */
-function fitStage() {
-  const chrome = document.querySelector('header').getBoundingClientRect().height + 34;
-  const avail = Math.max(200, innerHeight - chrome);
-  const stageW = $('stage').clientWidth || innerWidth;
-  const h = Math.min(avail, stageW / (L.W / L.H));
-  cv.style.height = h + 'px';
-  cv.style.width = (h * (L.W / L.H)) + 'px';
-  cv.style.maxWidth = '100%';
-}
-addEventListener('resize', fitStage);
-if (window.visualViewport) visualViewport.addEventListener('resize', fitStage);
+const fitStage = makeFit({ canvas: cv, stage: $('stage'), board: { w: L.W, h: L.H } });
 
 /* ---------- loop ---------- */
 let last = performance.now();
@@ -216,12 +139,7 @@ function frame(now) {
   }
   if (world.running) sync();
 
-  for (let i = bits.length - 1; i >= 0; i--) {
-    const b = bits[i];
-    b.life -= dt; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 200 * dt;
-    if (b.life <= 0) bits.splice(i, 1);
-  }
-  if (flash > 0) flash = Math.max(0, flash - dt * 1.6);
+  gfx.step(dt);
 
   draw();
   requestAnimationFrame(frame);
@@ -245,15 +163,10 @@ function draw() {
   if (world.bonus) drawBonus(world.bonus);
   drawSnake();
 
-  for (const b of bits) {
-    ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2.5));
-    ctx.fillStyle = b.col;
-    ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
-  }
-  ctx.globalAlpha = 1;
+  gfx.draw(ctx);
 
-  if (flash > 0) {
-    ctx.fillStyle = `rgba(224,80,60,${flash * .28})`;
+  if (gfx.flash > 0) {
+    ctx.fillStyle = `rgba(224,80,60,${gfx.flash * .28})`;
     ctx.fillRect(0, 0, L.W, L.H);
   }
 }
@@ -340,7 +253,6 @@ function drawBonus(b) {
   ctx.globalAlpha = 1;
 }
 
-sync();
-fitStage();
+sync();                      // makeFit already performed the first fit
 requestAnimationFrame(frame);
 </script>
