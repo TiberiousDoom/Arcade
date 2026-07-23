@@ -1,0 +1,2012 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Serpent Battery</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;600;700&family=Archivo+Black&display=swap');
+
+  :root{
+    --void:#0b1418;
+    --deep:#122229;
+    --brass:#c9a227;
+    --scale:#3fae8f;
+    --alarm:#e0503c;
+    --bone:#e6e9e2;
+    --dim:#63797f;
+    --line:#23383f;
+    --padH:52px;
+  }
+
+  *{
+    box-sizing:border-box;margin:0;padding:0;
+    -webkit-tap-highlight-color:transparent;
+    /* a long press must not select text or raise the iOS callout —
+       the whole page is a control surface */
+    -webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;
+  }
+
+  html,body{height:100%;overscroll-behavior:none}
+  body{
+    background:var(--void);
+    color:var(--bone);
+    font-family:'Chivo Mono',ui-monospace,monospace;
+    display:flex;align-items:center;justify-content:center;
+    padding:16px;overflow:hidden;
+  }
+
+  #shell{width:100%;max-width:880px;display:flex;flex-direction:column;gap:10px}
+
+  header{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px;
+  }
+  h1{
+    font-family:'Archivo Black',system-ui,sans-serif;
+    font-size:clamp(14px,3.4vw,21px);
+    letter-spacing:-.02em;text-transform:uppercase;
+  }
+  h1 span{color:var(--brass)}
+  .meta{display:flex;gap:14px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .meta b{color:var(--bone);font-weight:600;letter-spacing:.04em}
+  #uiBuild{display:flex;gap:6px;align-items:center}
+  #uiBuild span{display:flex;gap:1px;align-items:center}
+  #uiBuild i{width:3px;height:8px;background:#1b3038;display:inline-block}
+  #uiBuild i.on{background:var(--scale)}
+
+  #stage{
+    position:relative;width:100%;
+    border:1px solid var(--line);
+    background:radial-gradient(120% 80% at 50% 0%, #16303a 0%, var(--deep) 55%, var(--void) 100%);
+  }
+  canvas{display:block;width:100%;height:auto;touch-action:none;margin:0 auto}
+
+  #heat{position:absolute;left:12px;bottom:12px;width:min(150px,38vw)}
+  #heatLabel{
+    font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
+    margin-bottom:4px;display:flex;justify-content:space-between;
+  }
+  #heatLabel em{font-style:normal;color:var(--brass);font-weight:700}
+  #heatTrack{height:7px;background:#0d1c22;border:1px solid var(--line);position:relative;overflow:hidden}
+  #heatFill{position:absolute;inset:0 auto 0 0;width:0%;background:var(--scale);transition:background .18s linear}
+  #heatTicks{position:absolute;inset:0;pointer-events:none}
+  #heatTicks i{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+
+  #banner{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;
+    background:rgba(11,20,24,.9);text-align:center;padding:20px;
+  }
+  #banner.hide{display:none}
+  #banner h2{font-family:'Archivo Black',sans-serif;font-size:clamp(20px,5vw,34px);text-transform:uppercase;letter-spacing:-.02em}
+  #banner p{font-size:12px;color:var(--dim);max-width:38ch;line-height:1.7}
+  #banner kbd{background:#1b2f36;border:1px solid #2c4650;padding:1px 5px;font:inherit;font-size:11px;color:var(--bone)}
+  button{
+    font:600 12px/1 'Chivo Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
+    background:var(--brass);color:#1a1405;border:0;padding:12px 24px;cursor:pointer;
+  }
+  button:hover{background:#e3b929}
+  button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
+
+  /* ---- touch controls: hidden until a touch is detected ---- */
+  #pad{display:none;gap:10px;align-items:stretch;
+    /* reserved band below the board — never overlaps the play area, and
+       clears the home indicator on iOS */
+    min-height:var(--padH);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  body.touch #pad{display:flex}
+  body.touch #hint{display:none}
+  .tbtn{
+    flex:1;border:1px solid var(--line);background:#132630;color:var(--bone);
+    font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.14em;text-transform:uppercase;
+    display:flex;align-items:center;justify-content:center;
+    text-align:center;touch-action:none;border-radius:3px;
+    min-height:var(--padH);
+  }
+  .tbtn:active{background:#1a3340}
+  .tbtn.on{background:var(--brass);color:#1a1405;border-color:var(--brass)}
+
+  #legend{display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;max-width:34ch;margin-top:2px}
+  #legend span{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
+  #legend i{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+
+  #shop{position:absolute;inset:0;display:none;flex-direction:column;
+    background:rgba(11,20,24,.94);padding:18px 16px;overflow-y:auto;gap:12px}
+  #shop.on{display:flex}
+  #shopHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  #shopHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,20px);text-transform:uppercase;letter-spacing:-.02em}
+  #shopScrap{font-size:12px;color:var(--brass);font-weight:700;letter-spacing:.08em}
+  #branches,#battery{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px}
+  .shopSection{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);
+    border-bottom:1px solid var(--line);padding-bottom:5px;margin-top:4px}
+  .assign{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
+  .chip{width:26px;height:26px;border:1px solid var(--line);background:#0f2027;color:var(--dim);
+    font:700 11px/1 'Chivo Mono',monospace;cursor:pointer;border-radius:2px}
+  .chip.on{background:var(--scale);color:#06201a;border-color:var(--scale)}
+  .branch{border:1px solid var(--line);background:#0f2027;padding:10px 11px;display:flex;flex-direction:column;gap:7px;text-align:left}
+  .branch h3{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone);font-weight:700}
+  .branch p{font-size:10px;color:var(--dim);line-height:1.5;min-height:2.6em}
+  .pips{display:flex;gap:3px}
+  .pips i{flex:1;height:4px;background:#1b3038;border-radius:1px}
+  .pips i.on{background:var(--scale)}
+  .buy{width:100%;padding:9px;font:700 10px/1 'Chivo Mono',monospace;letter-spacing:.12em;
+    text-transform:uppercase;border:0;cursor:pointer;background:var(--brass);color:#1a1405}
+  .buy:disabled{background:#1b3038;color:#4d6068;cursor:default}
+  #shopGo{align-self:center;margin-top:2px}
+
+  footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
+
+  @media (max-width:560px){
+    body{padding:8px;align-items:flex-start}
+    .meta{gap:10px;font-size:9px}
+    footer{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div id="shell">
+  <header>
+    <h1>Serpent <span>Battery</span></h1>
+    <div class="meta">
+      <div>Wave <b id="uiWave">1</b></div>
+      <div>Score <b id="uiScore">0</b></div>
+      <div>Scrap <b id="uiScrap">0</b></div>
+      <div>Cells <b id="uiLives">3</b></div>
+      <div id="uiBuild" title="Barrel / Chamber / Optics / Munitions"></div>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="cv" width="880" height="620"></canvas>
+    <div id="heat">
+      <div id="heatLabel"><span>Heat</span><em id="odLabel">—</em></div>
+      <div id="heatTrack">
+        <div id="heatFill"></div>
+        <div id="heatTicks"><i style="left:40%"></i><i style="left:65%"></i><i style="left:85%"></i></div>
+      </div>
+    </div>
+    <div id="shop">
+      <div id="shopHead">
+        <h2>Refit</h2>
+        <div id="shopScrap">Scrap 0</div>
+      </div>
+      <div class="shopSection">Cannon Upgrades</div>
+      <div id="branches"></div>
+      <div class="shopSection">The Battery</div>
+      <div id="battery"></div>
+      <button id="shopGo">Next Wave</button>
+    </div>
+    <div id="fxbar"></div>
+    <div id="banner">
+      <h2>Serpent Battery</h2>
+      <p id="hint">Aim with the mouse or <kbd>←</kbd><kbd>→</kbd>. Fire with click or <kbd>Space</kbd>. Land consecutive hits to push the cannon into Overdrive — miss and it cools.</p>
+      <p id="hintTouch" style="display:none">Rest your thumb in the band at the bottom, hold to fire, and slide to aim. Flick fast to swing across; move slowly for fine control. The trim buttons nudge one notch.</p>
+      <div id="legend">
+        <span><i style="background:#7f8fa0"></i>Armored</span>
+        <span><i style="background:#e0503c"></i>Volatile</span>
+        <span><i style="background:#4d7fb3"></i>Plated — hit the flank</span>
+        <span><i style="background:#8f5fb8"></i>Regen</span>
+        <span><i style="background:#e8d5a0"></i>Carrier — drops a pickup</span>
+        <span><i style="background:#d8763a"></i>Splitter — it divides</span>
+      </div>
+      <button id="go">Begin</button>
+    </div>
+  </div>
+
+  <div id="pad">
+    <div class="tbtn" id="tLeft">◀ Trim</div>
+    <div class="tbtn" id="tRight">Trim ▶</div>
+  </div>
+
+  <footer>
+    <span>Cut mid-chain to force recoil</span>
+    <span>Head kills buy the most time</span>
+    <span>Overheat locks the barrel</span>
+  </footer>
+</div>
+
+<script type="module">
+/* Generated by build.mjs — do not edit. Edit engine.js and serpent-battery.html. */
+const E = (() => {
+/* Serpent Battery — pure logic core.
+   No DOM, no canvas, no timers. Everything here is deterministic and testable. */
+
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+/* ---------- geometry ---------- */
+
+const LAYOUT = {
+  W: 880, H: 620,
+  MARGIN: 64, ROW_TOP: 70, ROW_GAP: 62, ROWS: 7,
+  THUMB: 0,
+  get FLOOR() { return this.H - 96 - this.THUMB; },
+  get CANNON_Y() { return this.H - 44 - this.THUMB; },
+};
+
+/** Portrait phones get the same 7-row board plus an empty band at the bottom.
+ *  The band is a thumb rest — somewhere to hold and drag that is below the
+ *  cannon, so your hand never covers the play area. The board itself is
+ *  unchanged, so difficulty and pacing carry over exactly. */
+const LAYOUT_TALL = {
+  W: 880, H: 800,
+  MARGIN: 64, ROW_TOP: 70, ROW_GAP: 62, ROWS: 7,
+  THUMB: 180,
+  get FLOOR() { return this.H - 96 - this.THUMB; },
+  get CANNON_Y() { return this.H - 44 - this.THUMB; },
+};
+
+function buildPath(L = LAYOUT) {
+  const pts = [];
+  let lastX = L.MARGIN;
+  for (let r = 0; r < L.ROWS; r++) {
+    const y = L.ROW_TOP + r * L.ROW_GAP;
+    const l = L.MARGIN, rt = L.W - L.MARGIN;
+    if (r % 2 === 0) { pts.push({ x: l, y }); pts.push({ x: rt, y }); lastX = rt; }
+    else { pts.push({ x: rt, y }); pts.push({ x: l, y }); lastX = l; }
+  }
+  // Final descent: the serpentine rows stop above the breach line, so without
+  // this the snake could traverse the whole path and never actually breach.
+  pts.push({ x: lastX, y: L.FLOOR + 30 });
+  const path = [{ x: pts[0].x, y: pts[0].y, s: 0 }];
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    acc += Math.hypot(b.x - a.x, b.y - a.y);
+    path.push({ x: b.x, y: b.y, s: acc });
+  }
+  return { path, pathLen: acc };
+}
+
+/** Position at arc-length s. Points before the start or past the end are
+ *  flagged `off` so callers can skip them rather than clamping silently. */
+function atS(path, pathLen, s) {
+  if (s <= 0) return { x: path[0].x, y: path[0].y, off: true };
+  if (s >= pathLen) {
+    const e = path[path.length - 1];
+    return { x: e.x, y: e.y, off: true };
+  }
+  let lo = 0, hi = path.length - 1;
+  while (lo < hi - 1) {
+    const m = (lo + hi) >> 1;
+    if (path[m].s <= s) lo = m; else hi = m;
+  }
+  const a = path[lo], b = path[hi];
+  const t = (s - a.s) / (b.s - a.s);
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, off: false };
+}
+
+/* ---------- segments ---------- */
+
+const KIND = {
+  std:      { hp: 3, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 3 },
+  armored:  { hp: 10, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 8 },
+  volatile: { hp: 2, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 5 },
+  // Plated on the leading face: shots from the front glance off, so you must
+  // either come at it from the side via a wall bounce or clear a neighbour
+  // first to expose the flank.
+  shielded: { hp: 5, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 9, shield: true },
+  // Heals while it lives. Ignore it and it undoes your chip damage; it never
+  // heals past its cap and never comes back once destroyed.
+  regen:    { hp: 6, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 8, regen: 1.1 },
+  // Rare. Killing it splits the chain into two independent snakes instead of
+  // paying recoil — a trap that doubles the threat, or a scoring gamble.
+  splitter: { hp: 6, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 12, splits: true },
+  // Drops a power-up on death. Worth breaking your rhythm for.
+  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 6, carries: true },
+  head:     { hp: 14, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 18 },
+};
+
+/** Shots landing within this angle of a shielded segment's leading face are
+ *  deflected. Roughly a 120° frontal arc. */
+const SHIELD_ARC = Math.PI / 3;
+
+/** No more than this many independent chains at once, or late waves turn into
+ *  unreadable confetti. */
+const MAX_CHAINS = 3;
+
+/** A splitter this close to either end would leave a useless stub, so the
+ *  placement rule keeps them away from the head and tail. */
+const SPLIT_MARGIN = 3;
+
+function kindForIndex(i, count = Infinity) {
+  if (i === 0) return 'head';
+  // splitters first: rare, and only where both halves would be worth having
+  if (i % 13 === 8 && i >= SPLIT_MARGIN && count - i > SPLIT_MARGIN) return 'splitter';
+  if (i % 7 === 3) return 'armored';
+  if (i % 11 === 6) return 'volatile';
+  if (i % 9 === 5) return 'shielded';
+  if (i % 17 === 11) return 'regen';
+  if (i % 6 === 4) return 'carrier';
+  return 'std';
+}
+
+function makeChain(count, speed, startS, spacing = 30) {
+  const segs = [];
+  for (let i = 0; i < count; i++) {
+    const k = kindForIndex(i, count);
+    const K = KIND[k];
+    segs.push({ id: nextSegId(), kind: k, hp: K.hp, maxhp: K.hp, r: K.r, flash: 0, deflect: 0 });
+  }
+  return { segs, s: startS, speed, spacing, recoil: 0, split: false };
+}
+
+let _segId = 1;
+function nextSegId() { return _segId++; }
+
+const waveCount = (wave) => Math.min(14 + wave * 3, 40);
+/** Path length of the standard layout, used as the default reference. */
+const REF_PATH_LEN = buildPath(LAYOUT).pathLen;
+
+/** Seconds an untouched wave takes to cross, regardless of board size.
+ *  Speed is derived from path length so the tall portrait board plays at
+ *  the same pace as the standard one. */
+const TRAVERSAL_S = (wave) => Math.max(18, 40 - wave * 1.9);
+
+function waveSpeed(wave, pathLength = REF_PATH_LEN) {
+  return pathLength / TRAVERSAL_S(wave);
+}
+
+
+function segPos(path, pathLen, ch, i) {
+  return atS(path, pathLen, ch.s - i * ch.spacing);
+}
+
+/** Direction a segment is travelling, as a unit vector. Sampled from the path
+ *  just behind and ahead so it stays correct through corners. */
+function segHeading(path, pathLen, ch, i) {
+  const s = ch.s - i * ch.spacing;
+  const a = atS(path, pathLen, Math.max(0.01, s - 4));
+  const b = atS(path, pathLen, Math.min(pathLen - 0.01, s + 4));
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const m = Math.hypot(dx, dy) || 1;
+  return { x: dx / m, y: dy / m };
+}
+
+/** True if an incoming shot glances off a shielded segment's leading face.
+ *  `vx,vy` is the shot's velocity; the plate faces the direction of travel. */
+function isDeflected(seg, heading, vx, vy) {
+  if (!KIND[seg.kind].shield) return false;
+  const m = Math.hypot(vx, vy) || 1;
+  // shot direction vs the segment's facing: a head-on hit means the shot
+  // travels opposite to the heading
+  const dot = (-vx / m) * heading.x + (-vy / m) * heading.y;
+  return dot > Math.cos(SHIELD_ARC);
+}
+
+/* ---------- recoil ---------- */
+
+/** Time bought by cutting at index `headSide` in a chain that has
+ *  `remaining` segments left afterward. Cuts nearer the head pay more. */
+function recoilGain(spacing, headSide, remaining) {
+  if (headSide <= 0 || remaining <= 0) return 0;
+  return spacing * (0.5 + (headSide / remaining) * 2.2);
+}
+
+/* ---------- overdrive ---------- */
+
+const OD_TIERS = [
+  { name: '—',        rate: 0.30, dmg: 1,   pierce: 0, col: '#3fae8f' },
+  { name: 'Warm',     rate: 0.23, dmg: 1,   pierce: 0, col: '#8dbf4a' },
+  { name: 'Hot',      rate: 0.17, dmg: 1.5, pierce: 0, col: '#c9a227' },
+  { name: 'Critical', rate: 0.12, dmg: 2,   pierce: 1, col: '#e0503c' },
+];
+const OD_NEED = [3, 7, 12];
+
+function tierForStreak(streak) {
+  let t = 0;
+  for (let i = 0; i < OD_NEED.length; i++) if (streak >= OD_NEED[i]) t = i + 1;
+  return t;
+}
+
+const AIM_MIN = -Math.PI + 0.28;
+const AIM_MAX = -0.28;
+const clampAim = (a) => clamp(a, AIM_MIN, AIM_MAX);
+
+/* ---------- touch aiming ---------- */
+
+/** Radians per CSS pixel of horizontal drag at the slow end of the curve. */
+const AIM_FINE = 0.0052;
+/** Multiplier applied at full speed, so a fast swipe crosses the arc. */
+const AIM_COARSE_MULT = 3.4;
+/** Drag speed (px/s) at which the curve reaches full coarse gain. Lower means
+ *  acceleration arrives sooner, which reads as a more responsive stick. */
+const AIM_RAMP = 520;
+
+/** Pointer-accel curve: responsive from the first pixel, then accelerating.
+ *  A purely quadratic ramp feels dead at low speed because the curve is flat
+ *  near zero, so this blends a linear term in. */
+function aimGain(speedPxPerSec) {
+  const t = clamp(Math.abs(speedPxPerSec) / AIM_RAMP, 0, 1);
+  const shaped = 0.45 * t + 0.55 * t * t;
+  return AIM_FINE * (1 + (AIM_COARSE_MULT - 1) * shaped);
+}
+
+/** Convert a drag delta into an angle delta. `dt` guards against a huge
+ *  jump when the browser coalesces events after a stall. */
+function aimDelta(dx, dt) {
+  const speed = dt > 0 ? dx / dt : 0;
+  return dx * aimGain(speed);
+}
+
+/** Held-button trim: ramps from fine to coarse the longer it is held, so the
+ *  same control does both nudging and sweeping. */
+const TRIM_MIN = 0.55;
+const TRIM_MAX = 2.6;
+const TRIM_RAMP = 0.6;
+function trimRate(heldSeconds) {
+  const t = clamp(heldSeconds / TRIM_RAMP, 0, 1);
+  return TRIM_MIN + (TRIM_MAX - TRIM_MIN) * t * t;
+}
+
+/** A tap shorter than this always yields one shot, so quick taps never
+ *  land inside a cooldown and feel dropped. */
+const TAP_MAX = 0.2;
+
+const HEAT_PER_SHOT = 0.09;
+const HEAT_COOL = 0.22;
+const HEAT_COOL_LOCKED = 0.8;
+const LOCK_TIME = 1.5;
+
+/* ---------- upgrades ---------- */
+
+/** Four branches, five tiers each. Costs escalate steeply enough that a run
+ *  affords roughly 60% of the tree, so you commit to a build rather than
+ *  maxing everything. */
+const UPGRADES = {
+  barrel: {
+    name: 'Barrel',
+    blurb: 'Damage per shot, then projectile size',
+    costs: [30, 65, 115, 185, 280],
+    tiers: [
+      { dmg: 1.0, shotR: 3.2 },
+      { dmg: 1.3, shotR: 3.2 },
+      { dmg: 1.6, shotR: 3.8 },
+      { dmg: 2.0, shotR: 4.4 },
+      { dmg: 2.5, shotR: 5.2 },
+      { dmg: 3.1, shotR: 6.0 },
+    ],
+  },
+  chamber: {
+    name: 'Chamber',
+    blurb: 'Heat capacity and cooling — holds Overdrive longer',
+    costs: [28, 60, 108, 172, 262],
+    tiers: [
+      { heatPerShot: 1.00, cool: 1.00, lock: 1.00 },
+      { heatPerShot: 0.90, cool: 1.15, lock: 0.92 },
+      { heatPerShot: 0.81, cool: 1.32, lock: 0.84 },
+      { heatPerShot: 0.72, cool: 1.52, lock: 0.76 },
+      { heatPerShot: 0.64, cool: 1.75, lock: 0.68 },
+      { heatPerShot: 0.56, cool: 2.00, lock: 0.60 },
+    ],
+  },
+  optics: {
+    name: 'Optics',
+    blurb: 'Projectile speed, then a longer intercept read',
+    costs: [32, 68, 120, 192, 290],
+    tiers: [
+      { shotSpeed: 520, predict: 1.6 },
+      { shotSpeed: 585, predict: 1.8 },
+      { shotSpeed: 650, predict: 2.0 },
+      { shotSpeed: 720, predict: 2.3 },
+      { shotSpeed: 800, predict: 2.6 },
+      { shotSpeed: 890, predict: 3.0 },
+    ],
+  },
+  munitions: {
+    name: 'Munitions',
+    blurb: 'Extra pierce and wall bounces',
+    costs: [35, 74, 130, 208, 312],
+    tiers: [
+      { pierce: 0, bounces: 2 },
+      { pierce: 0, bounces: 3 },
+      { pierce: 1, bounces: 3 },
+      { pierce: 1, bounces: 4 },
+      { pierce: 2, bounces: 5 },
+      { pierce: 2, bounces: 6 },
+    ],
+  },
+};
+
+const BRANCHES = Object.keys(UPGRADES);
+const MAX_TIER = 5;
+
+function newUpgrades() {
+  const u = {};
+  for (const b of BRANCHES) u[b] = 0;
+  return u;
+}
+
+/** Cost of the next tier in a branch, or null if it is already maxed. */
+function upgradeCost(upgrades, branch) {
+  const t = upgrades[branch];
+  if (t >= MAX_TIER) return null;
+  return UPGRADES[branch].costs[t];
+}
+
+function canAfford(w, branch) {
+  const c = upgradeCost(w.upgrades, branch);
+  return c !== null && w.scrap >= c;
+}
+
+/** Buy one tier. Returns true if the purchase went through. */
+function buyUpgrade(w, branch) {
+  if (!BRANCHES.includes(branch)) return false;
+  const cost = upgradeCost(w.upgrades, branch);
+  if (cost === null || w.scrap < cost) return false;
+  w.scrap -= cost;
+  w.upgrades[branch]++;
+  return true;
+}
+
+/** Resolved stats for the current tiers. Read this rather than the tables. */
+function stats(w) {
+  const u = w.upgrades;
+  return {
+    ...UPGRADES.barrel.tiers[u.barrel],
+    ...UPGRADES.chamber.tiers[u.chamber],
+    ...UPGRADES.optics.tiers[u.optics],
+    ...UPGRADES.munitions.tiers[u.munitions],
+  };
+}
+
+/** Total scrap needed to max every branch — used to sanity-check that a run
+ *  cannot buy the whole tree. */
+function fullTreeCost() {
+  return BRANCHES.reduce((sum, b) => sum + UPGRADES[b].costs.reduce((a, c) => a + c, 0), 0);
+}
+
+/* ---------- world ---------- */
+
+function createWorld(opts = {}) {
+  const L = { ...LAYOUT, ...(opts.layout || {}) };
+  const { path, pathLen } = buildPath(L);
+  const w = {
+    L, path, pathLen,
+    chains: [], shots: [], bits: [], floaters: [],
+    wave: 1, score: 0, scrap: 0, lives: 3,
+    upgrades: newUpgrades(),
+    gunUnlocks: { auto: false, rail: false, mortar: false },
+    pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
+    shake: 0, hitStop: 0,
+    shopOpen: false,
+    running: false, over: false,
+    waveClear: false, clearTimer: 0,
+    breaches: 0,
+    fx: opts.fx || { burst() {}, push() {} },
+    battery: makeBattery(L, 1),
+  };
+  // `cannon` remains as an alias to the battery for shared aim/streak/od, so
+  // existing call sites keep working; per-gun state lives in battery.guns
+  w.cannon = w.battery;
+  w.cannon.x = L.W / 2;
+  return w;
+}
+
+function spawnWave(w) {
+  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30)];
+  w.shots = []; w.bits = []; w.floaters = [];
+  w.pickups = [];
+  w.waveClear = false;
+}
+
+function resetRun(w) {
+  w.wave = 1; w.score = 0; w.scrap = 0; w.lives = 3;
+  w.over = false; w.breaches = 0;
+  w.upgrades = newUpgrades();
+  w.pickups = []; w.effects = {}; w.shieldCharges = 0; w.dropSeed = 987654321;
+  w.shake = 0; w.hitStop = 0;
+  w.shopOpen = false;
+  w.gunUnlocks = { auto: false, rail: false, mortar: false };
+  w.battery = makeBattery(w.L, 1);
+  w.cannon = w.battery;
+  w.cannon.x = w.L.W / 2;
+  spawnWave(w);
+}
+
+/** Add a mount if there is room and scrap. New mounts start as standard guns. */
+function buyMount(w) {
+  const n = w.battery.guns.length;
+  if (n >= MAX_MOUNTS) return false;
+  const cost = MOUNT_COST[n];
+  if (w.scrap < cost) return false;
+  w.scrap -= cost;
+  w.battery.guns.push(makeGun(w.L.W * MOUNT_X[n], 'standard'));
+  return true;
+}
+
+function mountCost(w) {
+  const n = w.battery.guns.length;
+  return n >= MAX_MOUNTS ? null : MOUNT_COST[n];
+}
+
+/** Unlock a gun type for assignment. One-time purchase. */
+function unlockGun(w, type) {
+  const G = GUN_TYPES[type];
+  if (!G || type === 'standard' || w.gunUnlocks[type]) return false;
+  if (w.scrap < G.unlock) return false;
+  w.scrap -= G.unlock;
+  w.gunUnlocks[type] = true;
+  return true;
+}
+
+/** Assign an unlocked type to a mount. */
+function setGunType(w, mountIndex, type) {
+  const g = w.battery.guns[mountIndex];
+  if (!g || !GUN_TYPES[type]) return false;
+  if (type !== 'standard' && !w.gunUnlocks[type]) return false;
+  g.type = type;
+  return true;
+}
+
+/** The point the battery is aiming at: follow the shared aim vector out from
+ *  centre to a fixed range. Every gun fires toward this point, so the spread
+ *  converges there. */
+function aimPoint(w) {
+  const b = w.battery;
+  const range = 620;
+  return {
+    x: w.L.W / 2 + Math.cos(b.ang) * range,
+    y: b.y + Math.sin(b.ang) * range,
+  };
+}
+
+/** Fire one gun toward the aim point. Returns the primary shot or null if the
+ *  gun could not fire (cooling or locked). */
+function fireGun(w, gun) {
+  if (gun.locked > 0 || gun.cool > 0) return null;
+  const b = w.battery;
+  const T = OD_TIERS[b.od];
+  const S = stats(w);
+  const G = GUN_TYPES[gun.type];
+
+  const muzzleX = gun.x, muzzleY = b.y;
+  const tp = aimPoint(w);
+  const ang = Math.atan2(tp.y - muzzleY, tp.x - muzzleX);
+
+  gun.cool = T.rate * G.rate * (hasEffect(w, 'rapid') ? 0.55 : 1);
+  gun.heat = clamp(gun.heat + HEAT_PER_SHOT * S.heatPerShot, 0, 1);
+  if (gun.heat >= 1) {
+    gun.locked = LOCK_TIME * S.lock; gun.heat = 1;
+    // overheating one gun drops the shared streak, but not all the way — the
+    // battery keeps firing on its other barrels
+    b.streak = Math.max(0, b.streak - 4);
+    b.od = tierForStreak(b.streak);
+    w.fx.push('OVERHEAT', muzzleX, muzzleY - 60, '#e0503c');
+  }
+
+  const spd = S.shotSpeed * G.spd;
+  const shot = {
+    x: muzzleX + Math.cos(ang) * b.len,
+    y: muzzleY + Math.sin(ang) * b.len,
+    vx: Math.cos(ang) * spd,
+    vy: Math.sin(ang) * spd,
+    dmg: T.dmg * S.dmg * G.dmg,
+    pierce: T.pierce + S.pierce + G.pierce + (hasEffect(w, 'pierce') ? 2 : 0),
+    bounces: S.bounces + (hasEffect(w, 'ricochet') ? 4 : 0),
+    r: S.shotR,
+    arc: G.arc ? true : false,
+  };
+  w.shots.push(shot);
+
+  if (hasEffect(w, 'spread')) {
+    for (const off of [-0.16, 0.16]) {
+      const a = ang + off;
+      w.shots.push({
+        ...shot,
+        x: muzzleX + Math.cos(a) * b.len,
+        y: muzzleY + Math.sin(a) * b.len,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd,
+      });
+    }
+  }
+  return shot;
+}
+
+/** Fire the whole battery. Every ready gun looses a shot toward the shared
+ *  aim point. Returns the number of guns that fired. */
+function fire(w) {
+  let fired = 0;
+  for (const gun of w.battery.guns) {
+    if (fireGun(w, gun)) fired++;
+  }
+  return fired;
+}
+
+function registerHit(w) {
+  const c = w.cannon;
+  c.streak++;
+  const t = tierForStreak(c.streak);
+  if (t > c.od) {
+    c.od = t;
+    w.fx.push(OD_TIERS[t].name.toUpperCase(), c.x, c.y - 60, OD_TIERS[t].col);
+  }
+}
+
+function registerMiss(w) {
+  const c = w.cannon;
+  c.streak = 0;
+  if (c.od > 0) c.od--;
+}
+
+/* ---------- battery ---------- */
+
+/** Gun types you can assign to a mount once unlocked. `standard` is the
+ *  starting gun; the others trade fire rate for a special property, so the
+ *  four upgrade branches map onto guns you can physically see. */
+const GUN_TYPES = {
+  standard: { name: 'Cannon',     rate: 1.0,  dmg: 1.0, pierce: 0, spd: 1.0,  col: '#c9a227', unlock: 0 },
+  auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', unlock: 120 },
+  rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', unlock: 160 },
+  mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', unlock: 200, arc: true },
+};
+const GUN_KEYS = Object.keys(GUN_TYPES);
+
+/** Mount x-positions across the battery, as fractions of width. Index 0 is
+ *  dead centre; more mounts fan outward symmetrically. */
+const MOUNT_X = [0.5, 0.32, 0.68, 0.18, 0.82];
+const MAX_MOUNTS = 5;
+const MOUNT_COST = [0, 90, 150, 230, 330];   // cost of the Nth mount
+
+/** How close two hits must land in time to count as convergence. */
+const CONVERGE_WINDOW = 0.12;
+const CONVERGE_BONUS = 0.6;                  // extra damage fraction
+
+function makeGun(x, type = 'standard') {
+  return { x, type, heat: 0, cool: 0, locked: 0 };
+}
+
+/** Build the battery for a given mount count. The shared aim, streak and
+ *  overdrive live on the battery; heat and cooldown live per gun. */
+function makeBattery(L, mounts = 1, types = null) {
+  const guns = [];
+  for (let i = 0; i < mounts; i++) {
+    guns.push(makeGun(L.W * MOUNT_X[i], types ? types[i] : 'standard'));
+  }
+  return {
+    y: L.CANNON_Y, ang: -Math.PI / 2, len: 34,
+    streak: 0, od: 0, queued: false,
+    guns,
+    // convergence bookkeeping: segment id -> last hit time
+    lastHitAt: {}, clock: 0,
+  };
+}
+
+/** Pickups fall from destroyed Carriers. You either shoot them or let them
+ *  land in the catch zone above the cannon — both work, which makes the
+ *  decision "is this worth breaking my aim for?" rather than a reflex. */
+const POWERUPS = {
+  spread:  { name: 'Spread',  dur: 9,  col: '#5fc9a4', blurb: 'Three-shot fan' },
+  rapid:   { name: 'Rapid',   dur: 8,  col: '#8dbf4a', blurb: 'Shorter cooldown' },
+  pierce:  { name: 'Pierce',  dur: 10, col: '#c9a227', blurb: 'Shots punch through' },
+  freeze:  { name: 'Freeze',  dur: 2.5, col: '#6fb7e8', blurb: 'The snake halts' },
+  bomb:    { name: 'Bomb',    dur: 0,  col: '#e0503c', blurb: 'Radial blast on pickup' },
+  ricochet:{ name: 'Ricochet',dur: 9,  col: '#b98de0', blurb: 'Extra wall bounces' },
+  shield:  { name: 'Shield',  dur: 0,  col: '#e6e9e2', blurb: 'Absorbs one breach' },
+};
+const POWERUP_KEYS = Object.keys(POWERUPS);
+
+/** Deliberately not uniform: freeze and shield are the strong ones, so they
+ *  come up less often than the situational effects. */
+const DROP_TABLE = [
+  'spread', 'spread', 'rapid', 'rapid', 'pierce', 'pierce',
+  'ricochet', 'bomb', 'bomb', 'freeze', 'shield',
+];
+
+const PICKUP_FALL = 95;      // px/sec
+const PICKUP_R = 11;
+const BOMB_RADIUS = 110;
+const BOMB_DMG = 4;
+/** Band above the cannon where a falling pickup is caught automatically. */
+const CATCH_BAND = 46;
+
+/** Deterministic drop choice, seeded off the world's drop counter so runs are
+ *  reproducible in tests but varied in play. */
+function rollDrop(w) {
+  const n = (w.dropSeed = (w.dropSeed * 1103515245 + 12345) & 0x7fffffff);
+  return DROP_TABLE[n % DROP_TABLE.length];
+}
+
+function spawnPickup(w, x, y, kind) {
+  w.pickups.push({ x, y, kind, vy: PICKUP_FALL, r: PICKUP_R, life: 14 });
+}
+
+/** Apply a power-up. Timed effects stack duration rather than refreshing, so
+ *  collecting two of the same is meaningfully better than one. */
+function applyPowerup(w, kind) {
+  const P = POWERUPS[kind];
+  if (!P) return false;
+
+  if (kind === 'bomb') {
+    // blast centred on the pickup's own position, not the cannon, so it
+    // clears what was actually in front of you
+    const bx = w.bombAt ? w.bombAt.x : w.cannon.x;
+    const by = w.bombAt ? w.bombAt.y : w.cannon.y;
+    let killed = 0;
+    for (let ci = w.chains.length - 1; ci >= 0; ci--) {
+      const ch = w.chains[ci];
+      if (!ch) continue;
+      for (let i = ch.segs.length - 1; i >= 0; i--) {
+        const p = segPos(w.path, w.pathLen, ch, i);
+        if (p.off) continue;
+        if (Math.hypot(p.x - bx, p.y - by) < BOMB_RADIUS) {
+          if (damageSeg(w, ci, i, BOMB_DMG)) killed++;
+        }
+      }
+    }
+    w.fx.burst(bx, by, P.col, 40);
+    w.fx.push('BOMB', bx, by, P.col);
+    w.shake = Math.max(w.shake, 0.5);
+    return true;
+  }
+
+  if (kind === 'shield') {
+    w.shieldCharges++;
+    w.fx.push('SHIELD', w.cannon.x, w.cannon.y - 70, P.col);
+    return true;
+  }
+
+  w.effects[kind] = (w.effects[kind] || 0) + P.dur;
+  w.fx.push(P.name.toUpperCase(), w.cannon.x, w.cannon.y - 70, P.col);
+  return true;
+}
+
+const hasEffect = (w, kind) => (w.effects[kind] || 0) > 0;
+
+function stepPickups(w, dt) {
+  const c = w.cannon;
+  for (let i = w.pickups.length - 1; i >= 0; i--) {
+    const p = w.pickups[i];
+    p.y += p.vy * dt;
+    p.life -= dt;
+
+    // caught in the band above the cannon
+    const near = Math.hypot(p.x - c.x, p.y - c.y);
+    if (near < CATCH_BAND + p.r) {
+      w.bombAt = { x: p.x, y: p.y };
+      applyPowerup(w, p.kind);
+      w.bombAt = null;
+      w.pickups.splice(i, 1);
+      continue;
+    }
+    if (p.y > w.L.H + 30 || p.life <= 0) w.pickups.splice(i, 1);
+  }
+
+  // timed effects tick down
+  for (const k of Object.keys(w.effects)) {
+    if (w.effects[k] > 0) {
+      w.effects[k] = Math.max(0, w.effects[k] - dt);
+      if (w.effects[k] === 0) delete w.effects[k];
+    }
+  }
+}
+
+/** Split a chain at index `i`, which has just been removed. The head-side
+ *  portion carries on; the tail-side portion grows its own head and becomes an
+ *  independent snake. Returns true if the split happened. */
+function splitChain(w, ci, i) {
+  const ch = w.chains[ci];
+  if (!ch) return false;
+  if (w.chains.length >= MAX_CHAINS) return false;
+  if (ch.split) return false;                       // one split per chain
+  const tail = ch.segs.slice(i);
+  const front = ch.segs.slice(0, i);
+  if (front.length < 2 || tail.length < 2) return false;
+
+  // the tail's leading segment becomes a head, at head stats
+  const H = KIND.head;
+  tail[0] = { id: nextSegId(), kind: 'head', hp: H.hp, maxhp: H.hp, r: H.r, flash: 0, deflect: 0 };
+
+  ch.segs = front;
+  ch.split = true;
+
+  // the new chain starts where the tail already was, so nothing teleports
+  w.chains.splice(ci + 1, 0, {
+    segs: tail,
+    s: ch.s - i * ch.spacing,
+    speed: ch.speed,
+    spacing: ch.spacing,
+    recoil: 0,
+    split: true,
+  });
+  return true;
+}
+
+/** Apply damage. Returns true if the segment died. */
+function damageSeg(w, ci, i, dmg) {
+  const ch = w.chains[ci];
+  if (!ch) return false;
+  const seg = ch.segs[i];
+  if (!seg) return false;
+
+  seg.hp -= dmg;
+  seg.flash = 0.12;
+  if (seg.hp > 0) return false;
+
+  const K = KIND[seg.kind];
+  const pos = segPos(w.path, w.pathLen, ch, i);
+  w.score += K.score;
+  w.scrap += K.scrap;
+  w.fx.burst(pos.x, pos.y, K.col, 14);
+  w.fx.push('+' + K.score, pos.x, pos.y, K.col);
+
+  // juice: bigger targets stop the world for longer
+  w.hitStop = Math.max(w.hitStop, seg.maxhp >= 6 ? 0.055 : 0.028);
+  w.shake = Math.max(w.shake, seg.maxhp >= 6 ? 0.32 : 0.16);
+
+  if (seg.kind === 'volatile') {
+    for (const j of [i - 1, i + 1]) {
+      if (ch.segs[j]) { ch.segs[j].hp -= 3; ch.segs[j].flash = 0.12; }
+    }
+    w.fx.burst(pos.x, pos.y, '#e0503c', 26);
+  }
+
+  if (K.carries) spawnPickup(w, pos.x, pos.y, rollDrop(w));
+
+  ch.segs.splice(i, 1);
+
+  /* A splitter pays no recoil — instead the chain comes apart and the tail
+     grows its own head. That is the trade: you lose the time a normal cut
+     would have bought, and gain a second snake. */
+  if (K.splits && splitChain(w, ci, i)) {
+    w.fx.push('SPLIT', pos.x, pos.y, K.col);
+    w.fx.burst(pos.x, pos.y, K.col, 22);
+  } else {
+    ch.recoil += recoilGain(ch.spacing, i, ch.segs.length);
+  }
+
+  if (ch.segs.length === 0) w.chains.splice(ci, 1);
+  return true;
+}
+
+/* ---------- simulation step ---------- */
+
+function stepChains(w, dt) {
+  const frozen = hasEffect(w, 'freeze');
+  for (const ch of w.chains) {
+    if (frozen) {
+      for (const s of ch.segs) {
+        s.flash = Math.max(0, s.flash - dt);
+        const K = KIND[s.kind];
+        if (K.regen && s.hp < s.maxhp) s.hp = Math.min(s.maxhp, s.hp + K.regen * dt);
+      }
+      continue;
+    }
+    if (ch.recoil > 0) {
+      const pay = Math.min(ch.recoil, ch.speed * 2.4 * dt);
+      ch.recoil -= pay;
+      ch.s -= pay;
+    } else {
+      ch.s += ch.speed * dt;
+    }
+    ch.s = Math.max(ch.s, -40);
+    for (const s of ch.segs) {
+      s.flash = Math.max(0, s.flash - dt);
+      if (s.deflect > 0) s.deflect = Math.max(0, s.deflect - dt);
+      const K = KIND[s.kind];
+      // regenerators claw back damage, but never past their cap
+      if (K.regen && s.hp < s.maxhp) s.hp = Math.min(s.maxhp, s.hp + K.regen * dt);
+    }
+  }
+}
+
+/** Request fire. Any ready gun shoots now; the request is remembered so guns
+ *  still cooling loose the moment they clear. A tap never feels dropped. */
+function queueShot(w) {
+  const b = w.battery;
+  const anyReady = b.guns.some(g => g.locked <= 0 && g.cool <= 0);
+  if (anyReady) { fire(w); b.queued = true; return true; }
+  // nothing ready right now, but remember the intent
+  b.queued = b.guns.some(g => g.locked <= 0);
+  return false;
+}
+
+function stepCannon(w, dt, firing) {
+  const b = w.battery;
+  const coolMult = stats(w).cool;
+  for (const g of b.guns) {
+    g.cool = Math.max(0, g.cool - dt);
+    g.locked = Math.max(0, g.locked - dt);
+    const rate = (g.locked > 0 ? HEAT_COOL_LOCKED : HEAT_COOL) * coolMult;
+    g.heat = clamp(g.heat - rate * dt, 0, 1);
+  }
+  b.clock += dt;
+  // expire stale convergence records
+  for (const id of Object.keys(b.lastHitAt)) {
+    if (b.clock - b.lastHitAt[id] > CONVERGE_WINDOW) delete b.lastHitAt[id];
+  }
+
+  if (firing) fire(w);
+  else if (b.queued) {
+    // drain the queue onto any gun that has come ready
+    if (b.guns.some(g => g.locked <= 0 && g.cool <= 0)) fire(w);
+    if (b.guns.every(g => g.cool > 0 || g.locked > 0)) b.queued = false;
+  }
+}
+
+function stepShots(w, dt) {
+  const { W, H } = w.L;
+  for (let k = w.shots.length - 1; k >= 0; k--) {
+    const p = w.shots[k];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    // walls reflect, but only for as many bounces as Munitions allows
+    const maxB = p.bounces ?? 2;
+    if (p.x < 6) {
+      if ((p.bounced || 0) >= maxB) { w.shots.splice(k, 1); registerMiss(w); continue; }
+      p.x = 6; p.vx *= -1; p.bounced = (p.bounced || 0) + 1;
+    }
+    if (p.x > W - 6) {
+      if ((p.bounced || 0) >= maxB) { w.shots.splice(k, 1); registerMiss(w); continue; }
+      p.x = W - 6; p.vx *= -1; p.bounced = (p.bounced || 0) + 1;
+    }
+    if (p.y < -20 || p.y > H + 20) { w.shots.splice(k, 1); registerMiss(w); continue; }
+
+    // a shot can claim a pickup mid-air
+    let claimed = false;
+    for (let q = w.pickups.length - 1; q >= 0; q--) {
+      const pu = w.pickups[q];
+      if (Math.hypot(p.x - pu.x, p.y - pu.y) < pu.r + p.r) {
+        w.bombAt = { x: pu.x, y: pu.y };
+        applyPowerup(w, pu.kind);
+        w.bombAt = null;
+        w.pickups.splice(q, 1);
+        w.shots.splice(k, 1);
+        claimed = true;
+        break;
+      }
+    }
+    if (claimed) continue;
+
+    let hit = false;
+    outer:
+    for (let ci = w.chains.length - 1; ci >= 0; ci--) {
+      const ch = w.chains[ci];
+      for (let i = ch.segs.length - 1; i >= 0; i--) {
+        const seg = ch.segs[i];
+        const sp = segPos(w.path, w.pathLen, ch, i);
+        if (sp.off) continue;
+        if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r) {
+          const heading = segHeading(w.path, w.pathLen, ch, i);
+          if (isDeflected(seg, heading, p.vx, p.vy)) {
+            // glances off the plate: the shot bounces away and the streak
+            // survives, since the player did make contact
+            seg.deflect = 0.15;
+            const m = Math.hypot(p.vx, p.vy) || 1;
+            const nx = -heading.x, ny = -heading.y;
+            const d = (p.vx * nx + p.vy * ny) / m;
+            p.vx -= 2 * d * nx * m; p.vy -= 2 * d * ny * m;
+            p.x = sp.x + nx * (seg.r + p.r + 1);
+            p.y = sp.y + ny * (seg.r + p.r + 1);
+            w.fx.burst(sp.x, sp.y, KIND.shielded.ring, 6);
+            break outer;
+          }
+          registerHit(w);
+          // convergence: if another shot struck this same segment within the
+          // window, both count as focused fire and hit harder
+          const b = w.battery;
+          let dmg = p.dmg;
+          if (b.lastHitAt[seg.id] !== undefined &&
+              b.clock - b.lastHitAt[seg.id] <= CONVERGE_WINDOW) {
+            dmg *= 1 + CONVERGE_BONUS;
+            w.fx.push('FOCUS', sp.x, sp.y - 14, '#ffd9a8');
+          }
+          b.lastHitAt[seg.id] = b.clock;
+          damageSeg(w, ci, i, dmg);
+          if (p.pierce > 0) p.pierce--;
+          else { w.shots.splice(k, 1); hit = true; }
+          break outer;
+        }
+      }
+    }
+    if (hit) continue;
+  }
+}
+
+function checkBreach(w) {
+  for (const ch of w.chains) {
+    for (let i = 0; i < ch.segs.length; i++) {
+      const sp = segPos(w.path, w.pathLen, ch, i);
+      if (!sp.off && sp.y >= w.L.FLOOR) return true;
+    }
+    // head ran off the end of the path entirely
+    if (ch.segs.length && ch.s >= w.pathLen) return true;
+  }
+  return false;
+}
+
+function breach(w) {
+  // a shield charge eats the breach entirely
+  if (w.shieldCharges > 0) {
+    w.shieldCharges--;
+    w.fx.push('SHIELD HELD', w.cannon.x, w.cannon.y - 70, '#e6e9e2');
+    w.shake = Math.max(w.shake, 0.4);
+    w.battery.streak = 0; w.battery.od = 0; w.battery.queued = false;
+    spawnWave(w);
+    return;
+  }
+  w.shake = Math.max(w.shake, 0.7);
+  w.lives--;
+  w.breaches++;
+  w.battery.streak = 0; w.battery.od = 0; w.battery.queued = false;
+  for (const g of w.battery.guns) g.heat = 0;
+  if (w.lives <= 0) { w.running = false; w.over = true; }
+  else spawnWave(w);
+}
+
+function step(w, dt, firing = false) {
+  // hit-stop: freeze the world briefly on a kill for impact
+  if (w.hitStop > 0) {
+    w.hitStop = Math.max(0, w.hitStop - dt);
+    if (w.shake > 0) w.shake = Math.max(0, w.shake - dt * 2);
+    return;
+  }
+  if (w.shake > 0) w.shake = Math.max(0, w.shake - dt * 2);
+
+  stepCannon(w, dt, firing);
+  stepPickups(w, dt);
+  stepChains(w, dt);
+  stepShots(w, dt);
+
+  for (let i = w.bits.length - 1; i >= 0; i--) {
+    const b = w.bits[i];
+    b.life -= dt; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 260 * dt;
+    if (b.life <= 0) w.bits.splice(i, 1);
+  }
+  for (let i = w.floaters.length - 1; i >= 0; i--) {
+    const f = w.floaters[i];
+    f.life -= dt; f.y -= 26 * dt;
+    if (f.life <= 0) w.floaters.splice(i, 1);
+  }
+
+  if (checkBreach(w)) { breach(w); return; }
+
+  if (w.chains.length === 0 && !w.waveClear) {
+    w.waveClear = true; w.clearTimer = 1.1;
+    // clearing without losing a life is worth a bonus, scaled by wave
+    w.score += 200 + w.wave * 50;
+  }
+  if (w.waveClear) {
+    w.clearTimer -= dt;
+    if (w.clearTimer <= 0) {
+      // hand control back to the player to spend scrap before the next wave
+      w.waveClear = false;
+      w.shopOpen = true;
+      w.running = false;
+    }
+  }
+}
+
+/** Leave the shop and start the next wave. */
+function nextWave(w) {
+  w.shopOpen = false;
+  w.wave++;
+  spawnWave(w);
+  w.running = true;
+}
+
+return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, kindForIndex, makeChain, _segId, nextSegId, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, spawnWave, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
+})();
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let W, H;
+const TAU = E.TAU;
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+const $ = id => document.getElementById(id);
+
+/* effects live in the shell, not the engine */
+const fx = {
+  burst(x, y, col, n = 10) {
+    if (reduce) return;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * TAU, sp = 40 + Math.random() * 140;
+      world.bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .35 + Math.random() * .4, col });
+    }
+  },
+  push(txt, x, y, col) { world.floaters.push({ txt, x, y, col, life: .9 }); },
+};
+
+/* Portrait phones get the same board plus an empty band beneath the cannon:
+   somewhere to rest and drag a thumb without covering the play area. */
+const portrait = matchMedia('(max-aspect-ratio: 4/5)').matches;
+const LAY = portrait ? E.LAYOUT_TALL : E.LAYOUT;
+cv.width = LAY.W; cv.height = LAY.H;
+
+W = LAY.W; H = LAY.H;
+
+const world = E.createWorld({ fx, layout: LAY });
+E.spawnWave(world);
+
+/* ---------- input ---------- */
+let keys = {}, firing = false;
+let trimDir = 0, trimHeld = 0;
+
+function stagePt(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+}
+function aimAt(p) {
+  world.cannon.ang = E.clampAim(Math.atan2(p.y - world.cannon.y, p.x - world.cannon.x));
+}
+
+/* Touch: the field is one control. Press anywhere to start firing, then drag
+   to aim relatively — the angle follows how far you move, not where you are,
+   so you can rest a thumb low and never cover the snake.
+   Mouse keeps absolute aiming, which is what a cursor is good at. */
+let drag = null;
+const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  if (e.pointerType === 'mouse') { aimAt(stagePt(e)); firing = true; return; }
+  drag = { x: e.clientX, t: performance.now() };
+  firing = true;
+  E.queueShot(world);          // the press itself always produces a shot
+  tapPulse = 1;
+});
+
+cv.addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse') { if (firing || !isTouch) aimAt(stagePt(e)); return; }
+  if (!drag) return;
+  const now = performance.now();
+  const dx = e.clientX - drag.x;
+  const dt = Math.max((now - drag.t) / 1000, 1e-3);
+  world.cannon.ang = E.clampAim(world.cannon.ang + E.aimDelta(dx, dt));
+  drag.x = e.clientX; drag.t = now;
+});
+
+function endPointer(e) {
+  if (e.pointerType === 'mouse') { firing = false; return; }
+  drag = null; firing = false;
+}
+addEventListener('pointerup', endPointer);
+addEventListener('pointercancel', endPointer);
+
+/* Belt and braces on top of the CSS: a long press must not start a selection
+   or open the context menu mid-game. Scoped to the game surface so normal
+   page behaviour survives on desktop. */
+for (const el of [cv, $('pad')]) {
+  for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
+    el.addEventListener(ev, e => e.preventDefault());
+  }
+}
+// a drag that starts on the board can still paint a selection across the
+// header, so cancel any selection that begins while a touch is down
+document.addEventListener('selectstart', e => { if (drag) e.preventDefault(); });
+
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space') { e.preventDefault(); firing = true; }
+});
+addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Space') firing = false; });
+
+/* touch trim buttons — fine correction, ramping to coarse if held */
+if (isTouch) {
+  document.body.classList.add('touch');
+  $('hint').style.display = 'none';
+  $('hintTouch').style.display = '';
+}
+function holdBtn(el, dir) {
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault(); el.setPointerCapture(e.pointerId);
+    el.classList.add('on'); trimDir = dir; trimHeld = 0;
+  });
+  const end = () => { el.classList.remove('on'); if (trimDir === dir) { trimDir = 0; trimHeld = 0; } };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
+}
+holdBtn($('tLeft'), -1);
+holdBtn($('tRight'), 1);
+
+/* Fit the board into whatever height is left after the header and the touch
+   pad, so the whole play area is visible without scrolling. */
+function fitStage() {
+  const header = document.querySelector('header');
+  const pad = $('pad');
+  const isTouchLayout = document.body.classList.contains('touch');
+
+  const chrome = header.getBoundingClientRect().height
+    + (isTouchLayout ? pad.getBoundingClientRect().height : 0)
+    + 34;                                   // gaps + body padding
+  const avail = Math.max(200, innerHeight - chrome);
+
+  // keep the board's aspect ratio while fitting both dimensions
+  const stageW = $('stage').clientWidth || innerWidth;
+  const byWidth = stageW / (LAY.W / LAY.H);
+  const h = Math.min(avail, byWidth);
+
+  cv.style.height = h + 'px';
+  cv.style.width = (h * (LAY.W / LAY.H)) + 'px';
+  cv.style.maxWidth = '100%';
+}
+addEventListener('resize', fitStage);
+addEventListener('orientationchange', () => setTimeout(fitStage, 150));
+if (window.visualViewport) visualViewport.addEventListener('resize', fitStage);
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+
+  if (world.running) {
+    const c = world.cannon;
+    let kb = 0;
+    if (keys.ArrowLeft) kb -= 1;
+    if (keys.ArrowRight) kb += 1;
+    if (kb) c.ang = E.clampAim(c.ang + kb * 2.0 * dt);
+
+    if (trimDir) {
+      trimHeld += dt;
+      c.ang = E.clampAim(c.ang + trimDir * E.trimRate(trimHeld) * dt);
+    }
+    if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
+
+    E.step(world, dt, firing);
+    if (world.over) showBanner('Battery Down', `Score ${world.score} · Wave ${world.wave}`, 'Try again');
+    else if (world.shopOpen && !$('shop').classList.contains('on')) openShop();
+    sync();
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+
+let tapPulse = 0;
+
+/* March a virtual shot forward and report the first segment it would meet,
+   advancing the chains at the same time. Cheap, and exact enough to trust. */
+function predictHit() {
+  const c = world.cannon;
+  const S = E.stats(world);
+  const step = 1 / 90, maxT = S.predict;
+  let x = c.x + Math.cos(c.ang) * c.len;
+  let y = c.y + Math.sin(c.ang) * c.len;
+  let vx = Math.cos(c.ang) * S.shotSpeed, vy = Math.sin(c.ang) * S.shotSpeed;
+
+  for (let t = 0; t < maxT; t += step) {
+    x += vx * step; y += vy * step;
+    if (x < 6) { x = 6; vx = -vx; }
+    if (x > W - 6) { x = W - 6; vx = -vx; }
+    if (y < -20 || y > H + 20) return null;
+
+    for (const ch of world.chains) {
+      const s = ch.recoil > 0 ? ch.s - Math.min(ch.recoil, ch.speed * 2.4 * t) : ch.s + ch.speed * t;
+      for (let i = 0; i < ch.segs.length; i++) {
+        const p = E.atS(world.path, world.pathLen, s - i * ch.spacing);
+        if (p.off) continue;
+        if (Math.hypot(x - p.x, y - p.y) < ch.segs[i].r + 3.2) {
+          // a shot that would glance off the plate is not a hit, so the
+          // marker must not promise one. Heading is sampled at the segment's
+          // *predicted* position, not its current one.
+          const sAt = s - i * ch.spacing;
+          const a = E.atS(world.path, world.pathLen, Math.max(0.01, sAt - 4));
+          const b = E.atS(world.path, world.pathLen, Math.min(world.pathLen - 0.01, sAt + 4));
+          const m = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+          const h = { x: (b.x - a.x) / m, y: (b.y - a.y) / m };
+          if (E.isDeflected(ch.segs[i], h, vx, vy)) return { x: p.x, y: p.y, blocked: true };
+          return { x: p.x, y: p.y };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/* ---------- shop ---------- */
+function renderShop() {
+  $('shopScrap').textContent = 'Scrap ' + world.scrap;
+  const host = $('branches');
+  host.innerHTML = '';
+
+  for (const b of E.BRANCHES) {
+    const U = E.UPGRADES[b];
+    const tier = world.upgrades[b];
+    const cost = E.upgradeCost(world.upgrades, b);
+    const maxed = cost === null;
+    const afford = E.canAfford(world, b);
+
+    const el = document.createElement('div');
+    el.className = 'branch';
+
+    const pips = Array.from({ length: E.MAX_TIER }, (_, i) =>
+      `<i class="${i < tier ? 'on' : ''}"></i>`).join('');
+
+    el.innerHTML =
+      `<h3>${U.name}</h3>` +
+      `<div class="pips">${pips}</div>` +
+      `<p>${U.blurb}</p>`;
+
+    const btn = document.createElement('button');
+    btn.className = 'buy';
+    btn.textContent = maxed ? 'Maxed' : `Buy · ${cost}`;
+    btn.disabled = maxed || !afford;
+    btn.addEventListener('click', () => {
+      if (E.buyUpgrade(world, b)) { renderShop(); sync(); }
+    });
+    el.appendChild(btn);
+    host.appendChild(el);
+  }
+
+  renderBattery();
+}
+
+function renderBattery() {
+  const host = $('battery');
+  host.innerHTML = '';
+
+  // add-mount card
+  const mCost = E.mountCost(world);
+  const mount = document.createElement('div');
+  mount.className = 'branch';
+  const dots = Array.from({ length: E.MAX_MOUNTS }, (_, i) =>
+    `<i class="${i < world.battery.guns.length ? 'on' : ''}"></i>`).join('');
+  mount.innerHTML =
+    `<h3>Emplacements</h3>` +
+    `<div class="pips">${dots}</div>` +
+    `<p>Another gun on the line. All fire together toward your aim.</p>`;
+  const mBtn = document.createElement('button');
+  mBtn.className = 'buy';
+  mBtn.textContent = mCost === null ? 'Full' : `Add Gun · ${mCost}`;
+  mBtn.disabled = mCost === null || world.scrap < mCost;
+  mBtn.addEventListener('click', () => {
+    if (E.buyMount(world)) { renderShop(); sync(); }
+  });
+  mount.appendChild(mBtn);
+  host.appendChild(mount);
+
+  // gun-type unlock cards
+  for (const type of E.GUN_KEYS) {
+    if (type === 'standard') continue;
+    const G = E.GUN_TYPES[type];
+    const unlocked = world.gunUnlocks[type];
+
+    const el = document.createElement('div');
+    el.className = 'branch';
+    el.innerHTML =
+      `<h3 style="color:${G.col}">${G.name}</h3>` +
+      `<p>${gunBlurb(type)}</p>`;
+
+    if (!unlocked) {
+      const btn = document.createElement('button');
+      btn.className = 'buy';
+      btn.textContent = `Unlock · ${G.unlock}`;
+      btn.disabled = world.scrap < G.unlock;
+      btn.addEventListener('click', () => {
+        if (E.unlockGun(world, type)) { renderShop(); sync(); }
+      });
+      el.appendChild(btn);
+    } else {
+      // once unlocked, show a per-mount assignment row
+      const row = document.createElement('div');
+      row.className = 'assign';
+      world.battery.guns.forEach((g, idx) => {
+        const chip = document.createElement('button');
+        chip.className = 'chip' + (g.type === type ? ' on' : '');
+        chip.textContent = idx + 1;
+        chip.title = `Mount ${idx + 1}`;
+        chip.addEventListener('click', () => {
+          // toggle: assigning the same type again reverts to standard
+          E.setGunType(world, idx, g.type === type ? 'standard' : type);
+          renderShop(); sync();
+        });
+        row.appendChild(chip);
+      });
+      el.appendChild(row);
+    }
+    host.appendChild(el);
+  }
+}
+
+function gunBlurb(type) {
+  const G = E.GUN_TYPES[type];
+  if (type === 'auto') return 'Fires fast, hits light. Good against soft, crowded rows.';
+  if (type === 'rail') return 'Slow, punches through several segments at once.';
+  if (type === 'mortar') return 'Lobs a heavy round; reaches over the front rank.';
+  return G.name;
+}
+
+function openShop() {
+  $('shop').classList.add('on');
+  renderShop();
+}
+$('shopGo').addEventListener('click', () => {
+  $('shop').classList.remove('on');
+  E.nextWave(world);
+  firing = false; trimDir = 0; trimHeld = 0; drag = null;
+  sync();
+});
+
+/* ---------- segment rendering ---------- */
+
+// a rounded rect path, centred on origin
+function roundRectPath(w, h, r) {
+  const x = -w / 2, y = -h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// lighten/darken a hex colour by a signed amount
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) + amt, g = ((n >> 8) & 255) + amt, b = (n & 255) + amt;
+  r = Math.max(0, Math.min(255, r));
+  g = Math.max(0, Math.min(255, g));
+  b = Math.max(0, Math.min(255, b));
+  return `rgb(${r},${g},${b})`;
+}
+
+// draw one segment as an oriented, lit plate. `idx` gives each plate a slight
+// size cadence so a run of them reads as overlapping armour.
+function drawSegment(seg, sp, heading, idx) {
+  const K = E.KIND[seg.kind];
+  const dmgT = 1 - seg.hp / seg.maxhp;
+  const ang = Math.atan2(heading.y, heading.x);
+  const now = performance.now();
+
+  // plate dimensions: longer than the spacing so consecutive plates overlap
+  // into a continuous armoured body, and clearly longer than wide so each
+  // points forward
+  const long = seg.r * 2.7, wide = seg.r * 1.9;
+  const corner = seg.kind === 'head' ? seg.r * 0.55 : seg.r * 0.4;
+
+  ctx.save();
+  ctx.translate(sp.x, sp.y);
+  ctx.rotate(ang);
+
+  const base = seg.flash > 0 ? '#ffffff' : K.col;
+
+  // drop shadow, offset down-right from a top-left light
+  ctx.save();
+  ctx.translate(1.5, 2.2);
+  roundRectPath(long, wide, corner);
+  ctx.fillStyle = 'rgba(5,10,12,.55)';
+  ctx.fill();
+  ctx.restore();
+
+  // body with a lengthwise gradient: lit top edge, shadowed bottom
+  const grad = ctx.createLinearGradient(0, -wide / 2, 0, wide / 2);
+  if (seg.flash > 0) {
+    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#e8e8e8');
+  } else {
+    grad.addColorStop(0, shade(base, 34));
+    grad.addColorStop(0.5, base);
+    grad.addColorStop(1, shade(base, -40));
+  }
+  roundRectPath(long, wide, corner);
+  ctx.fillStyle = grad;
+  ctx.globalAlpha = 0.96 - dmgT * 0.22;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // bevel: bright top-left inner stroke, dark bottom-right
+  ctx.save();
+  roundRectPath(long, wide, corner);
+  ctx.clip();
+  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = seg.flash > 0 ? '#ffffff' : shade(base, 55);
+  ctx.beginPath();
+  ctx.moveTo(-long / 2 + corner, -wide / 2 + 1);
+  ctx.lineTo(long / 2 - corner, -wide / 2 + 1);
+  ctx.stroke();
+  ctx.strokeStyle = shade(base, -55);
+  ctx.beginPath();
+  ctx.moveTo(-long / 2 + corner, wide / 2 - 1);
+  ctx.lineTo(long / 2 - corner, wide / 2 - 1);
+  ctx.stroke();
+  ctx.restore();
+
+  // outer rim
+  roundRectPath(long, wide, corner);
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = K.ring;
+  ctx.stroke();
+
+  // --- per-type material detail ---
+  drawSegmentDetail(seg, K, long, wide, dmgT, now);
+
+  // damage: hairline cracks that deepen as HP drops
+  if (dmgT > 0.35 && seg.flash <= 0) {
+    ctx.strokeStyle = `rgba(5,10,12,${Math.min(0.6, dmgT)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-long * 0.15, -wide * 0.3);
+    ctx.lineTo(long * 0.05, wide * 0.1);
+    ctx.lineTo(-long * 0.1, wide * 0.35);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // HP readout for tough segments, upright (outside the rotation)
+  if (seg.maxhp > 3) {
+    ctx.fillStyle = 'rgba(5,10,12,.8)';
+    ctx.font = '700 9px "Chivo Mono",monospace'; ctx.textAlign = 'center';
+    ctx.fillText(Math.ceil(seg.hp), sp.x, sp.y + 3.4);
+    ctx.textAlign = 'left';
+  }
+}
+
+// surface treatment specific to each segment type, drawn in the plate's
+// local rotated frame (long axis = x)
+function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
+  if (seg.kind === 'head') {
+    // a forward crest ridge along the centre line
+    ctx.strokeStyle = shade(K.col, 50);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-long * 0.3, 0); ctx.lineTo(long * 0.42, 0);
+    ctx.stroke();
+    // sensor eyes near the leading edge
+    ctx.fillStyle = 'rgba(5,10,12,.9)';
+    ctx.beginPath(); ctx.arc(long * 0.26, -wide * 0.24, 2.8, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(long * 0.26, wide * 0.24, 2.8, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(224,80,60,.95)';
+    ctx.beginPath(); ctx.arc(long * 0.26, -wide * 0.24, 1.2, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(long * 0.26, wide * 0.24, 1.2, 0, TAU); ctx.fill();
+    return;
+  }
+
+  if (K.shield) {
+    // a raised plate across the leading face (the +x edge is the front)
+    ctx.save();
+    ctx.fillStyle = seg.deflect > 0 ? '#ffffff' : shade(K.col, 40);
+    roundRectPathAt(long * 0.32, 0, long * 0.34, wide * 0.94, 3);
+    ctx.fill();
+    ctx.strokeStyle = seg.deflect > 0 ? '#ffffff' : '#bcd8f0';
+    ctx.lineWidth = 1.5; ctx.stroke();
+    // rivets
+    ctx.fillStyle = 'rgba(5,10,12,.6)';
+    for (const yy of [-wide * 0.28, wide * 0.28]) {
+      ctx.beginPath(); ctx.arc(long * 0.32, yy, 1.2, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (seg.kind === 'volatile') {
+    // a glowing pressure cell in the middle
+    const pulse = 0.55 + 0.45 * Math.sin(now / 150);
+    const g = ctx.createRadialGradient(0, 0, 1, 0, 0, wide * 0.5);
+    g.addColorStop(0, `rgba(255,180,120,${pulse})`);
+    g.addColorStop(1, 'rgba(224,80,60,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, wide * 0.5, 0, TAU); ctx.fill();
+    ctx.strokeStyle = `rgba(255,150,90,${0.4 + pulse * 0.4})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(0, 0, wide * 0.28, 0, TAU); ctx.stroke();
+    return;
+  }
+
+  if (seg.kind === 'armored') {
+    // brushed-steel ribs along the length
+    ctx.strokeStyle = 'rgba(255,255,255,.10)';
+    ctx.lineWidth = 1;
+    for (const xx of [-long * 0.22, 0, long * 0.22]) {
+      ctx.beginPath();
+      ctx.moveTo(xx, -wide * 0.34); ctx.lineTo(xx, wide * 0.34);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (K.regen && seg.hp < seg.maxhp) {
+    const pulse = 0.3 + 0.3 * Math.sin(now / 180);
+    ctx.strokeStyle = `rgba(180,120,220,${pulse})`;
+    ctx.lineWidth = 2;
+    roundRectPath(long + 5, wide + 5, 5);
+    ctx.stroke();
+    return;
+  }
+
+  if (K.splits) {
+    // hinge seam across the short axis, pulsing
+    const pulse = 0.55 + 0.45 * Math.sin(now / 200);
+    ctx.strokeStyle = `rgba(255,217,168,${pulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -wide * 0.4); ctx.lineTo(0, wide * 0.4);
+    ctx.stroke();
+    // interlock teeth
+    ctx.fillStyle = `rgba(255,217,168,${pulse})`;
+    for (const yy of [-wide * 0.2, wide * 0.2]) {
+      ctx.beginPath(); ctx.arc(0, yy, 1.6, 0, TAU); ctx.fill();
+    }
+    return;
+  }
+
+  if (K.carries) {
+    // a small chevron marking cargo
+    ctx.strokeStyle = 'rgba(90,70,30,.7)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-long * 0.12, -wide * 0.18);
+    ctx.lineTo(long * 0.12, 0);
+    ctx.lineTo(-long * 0.12, wide * 0.18);
+    ctx.stroke();
+    return;
+  }
+}
+
+// rounded rect at an offset (for sub-plates like the shield face)
+function roundRectPathAt(cx, cy, w, h, r) {
+  const x = cx - w / 2, y = cy - h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ---------- render ---------- */
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  const { path, pathLen, L } = world;
+
+  // screen shake: translate everything, restored at the end of the frame
+  ctx.save();
+  if (world.shake > 0 && !reduce) {
+    const m = world.shake * 9;
+    ctx.translate((Math.random() - .5) * m, (Math.random() - .5) * m);
+  }
+
+  ctx.strokeStyle = 'rgba(63,174,143,.09)';
+  ctx.lineWidth = 26; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  path.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(224,80,60,.5)'; ctx.lineWidth = 1; ctx.setLineDash([7, 7]);
+  ctx.beginPath(); ctx.moveTo(0, L.FLOOR); ctx.lineTo(W, L.FLOOR); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(224,80,60,.45)'; ctx.font = '9px "Chivo Mono",monospace';
+  ctx.fillText('BREACH LINE', 12, L.FLOOR - 7);
+
+  // draw the snake body first: a dark spine under the plates so the chain
+  // reads as one linked thing rather than loose tokens
+  for (const ch of world.chains) {
+    if (ch.segs.length < 2) continue;
+    ctx.strokeStyle = 'rgba(8,15,18,.85)';
+    ctx.lineWidth = 22; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < ch.segs.length; i++) {
+      const sp = E.segPos(path, pathLen, ch, i);
+      if (sp.off) { started = false; continue; }
+      if (!started) { ctx.moveTo(sp.x, sp.y); started = true; }
+      else ctx.lineTo(sp.x, sp.y);
+    }
+    ctx.stroke();
+  }
+
+  for (const ch of world.chains) {
+    for (let i = ch.segs.length - 1; i >= 0; i--) {
+      const seg = ch.segs[i], sp = E.segPos(path, pathLen, ch, i);
+      if (sp.off) continue;
+      const heading = E.segHeading(path, pathLen, ch, i);
+      drawSegment(seg, sp, heading, i);
+    }
+    if (ch.recoil > 0 && ch.segs.length) {
+      const hp = E.segPos(path, pathLen, ch, 0);
+      if (!hp.off) {
+        ctx.strokeStyle = 'rgba(201,162,39,.55)'; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(hp.x, hp.y, 22 + (reduce ? 0 : Math.sin(performance.now() / 120) * 3), 0, TAU);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // thumb rest: the band below the cannon. Marked out so it reads as a place
+  // to hold rather than dead space, and kept dim so it never pulls the eye.
+  if (LAY.THUMB > 0) {
+    const top = H - LAY.THUMB;
+    const g = ctx.createLinearGradient(0, top, 0, H);
+    g.addColorStop(0, 'rgba(11,20,24,0)');
+    g.addColorStop(1, 'rgba(11,20,24,.55)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, top, W, LAY.THUMB);
+
+    ctx.strokeStyle = 'rgba(99,121,127,.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, top); ctx.lineTo(W, top); ctx.stroke();
+
+    ctx.fillStyle = 'rgba(99,121,127,.5)';
+    ctx.font = '10px "Chivo Mono",monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('HOLD & DRAG HERE', W / 2, top + 26);
+    ctx.textAlign = 'left';
+  }
+
+  // catch band: the arc above the cannon where a falling pickup is claimed
+  if (world.pickups.length) {
+    ctx.strokeStyle = 'rgba(201,162,39,.28)';
+    ctx.setLineDash([2, 6]); ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(world.cannon.x, world.cannon.y, E.CATCH_BAND, Math.PI, 0);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // falling pickups
+  for (const pu of world.pickups) {
+    const P = E.POWERUPS[pu.kind];
+    const fade = pu.life < 3 ? 0.35 + 0.65 * Math.abs(Math.sin(pu.life * 6)) : 1;
+    ctx.globalAlpha = fade;
+
+    ctx.beginPath(); ctx.arc(pu.x, pu.y, pu.r, 0, TAU);
+    ctx.fillStyle = '#0f2027'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = P.col; ctx.stroke();
+
+    ctx.fillStyle = P.col;
+    ctx.font = '700 9px "Chivo Mono",monospace'; ctx.textAlign = 'center';
+    ctx.fillText(P.name[0], pu.x, pu.y + 3.2);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+  }
+
+  const T = E.OD_TIERS[world.cannon.od];
+  for (const p of world.shots) {
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU);
+    ctx.fillStyle = T.col; ctx.fill();
+  }
+  for (const b of world.bits) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2));
+    ctx.fillStyle = b.col; ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  // draw each gun in the battery, each angled toward the shared aim point
+  const b = world.battery;
+  const tp = E.aimPoint(world);
+  for (const g of b.guns) {
+    const gang = Math.atan2(tp.y - b.y, tp.x - g.x);
+    const G = E.GUN_TYPES[g.type];
+    ctx.save(); ctx.translate(g.x, b.y); ctx.rotate(gang);
+    // barrel, tinted by gun type; greyed while locked, reddening with heat
+    ctx.fillStyle = g.locked > 0 ? '#4a5765'
+      : g.heat > 0.6 ? '#e0774d' : G.col;
+    ctx.fillRect(0, -5, b.len, 10);
+    ctx.fillStyle = '#0b1418'; ctx.fillRect(b.len - 5, -3, 3, 6);
+    // railgun reads longer, mortar stubbier
+    if (g.type === 'rail') { ctx.fillStyle = G.col; ctx.fillRect(b.len, -2, 8, 4); }
+    ctx.restore();
+
+    // mount base
+    ctx.beginPath(); ctx.arc(g.x, b.y, 14, Math.PI, 0);
+    ctx.fillStyle = '#23383f'; ctx.fill();
+    ctx.beginPath(); ctx.arc(g.x, b.y, 14, Math.PI, 0);
+    ctx.strokeStyle = g.locked > 0 ? '#e0503c' : G.col; ctx.lineWidth = 2; ctx.stroke();
+
+    // per-gun heat pip under the mount
+    if (g.heat > 0.02) {
+      ctx.fillStyle = g.heat > 0.85 ? '#e0503c' : '#3fae8f';
+      ctx.fillRect(g.x - 12, b.y + 3, 24 * g.heat, 2);
+    }
+  }
+
+  // aim guide runs from the battery centre through the aim point
+  const cx = W / 2;
+  ctx.strokeStyle = 'rgba(230,233,226,.13)'; ctx.setLineDash([3, 9]); ctx.lineWidth = 1;
+  ctx.beginPath();
+  let gx = cx, gy = b.y, gdx = Math.cos(b.ang), gdy = Math.sin(b.ang);
+  ctx.moveTo(gx, gy);
+  for (let seg = 0; seg < 2; seg++) {
+    const tx = gdx > 0 ? (W - 6 - gx) / gdx : gdx < 0 ? (6 - gx) / gdx : Infinity;
+    const ty = gdy < 0 ? (0 - gy) / gdy : Infinity;
+    const t = Math.min(tx, ty, 900);
+    gx += gdx * t; gy += gdy * t;
+    ctx.lineTo(gx, gy);
+    if (t !== tx || gy <= 0) break;
+    gdx = -gdx;
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // convergence marker at the aim point when more than one gun is mounted
+  if (b.guns.length > 1) {
+    ctx.strokeStyle = 'rgba(255,217,168,.4)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(tp.x, tp.y, 7, 0, TAU); ctx.stroke();
+  }
+
+  // intercept marker: where the shot will actually meet the snake, accounting
+  // for travel time. Without this the player is guessing the lead by feel.
+  const hit = predictHit();
+  if (hit) {
+    // a blocked marker warns that the shot will glance off a plate
+    ctx.strokeStyle = hit.blocked ? '#9fc4e8' : T.col;
+    ctx.lineWidth = 1.5; ctx.globalAlpha = hit.blocked ? .6 : .85;
+    if (hit.blocked) ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.arc(hit.x, hit.y, 11, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    if (!hit.blocked) {
+      ctx.beginPath();
+      ctx.moveTo(hit.x - 15, hit.y); ctx.lineTo(hit.x - 7, hit.y);
+      ctx.moveTo(hit.x + 7, hit.y); ctx.lineTo(hit.x + 15, hit.y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // muzzle flash on every gun on tap, so a press always reads as registered
+  if (tapPulse > 0) {
+    const tp2 = E.aimPoint(world);
+    for (const g of world.battery.guns) {
+      const gang = Math.atan2(tp2.y - world.battery.y, tp2.x - g.x);
+      ctx.save(); ctx.translate(g.x, world.battery.y); ctx.rotate(gang);
+      ctx.globalAlpha = tapPulse * .8;
+      ctx.fillStyle = E.GUN_TYPES[g.type].col;
+      ctx.beginPath(); ctx.arc(world.battery.len + 3, 0, 4 + tapPulse * 5, 0, TAU); ctx.fill();
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
+  }
+
+  ctx.font = '700 11px "Chivo Mono",monospace'; ctx.textAlign = 'center';
+  for (const f of world.floaters) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, f.life));
+    ctx.fillStyle = f.col; ctx.fillText(f.txt, f.x, f.y);
+  }
+  ctx.globalAlpha = 1; ctx.textAlign = 'left';
+  ctx.restore();          // closes the shake transform
+}
+
+/* ---------- ui ---------- */
+function sync() {
+  $('uiWave').textContent = world.wave;
+  $('uiScore').textContent = world.score;
+  $('uiScrap').textContent = world.scrap;
+  $('uiLives').textContent = world.lives;
+  const b = world.battery, T = E.OD_TIERS[b.od];
+  const hottest = b.guns.reduce((m, g) => Math.max(m, g.heat), 0);
+  const anyLocked = b.guns.some(g => g.locked > 0);
+  $('heatFill').style.width = (hottest * 100) + '%';
+  $('heatFill').style.background = anyLocked ? '#e0503c' : T.col;
+  $('odLabel').textContent = anyLocked ? 'LOCKED' : (b.od ? `${T.name} ×${b.streak}` : '—');
+  $('odLabel').style.color = anyLocked ? '#e0503c' : T.col;
+  const fx = [];
+  for (const k of Object.keys(world.effects)) {
+    const P = E.POWERUPS[k];
+    if (P) fx.push(`<span style="color:${P.col}">${P.name} ${world.effects[k].toFixed(1)}s</span>`);
+  }
+  if (world.shieldCharges > 0) {
+    fx.push(`<span style="color:#e6e9e2">Shield ×${world.shieldCharges}</span>`);
+  }
+  $('fxbar').innerHTML = fx.join('');
+
+  $('uiBuild').innerHTML = E.BRANCHES.map(b => {
+    const t = world.upgrades[b];
+    const pips = Array.from({ length: E.MAX_TIER }, (_, i) =>
+      `<i class="${i < t ? 'on' : ''}"></i>`).join('');
+    return `<span title="${E.UPGRADES[b].name}">${pips}</span>`;
+  }).join('');
+}
+function showBanner(h, p, btn) {
+  $('banner').classList.remove('hide');
+  $('banner').querySelector('h2').textContent = h;
+  $('hint').style.display = 'none';
+  $('hintTouch').style.display = 'none';
+  $('legend').style.display = 'none';
+  const p2 = $('banner').querySelector('p');
+  p2.style.display = ''; p2.textContent = p;
+  $('go').textContent = btn;
+}
+$('go').addEventListener('click', () => {
+  $('shop').classList.remove('on');
+  if (world.over || !world.running) E.resetRun(world);
+  world.running = true;
+  $('banner').classList.add('hide');
+  firing = false; trimDir = 0; trimHeld = 0; drag = null;
+  fitStage(); sync();
+});
+
+fitStage(); sync();
+requestAnimationFrame(frame);
+</script>
