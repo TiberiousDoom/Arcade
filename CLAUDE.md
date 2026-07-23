@@ -6,12 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collection of standalone HTML5 canvas games. There is no bundler, no `package.json`, and no build step for day-to-day work — each game is either a single `.html` file or a small set of files that a browser can load directly (`file://` or any static server).
 
-Two independent projects currently live in this repo:
+Currently one game lives here:
 
-1. **Serpent Battery** (`games/serpent-battery/`) — a tower-defense/shooter with a pure-logic engine (`engine.js`) covered by a large unit-test suite. The first game migrated into the new `games/<name>/` layout.
-2. **Arcade** (`arcade_games.html`, still at repo root) — a multi-game cabinet shell (Breakout, Missile Command, Snake, Tetris, Space Invaders) as one big file, plus a remote high-score backend. Not yet migrated — see the open decision in [STATUS.md](STATUS.md).
+1. **Serpent Battery** (`games/serpent-battery/`) — a tower-defense/shooter with a pure-logic engine (`engine.js`) covered by a large unit-test suite. The first game in the `games/<name>/` layout, and the template every future game follows.
 
-These share no code today. Don't assume a change in one affects the other.
+An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invaders cabinet) was scrapped — see [docs/DECISIONS.md](docs/DECISIONS.md). Those games will be rebuilt from scratch under `games/` on the engine/shell pattern when we get to them.
 
 ## Session workflow
 
@@ -52,15 +51,8 @@ There is no lint config in the repo.
   - Overdrive/heat is per-gun (`heat`, `cool`, `locked`) but streak/tier is shared on the battery; `stats(w)` resolves the four upgrade branches (`barrel`/`chamber`/`optics`/`munitions`) into the current effective numbers — read from `stats()`, not the raw `UPGRADES` tables.
   - One `step(w, dt, firing)` call per frame drives cannon → pickups → chains → shots → breach/wave-clear checks, in that order; hit-stop short-circuits everything else at the top of `step`.
 
-## Architecture: Arcade (arcade_games.html)
-
-- Single HTML file containing five games as ES classes (`Breakout`, `MissileCommand`, `Snake`, `Tetris`, `SpaceInvaders`), each exposing `update()` and `draw(ctx)`. A shared `gameLoop()` drives whichever game is active via `currentGame.update()` / `currentGame.draw(ctx)` on one `requestAnimationFrame` loop — there's no per-game engine/shell split like Serpent Battery has.
-- `startGame(type)` instantiates the class and sets `currentGame`; ESC pressed three times within ~1.2s exits to `index.html` (not present in this repo) from any screen.
-- High scores POST to a remote endpoint (`SCRIPT_URL`/`API_TOKEN`) and are cached in `cachedScores` for the leaderboard/tooltip display.
-- **This file references `shared/theme.css`, `shared/config.js`, and `shared/utils.js`, none of which exist in this repo.** `SCRIPT_URL`, `API_TOKEN`, and the `esc()` helper are expected to come from those files. The page will not run correctly until they're added or the references are removed — check for them before assuming the arcade shell is functional.
-
 ## Architecture: `games/` and `shared/`
 
-Games follow a per-game engine/shell split modeled on Serpent Battery: pure logic with no DOM/canvas/timers, plus a thin rendering/input shell, living under `games/<name>/`. Cross-game code (input handling, canvas fit-to-screen, theme, cabinet/menu shell) belongs in `shared/`, added only once a second game actually needs it — don't speculatively build `shared/` helpers ahead of real code demanding them, which is what left `arcade_games.html` referencing a `shared/` folder that was never built.
+Games follow a per-game engine/shell split modeled on Serpent Battery: pure logic with no DOM/canvas/timers, plus a thin rendering/input shell, living under `games/<name>/`. Cross-game code (input handling, canvas fit-to-screen, theme, cabinet/menu shell) belongs in `shared/`, added only once a second game actually needs it — don't speculatively build `shared/` helpers ahead of real code demanding them, which is the failure mode that sank the old `arcade_games.html` (it referenced a `shared/` folder that was never built).
 
-Serpent Battery is the first game migrated into `games/`. `shared/` is still an empty placeholder — nothing has needed it yet, since there's only one game in the new structure so far. The `arcade_games.html` games have not been migrated — see [STATUS.md](STATUS.md) for the open decision on that.
+Serpent Battery is the first and currently only game in `games/`. `shared/` is still an empty placeholder — nothing has needed it yet, since there's only one game so far.
