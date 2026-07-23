@@ -11,7 +11,7 @@
    static, versioned by hand, and the whole point is offline play. Stale-while-
    revalidate would spare the version bump but would also serve one stale run
    after every update, which is worse for a game than a manual discipline. */
-const CACHE_VERSION = 'arcade-v2';
+const CACHE_VERSION = 'arcade-v4';
 
 /* Relative URLs, resolved against this file's location — so the app still
    works when served from a subpath (a GitHub Pages project site, say) rather
@@ -50,9 +50,15 @@ const PRECACHE = [
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE_VERSION);
+    // `cache: 'reload'` matters more than it looks. A plain addAll goes through
+    // the browser's HTTP cache, so a stale copy sitting there would be faithfully
+    // precached and then served forever — bumping CACHE_VERSION would re-cache
+    // the OLD build. Forcing a network fetch is what makes a version bump mean
+    // anything.
+    //
     // addAll is atomic: if any file 404s the install fails outright, which is
     // what we want. A half-populated cache is worse than no service worker.
-    await cache.addAll(PRECACHE);
+    await cache.addAll(PRECACHE.map(u => new Request(u, { cache: 'reload' })));
     // take over without waiting for every existing tab to close, so an update
     // lands on the next reload rather than whenever the user closes the app
     await self.skipWaiting();

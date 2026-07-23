@@ -157,10 +157,17 @@ const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 function applyLayout() {
   const L2 = pickLayout();
   if (L2 === world.L) return;
+  const wasRunning = world.running;
   E.relayout(world, L2);
   adoptLayout();
   fitStage();
   sync();
+  // Pause rather than drop the player straight back in mid-flight on a board
+  // that just changed shape under them.
+  if (wasRunning) {
+    world.running = false;
+    showBanner('Turned', 'Your game is where you left it.', 'Resume');
+  }
 }
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
@@ -169,15 +176,13 @@ makeHelp({
   stage: $('stage'),
   title: 'Angle Iron',
   rows: [
-    ['Steer', 'Slide your finger anywhere along the board. In landscape you can rest a thumb in the dim strip either side and drag there instead.'],
-    ['Serve', 'Tap to send the ball off the paddle.'],
-    ['Aim', 'Where the ball lands across the paddle sets the angle it leaves. The middle sends it straight up; the further out it hits, the wider it goes.'],
-    ['Keyboard', 'Arrow keys to move, Space to serve.'],
+    ['Steer', 'Slide anywhere. In landscape you can drag in the dim strip either side instead.'],
+    ['Serve', 'Tap.'],
+    ['Aim', 'Where the ball hits the paddle sets the angle it leaves.'],
   ],
   notes: [
-    'The back rows are armoured and take up to three hits.',
-    'Clear the whole board to advance a level and take a bonus.',
-    'Turn the phone at any time — the board changes shape and your progress comes with it.',
+    'Back rows take three hits.',
+    'Keyboard: arrows and Space.',
   ],
 });
 

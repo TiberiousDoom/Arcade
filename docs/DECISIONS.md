@@ -195,3 +195,26 @@ Worth writing down because it cost time twice in one session: with cache-first a
     caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
 
 Then reload. This is the cost of the cache-first decision, not a defect, but it is worth knowing before debugging a change that has in fact already landed.
+
+
+## 2026-07-22 — Live Wire's grids are exact transposes, so rotation is lossless
+
+The first attempt at rotation rebuilt the wire from its length alone, because the two grids were arbitrary sizes (32x24 and 18x34) and no honest cell mapping existed. On a real phone that read as losing your place, which it was.
+
+The fix was to change the shape of the problem rather than the mapping: the grids are now exact transposes (32x18 and 18x32), so rotating maps every cell (x, y) to (y, x). The wire keeps its precise shape, direction, food and bonus. It is also the least surprising behaviour available — the player physically turned the board, and the board turned.
+
+Worth remembering as a general move: when a migration between two states is lossy, check whether the two states can be made mirror images instead of writing a cleverer migration. The same trick had already fixed Angle Iron (shared brick grid) and then fixed Serpent Battery's reversing map (matched row counts).
+
+## 2026-07-22 — Serpent Battery's row count must match across layouts
+
+Real-device report: "its map reverses on rotate". Cause: portrait had ten rows to landscape's seven. The path serpentines — even rows run left-to-right, odd rows right-to-left — so with different row counts, a segment at the same fraction of the path lands in a row running the opposite way, and the board visibly flips. Row counts now match; portrait spends its extra height on wider row spacing instead. There is a test asserting a segment sits the same way round at matching fractions of either path.
+
+## 2026-07-22 — Rotation pauses the game
+
+Even with progress preserved, being dropped straight back into a live game on a board that just changed shape is disorienting. All three games now pause on rotate and show a "Turned / Resume" banner. Serpent Battery needed a `paused` flag for this: its Begin handler resets the run whenever `!running`, which would have wiped the very progress rotation was preserving.
+
+## 2026-07-22 — The service worker was precaching stale files
+
+Found while chasing what looked like a caching annoyance and turned out to be a genuine defect: `cache.addAll(PRECACHE)` fetches through the browser's **HTTP cache**, so a stale copy sitting there gets faithfully precached and then served forever. Bumping `CACHE_VERSION` would have re-cached the *old* build — quietly defeating the one mechanism the whole update story depends on. Fixed with `new Request(url, { cache: 'reload' })`, which forces a network fetch.
+
+Also added a `?nosw` escape hatch to `shared/pwa.js`: loading any page with it unregisters the worker and drops its caches. Cache-first intercepts even a forced reload, so without this, editing a file and reloading keeps showing the old page and the symptom looks like "my change did nothing".

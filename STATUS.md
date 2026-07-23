@@ -81,6 +81,14 @@ From a real phone, via the Pages deploy:
 - Serpent Battery's aim needed ~500px of drag to cross its arc, more than a phone is wide → gain roughly doubled, now ~245px.
 - Instructions overflowed the banner and were written for mouse and keyboard → moved behind a `?` button per game, rewritten for tap and swipe.
 
+## Device feedback, round two (acted on)
+
+- Instructions were still too detailed → cut to three short lines plus two notes per game.
+- Serpent Battery's map appeared to reverse on rotate → its portrait board had ten rows against landscape's seven, and the path serpentines, so the same path fraction landed in a row running the opposite way. Row counts now match (7 both ways); the extra portrait height goes into row spacing.
+- Live Wire did not feel like it kept your place → the grids are now exact **transposes** (32x18 / 18x32), so rotation transposes every cell and is lossless. Turning the phone turns the board.
+- All three games now **pause on rotate** with a "Turned / Resume" banner rather than dropping you back in mid-flight.
+- Gutter drag and the new aim gain were both confirmed good on device — left alone.
+
 ## Open decisions (not yet settled)
 
 - Portrait is now device-tested and tuned. **Landscape is not** — the wide layouts, the gutter thumb rests and the rotation handover were built after that session and have only been checked in an emulator.

@@ -7,10 +7,15 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /* ---------- board ---------- */
 
-/** A 32x24 grid of 25px cells — 800x600, matching Angle Iron's board so the two
- *  games can share a cabinet frame later without rescaling. */
+/** 32x18 cells of 25px — 800x450, near enough 16:9 to fill a phone held
+ *  sideways.
+ *
+ *  The landscape and portrait grids are deliberately exact **transposes** of
+ *  one another. That is what lets rotation be lossless: turning the phone
+ *  simply turns the board, mapping every cell (x, y) to (y, x), so the wire
+ *  keeps its exact shape rather than being rebuilt. See `relayout`. */
 export const LAYOUT = {
-  COLS: 32, ROWS: 24, CELL: 25,
+  COLS: 32, ROWS: 18, CELL: 25,
   get W() { return this.COLS * this.CELL; },
   get H() { return this.ROWS * this.CELL; },
 };
@@ -25,10 +30,10 @@ export const LAYOUT = {
  *  No thumb-rest band either: steering is a flick, not a hold, so a finger is
  *  never parked over the board the way it is in Angle Iron or Serpent Battery. */
 export const LAYOUT_TALL = {
-  // 450x850, a touch squarer than a modern phone so it doesn't letterbox on
-  // wider devices. 612 cells against the landscape board's 768 — a marginally
-  // shorter game to fill, which is the only balance difference.
-  COLS: 18, ROWS: 34, CELL: 25,
+  // The exact transpose of LAYOUT — 450x800. Same cell count, same game, just
+  // stood on its end. Keep these two mirrored: `relayout` relies on it, and a
+  // test pins it.
+  COLS: LAYOUT.ROWS, ROWS: LAYOUT.COLS, CELL: LAYOUT.CELL,
   get W() { return this.COLS * this.CELL; },
   get H() { return this.ROWS * this.CELL; },
 };
@@ -145,50 +150,25 @@ export function resetGame(w) {
   spawnFood(w);
 }
 
-/** Move an in-progress game onto a different grid, as when the phone is
- *  rotated.
+/** Move an in-progress game onto the other grid, as when the phone is turned.
  *
- *  Unlike Angle Iron, this **cannot** be lossless, and the limitation is the
- *  game's rather than the code's: the grid genuinely changes shape (32x24 vs
- *  18x34), so a wire spanning thirty columns has nowhere to exist on an
- *  eighteen-wide board. Score, meals eaten and *length* carry over — the wire
- *  is simply re-laid at that length, horizontally from the middle, and food is
- *  respawned. Pace is untouched, since the tick rate is per-cell.
+ *  The two layouts are exact transposes, so this is **lossless**: every cell
+ *  maps (x, y) -> (y, x) and the wire keeps its precise shape, direction,
+ *  food and bonus. Turning the phone turns the board — which is what a player
+ *  physically just did, so it is also the least surprising thing that could
+ *  happen.
  *
- *  If the wire is longer than a single row of the new grid it wraps into
- *  stacked rows, so even a very long wire survives the move. */
+ *  An earlier version rebuilt the wire from its length alone, because the
+ *  grids were arbitrary sizes and no honest mapping existed. Making them
+ *  mirror images removed the problem rather than papering over it. */
 export function relayout(w, L2) {
-  const want = Math.min(w.wire.length, L2.COLS * L2.ROWS);
-  const cells = [];
-
-  // Head starts mid-row, halfway across, with the body trailing to its right
-  // and wrapping down a row whenever it reaches a wall. That leaves the head
-  // half a board of clear space in its direction of travel, and keeps the body
-  // contiguous no matter how long it is.
-  let x = Math.floor(L2.COLS / 2);
-  let y = Math.floor(L2.ROWS / 2);
-  let lay = 1;                                  // +1 lays rightward
-
-  for (let i = 0; i < want; i++) {
-    cells.push({ x, y });
-    const nx = x + lay;
-    if (nx < 0 || nx >= L2.COLS) {
-      y += 1;                                   // drop a row and double back
-      lay = -lay;
-      if (y >= L2.ROWS) break;                  // board is full; wire is capped
-    } else {
-      x = nx;
-    }
-  }
-
+  const flip = (c) => ({ ...c, x: c.y, y: c.x });
+  w.wire = w.wire.map(flip);
+  w.dir = { x: w.dir.y, y: w.dir.x };
+  w.queue = w.queue.map(d => ({ x: d.y, y: d.x }));
+  if (w.food) w.food = flip(w.food);
+  if (w.bonus) w.bonus = flip(w.bonus);
   w.L = L2;
-  w.wire = cells;
-  w.dir = { x: -1, y: 0 };                      // away from the body, into open board
-  w.queue = [];
-  w.grow = 0;
-  w.bonus = null;
-  w.food = null;
-  spawnFood(w);
   return w;
 }
 

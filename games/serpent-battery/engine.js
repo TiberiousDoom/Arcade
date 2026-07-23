@@ -19,13 +19,17 @@ export const LAYOUT = {
  *  cannon, so your hand never covers the play area. The board itself is
  *  unchanged, so difficulty and pacing carry over exactly. */
 export const LAYOUT_TALL = {
-  // 600x1150 (~1:1.9). The first attempt at 880x800 was nearly square, so on a
-  // phone it filled the width and left a third of the screen empty below —
-  // measured on a real device. A narrower, much taller board fills the screen
-  // and gives the snake more rows to cross, which is the point of the extra
-  // height. Deliberately not matched to one handset's exact ratio.
+  // 600x1150 (~1:1.9), narrow and tall so it fills a phone — the first attempt
+  // at 880x800 was nearly square and left a third of the screen empty.
+  //
+  // ROWS must match LAYOUT's. The path serpentines, so odd rows run right-to-
+  // left and even rows left-to-right; with a different row count, a segment at
+  // the same fraction of the path lands in a row of the opposite direction and
+  // the whole map appears to flip when the phone is turned. Matching the row
+  // count keeps the two paths the same shape, just scaled. Rows are spaced
+  // further apart here instead, which is what uses up the extra height.
   W: 600, H: 1150,
-  MARGIN: 44, ROW_TOP: 76, ROW_GAP: 72, ROWS: 10,
+  MARGIN: 44, ROW_TOP: 84, ROW_GAP: 104, ROWS: 7,
   THUMB: 210,
   get FLOOR() { return this.H - 96 - this.THUMB; },
   get CANNON_Y() { return this.H - 44 - this.THUMB; },

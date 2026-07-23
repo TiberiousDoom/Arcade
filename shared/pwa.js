@@ -7,7 +7,16 @@
    worker's default scope is its own directory — sw.js sits at the repo root,
    so it controls every page. */
 
-if ('serviceWorker' in navigator) {
+/* Escape hatch for local iteration. The worker is cache-first and intercepts
+   even a forced reload, so while editing, a page keeps coming back stale and
+   the symptom looks like "my change did nothing". Loading any page with
+   `?nosw` unregisters the worker, drops its caches, and skips registration —
+   costing one extra reload instead of a debugging detour. */
+if (new URLSearchParams(location.search).has('nosw')) {
+  navigator.serviceWorker?.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+  caches?.keys().then(ks => ks.forEach(k => caches.delete(k)));
+  console.info('Service worker disabled for this load (?nosw). Reload once more for fresh files.');
+} else if ('serviceWorker' in navigator) {
   // Registration competes with the game's first frames for the main thread;
   // waiting for load keeps it away from the opening animation.
   addEventListener('load', () => {

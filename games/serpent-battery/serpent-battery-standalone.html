@@ -328,13 +328,17 @@ const LAYOUT = {
  *  cannon, so your hand never covers the play area. The board itself is
  *  unchanged, so difficulty and pacing carry over exactly. */
 const LAYOUT_TALL = {
-  // 600x1150 (~1:1.9). The first attempt at 880x800 was nearly square, so on a
-  // phone it filled the width and left a third of the screen empty below —
-  // measured on a real device. A narrower, much taller board fills the screen
-  // and gives the snake more rows to cross, which is the point of the extra
-  // height. Deliberately not matched to one handset's exact ratio.
+  // 600x1150 (~1:1.9), narrow and tall so it fills a phone — the first attempt
+  // at 880x800 was nearly square and left a third of the screen empty.
+  //
+  // ROWS must match LAYOUT's. The path serpentines, so odd rows run right-to-
+  // left and even rows left-to-right; with a different row count, a segment at
+  // the same fraction of the path lands in a row of the opposite direction and
+  // the whole map appears to flip when the phone is turned. Matching the row
+  // count keeps the two paths the same shape, just scaled. Rows are spaced
+  // further apart here instead, which is what uses up the extra height.
   W: 600, H: 1150,
-  MARGIN: 44, ROW_TOP: 76, ROW_GAP: 72, ROWS: 10,
+  MARGIN: 44, ROW_TOP: 84, ROW_GAP: 104, ROWS: 7,
   THUMB: 210,
   get FLOOR() { return this.H - 96 - this.THUMB; },
   get CANNON_Y() { return this.H - 44 - this.THUMB; },
@@ -1474,6 +1478,7 @@ adoptLayout();
 
 /* ---------- input ---------- */
 let keys = {}, firing = false;
+let paused = false;      // set when a rotation pauses a run in progress
 
 function stagePt(e) {
   const r = cv.getBoundingClientRect();
@@ -1547,10 +1552,17 @@ const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 function applyLayout() {
   const L2 = pickLayout();
   if (L2 === world.L) return;
+  const wasRunning = world.running;
   E.relayout(world, L2);
   adoptLayout();
   fitStage();
   sync();
+  if (wasRunning) {
+    world.running = false;
+    paused = true;                 // so Resume does not restart the run
+    showBanner('Turned', 'Your run is where you left it.', 'Resume');
+    $('banner').classList.remove('hide');
+  }
 }
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
@@ -1559,24 +1571,14 @@ makeHelp({
   stage: $('stage'),
   title: 'Serpent Battery',
   rows: [
-    ['Aim', 'Press and drag anywhere. The cannon turns with your finger — move slowly for fine aim, flick to swing right across.'],
-    ['Fire', 'Holding down fires continuously. The press itself always looses one shot, so a tap never feels dropped.'],
-    ['Keyboard', 'Left and right arrows to aim, Space to fire.'],
-    ['Segments', '<div class="legend">' +
-      '<span><i style="background:#7f8fa0"></i>Armored</span>' +
-      '<span><i style="background:#e0503c"></i>Volatile</span>' +
-      '<span><i style="background:#4d7fb3"></i>Plated</span>' +
-      '<span><i style="background:#8f5fb8"></i>Regen</span>' +
-      '<span><i style="background:#e8d5a0"></i>Carrier</span>' +
-      '<span><i style="background:#d8763a"></i>Splitter</span></div>'],
+    ['Aim', 'Press and drag anywhere. Flick to swing across.'],
+    ['Fire', 'Hold to keep firing. Too much and the barrel overheats.'],
+    ['Overdrive', 'Consecutive hits make you stronger. A miss cools it.'],
   ],
   notes: [
-    'Consecutive hits build Overdrive: faster shots, then harder ones, then piercing. A miss cools it back down.',
-    'Firing builds heat. Overheat and that barrel locks until it cools.',
-    'Cutting the chain in the middle shoves it backwards — often worth more than killing the head.',
-    'Plated segments glance shots off the front. Come at them from the side, or clear a neighbour first.',
-    'Clear a wave to open the refit shop and spend scrap.',
-    'Turn the phone at any time — the board changes shape and your run comes with it.',
+    'Cutting mid-chain shoves the snake backwards.',
+    'Plated segments glance shots off the front — hit the flank.',
+    'Keyboard: arrows and Space.',
   ],
 });
 
@@ -2245,7 +2247,10 @@ function showBanner(h, p, btn) {
 }
 $('go').addEventListener('click', () => {
   $('shop').classList.remove('on');
-  if (world.over || !world.running) E.resetRun(world);
+  // Resuming after a rotation must NOT restart the run — the whole point is
+  // that your place was kept. Only a finished or unstarted run resets.
+  if (paused) paused = false;
+  else if (world.over || !world.running) E.resetRun(world);
   world.running = true;
   $('banner').classList.add('hide');
   firing = false; drag = null;

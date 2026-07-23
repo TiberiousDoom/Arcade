@@ -163,10 +163,15 @@ const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 function applyLayout() {
   const L2 = pickLayout();
   if (L2 === world.L) return;
+  const wasRunning = world.running;
   E.relayout(world, L2);
   adoptLayout();
   fitStage();
   sync();
+  if (wasRunning) {
+    world.running = false;
+    showBanner('Turned', 'Your wire turned with the board.', 'Resume');
+  }
 }
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
@@ -175,16 +180,13 @@ makeHelp({
   stage: $('stage'),
   title: 'Live Wire',
   rows: [
-    ['Steer', 'Swipe anywhere on the board — up, down, left or right. A short flick is enough; you do not need to drag.'],
-    ['Start', 'Swipe, or tap Begin.'],
-    ['Keyboard', 'Arrow keys or WASD.'],
+    ['Steer', 'Swipe anywhere. A short flick is enough.'],
+    ['Grow', 'Every meal adds a segment and speeds the board up.'],
+    ['Gold', 'Worth five meals, but it leaves.'],
   ],
   notes: [
-    'Every meal makes you one segment longer and the board a little faster.',
-    'The gold star is worth five meals, but it fades and leaves.',
-    'You may cross the square your tail is leaving — chasing your own tail is safe.',
-    'Two turns can be queued, so a quick double-flick around a corner registers.',
-    'Turn the phone at any time — your score and length come with you.',
+    'You may cross the square your tail is leaving.',
+    'Keyboard: arrows or WASD.',
   ],
 });
 

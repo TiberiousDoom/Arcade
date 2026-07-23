@@ -100,9 +100,22 @@ test('the portrait board is genuinely phone-shaped, not the landscape one squash
   const T = E.LAYOUT_TALL, L = E.LAYOUT;
   assert.ok(T.H / T.W > 1.6, `portrait aspect is ${(T.H / T.W).toFixed(2)}, wanted > 1.6`);
   assert.ok(T.W < L.W, 'narrower than landscape');
-  assert.ok(T.ROWS > L.ROWS, 'more rows to cross, since there is more height');
-  const tall = E.buildPath(T);
-  assert.ok(tall.pathLen > pathLen, 'a longer journey on the taller board');
+  // Row COUNT must match, or the serpentine's alternating directions put a
+  // segment at the same path fraction into a row running the opposite way, and
+  // the map visibly flips when the phone is turned. Real-device regression.
+  assert.equal(T.ROWS, L.ROWS, 'same row count, so the path keeps its shape');
+  assert.ok(T.ROW_GAP > L.ROW_GAP, 'the extra height goes into row spacing instead');
+});
+
+test('a segment sits the same way round on either board', () => {
+  // the regression behind "the map reverses on rotate"
+  const a = E.buildPath(E.LAYOUT), b = E.buildPath(E.LAYOUT_TALL);
+  for (const frac of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+    const ha = E.segHeading(a.path, a.pathLen, { s: a.pathLen * frac, spacing: 30 }, 0);
+    const hb = E.segHeading(b.path, b.pathLen, { s: b.pathLen * frac, spacing: 30 }, 0);
+    assert.ok(Math.sign(ha.x) === Math.sign(hb.x) || Math.abs(ha.x) < 0.3 || Math.abs(hb.x) < 0.3,
+      `at ${frac} of the path the boards disagree on direction (${ha.x.toFixed(2)} vs ${hb.x.toFixed(2)})`);
+  }
 });
 
 test('the thumb rest sits below the cannon, not inside the play area', () => {

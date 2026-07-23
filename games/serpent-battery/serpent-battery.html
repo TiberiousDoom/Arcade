@@ -160,6 +160,7 @@ adoptLayout();
 
 /* ---------- input ---------- */
 let keys = {}, firing = false;
+let paused = false;      // set when a rotation pauses a run in progress
 
 function stagePt(e) {
   const r = cv.getBoundingClientRect();
@@ -233,10 +234,17 @@ const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 function applyLayout() {
   const L2 = pickLayout();
   if (L2 === world.L) return;
+  const wasRunning = world.running;
   E.relayout(world, L2);
   adoptLayout();
   fitStage();
   sync();
+  if (wasRunning) {
+    world.running = false;
+    paused = true;                 // so Resume does not restart the run
+    showBanner('Turned', 'Your run is where you left it.', 'Resume');
+    $('banner').classList.remove('hide');
+  }
 }
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
@@ -245,24 +253,14 @@ makeHelp({
   stage: $('stage'),
   title: 'Serpent Battery',
   rows: [
-    ['Aim', 'Press and drag anywhere. The cannon turns with your finger — move slowly for fine aim, flick to swing right across.'],
-    ['Fire', 'Holding down fires continuously. The press itself always looses one shot, so a tap never feels dropped.'],
-    ['Keyboard', 'Left and right arrows to aim, Space to fire.'],
-    ['Segments', '<div class="legend">' +
-      '<span><i style="background:#7f8fa0"></i>Armored</span>' +
-      '<span><i style="background:#e0503c"></i>Volatile</span>' +
-      '<span><i style="background:#4d7fb3"></i>Plated</span>' +
-      '<span><i style="background:#8f5fb8"></i>Regen</span>' +
-      '<span><i style="background:#e8d5a0"></i>Carrier</span>' +
-      '<span><i style="background:#d8763a"></i>Splitter</span></div>'],
+    ['Aim', 'Press and drag anywhere. Flick to swing across.'],
+    ['Fire', 'Hold to keep firing. Too much and the barrel overheats.'],
+    ['Overdrive', 'Consecutive hits make you stronger. A miss cools it.'],
   ],
   notes: [
-    'Consecutive hits build Overdrive: faster shots, then harder ones, then piercing. A miss cools it back down.',
-    'Firing builds heat. Overheat and that barrel locks until it cools.',
-    'Cutting the chain in the middle shoves it backwards — often worth more than killing the head.',
-    'Plated segments glance shots off the front. Come at them from the side, or clear a neighbour first.',
-    'Clear a wave to open the refit shop and spend scrap.',
-    'Turn the phone at any time — the board changes shape and your run comes with it.',
+    'Cutting mid-chain shoves the snake backwards.',
+    'Plated segments glance shots off the front — hit the flank.',
+    'Keyboard: arrows and Space.',
   ],
 });
 
@@ -931,7 +929,10 @@ function showBanner(h, p, btn) {
 }
 $('go').addEventListener('click', () => {
   $('shop').classList.remove('on');
-  if (world.over || !world.running) E.resetRun(world);
+  // Resuming after a rotation must NOT restart the run — the whole point is
+  // that your place was kept. Only a finished or unstarted run resets.
+  if (paused) paused = false;
+  else if (world.over || !world.running) E.resetRun(world);
   world.running = true;
   $('banner').classList.add('hide');
   firing = false; drag = null;
