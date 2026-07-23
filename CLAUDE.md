@@ -55,6 +55,8 @@ node --test games/serpent-battery/render-test.mjs
 
 There is no lint config in the repo.
 
+**⚠ Adding or changing a file the app loads? Bump `CACHE_VERSION` in [sw.js](sw.js).** The service worker precaches the whole app and serves cache-first without revalidating, so a stale version string means returning players keep the old build indefinitely. Nothing automates this. If you add a new file, add it to the `PRECACHE` list too — otherwise it only reaches the cache on second visit, and the app is broken on a first-run offline launch.
+
 **Verifying a shell in a headless/background browser:** `requestAnimationFrame` gets throttled hard there (measured at ~0.1fps), so the game simulates in slow motion and any judgement about pacing — or even "is it moving at all" — will be wrong. Don't fight it: temporarily expose the world at the bottom of the shell's module (`window.__world = world; window.__frame = frame;`), then either drive `__frame(t)` with your own advancing timestamps or call engine functions directly, assert on state, and remove the hook afterward. Note that death/level-clear banners fire on a false→true *edge* inside the frame loop, so killing the world with direct `tick()`/`step()` calls skips them — drive it through `__frame` when that's what you're checking.
 
 ## Architecture: Serpent Battery (`games/serpent-battery/`)
@@ -103,6 +105,14 @@ There is no lint config in the repo.
   - `tickProgress(w)` exists purely so the shell can interpolate the head sliding out of its previous cell and the tail retracting; derived from engine state so the animation can't drift from the simulation.
 - **[live-wire.html](games/live-wire/live-wire.html)** adds swipe input (dominant-axis flick) alongside arrows/WASD — the first touch control in the repo, since Live Wire is unplayable on a phone without it.
 - **[engine.test.js](games/live-wire/engine.test.js)** — board/setup → determinism → movement → turning → eating/growth → bonus → death → time accumulator → win → reset → full-run invariants (no duplicated cells, body stays contiguous).
+
+## Architecture: the PWA layer
+
+- **[manifest.webmanifest](manifest.webmanifest)** — installable metadata. `start_url`/`scope` are `./` (relative, so the app survives being served from a subpath), `display: standalone`, `orientation: any` because every game handles both orientations.
+- **[sw.js](sw.js)** — precaches the entire app on install, then serves **cache-first** with a network fallback, plus a cabinet fallback for failed navigations. Cache-first is right here (everything is static, offline play is the point) but see the version warning above. It deliberately does *not* cache `serpent-battery-standalone.html` — that's a distribution artifact carrying its own inlined copy of everything.
+- **[shared/pwa.js](shared/pwa.js)** — registration, imported by all four pages so landing directly on a game installs the cache too. Resolves the worker URL via `import.meta.url` rather than an absolute `/sw.js`, again for subpath safety.
+- **[tools/make-icons.mjs](tools/make-icons.mjs)** — regenerates `shared/icons/` (needs `npm install --no-save canvas`). The icons are committed; only re-run when the mark changes.
+- The PWA head tags are duplicated across the four HTML files. That's deliberate — injecting them from JS is unreliable for iOS, and there's no build step to template them. `build.mjs` strips them (and the back link) from the standalone.
 
 ## Architecture: `games/` and `shared/`
 

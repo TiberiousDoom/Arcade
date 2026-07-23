@@ -25,6 +25,7 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - Built Angle Iron fresh under `games/angle-iron/` on the engine/shell split — second game in the layout, and confirmation the pattern works for something other than Serpent Battery.
 - Scrapped the old `arcade_games.html` (monolithic five-game cabinet). It was pulled from a larger personal site — depended on missing nav/theme chrome (`index.html`, `tracker.html`, `shared/theme.css`) and a live high-score backend (secret `SCRIPT_URL`/`API_TOKEN`) we don't have — and used the one-big-file structure we've decided against. See [docs/DECISIONS.md](docs/DECISIONS.md).
 - **`shared/` extracted** — `theme.css`, `fit.js`, `fx.js`, with all three shells rewired and verified in a browser. Two things were deliberately left unshared (banner logic, engine `step()` signatures) — see shared/README.md.
+- **The PWA layer is in** — `manifest.webmanifest`, `sw.js`, `shared/pwa.js`, and a generated icon set. Verified offline by stopping the server: pages load, fonts render, games play, and an uncached URL falls back to the cabinet.
 - **The cabinet exists** — `index.html` ties the three games together, so this is an app rather than three loose pages. Plain links, no router, no framework.
 - **Portrait layouts** added to Angle Iron and Live Wire, so all three games are phone-shaped. Verified at a 375x812 viewport: Angle Iron uses 88% of viewport height, Live Wire 83%, and a drag in Angle Iron's thumb band steers the paddle without covering the court.
 - **Fonts are self-hosted** from `shared/fonts/`; nothing loads from the Google Fonts CDN any more, which was the last thing standing between the games and working offline.
@@ -40,9 +41,24 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 2. ~~**Self-host the fonts**~~ — **done.** `shared/fonts/` holds Chivo Mono (variable 300–700) and Archivo Black, latin subset, both OFL-1.1 with licenses shipped. Verified: the served games now make **zero** external requests, and the standalone makes zero subresource requests of any kind.
 3. ~~**Portrait layouts for Angle Iron and Live Wire**~~ — **done.** Both have `LAYOUT_TALL`, picked at load by aspect ratio. Angle Iron gained a `FLOOR`/`THUMB` split and height-scaled ball speed; Live Wire needed neither (per-cell pacing). Safe-area insets added to `shared/theme.css`. All three games now handle portrait.
 4. ~~**The cabinet**~~ — **done.** `index.html` at the repo root lists the three games; each game header has a `← Arcade` link back. The standalone build strips that link, since it travels alone.
-5. **PWA manifest + service worker** — installable and offline.
+5. ~~**PWA manifest + service worker**~~ — **done.** Installable, and verified genuinely offline: with the server stopped, every page still loads, renders with the right fonts, and plays.
+
+**All five steps are complete. The PWA is finished.** What remains before a store submission is game depth, not plumbing — see the store section below.
 
 Do **not** try to unify the engine `step()` signatures — those differ per game on purpose (see DECISIONS.md).
+
+## Store readiness (decided: targeting both stores)
+
+Neither store takes a PWA directly — both need a native binary, so a wrapper (Bubblewrap/TWA or Capacitor for Play, Capacitor for Apple) comes eventually. $99/yr plus a Mac for Apple, $25 once for Google.
+
+**Apple Guideline 4.2 (minimum functionality) is the binding constraint.** Three simple arcade games with no scores, audio, or progression is the profile Apple rejects. Google Play would accept this today. So the items below are *entry requirements for Apple*, not polish:
+
+- [ ] Score persistence (localStorage — no backend, no privacy surface)
+- [ ] Audio, at least hit/death blips
+- [ ] More depth: powerups, more games, or progression
+- [ ] Real-device testing (never done — see the portrait caveat below)
+
+**Guard this:** no tracking, no ads, no accounts, no network calls. That keeps Apple's privacy label "Data Not Collected" and Play's Data Safety form near-empty, which is where most submission pain lives. Adding an analytics or ads SDK imports that whole compliance surface.
 
 ## Open decisions (not yet settled)
 

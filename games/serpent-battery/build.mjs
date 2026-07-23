@@ -61,9 +61,15 @@ function build() {
     `<style>\n/* --- inlined from shared/theme.css --- */\n${theme}</style>`
   );
 
-  // 2. drop the back-to-cabinet link. The standalone is meant to travel on its
-  //    own, where ../../index.html resolves to nothing.
+  // 2. drop everything that points outside this file. The standalone travels
+  //    on its own, so the cabinet link, the manifest, the icons and the
+  //    service-worker registration would all resolve to nothing — and a
+  //    registration failure would log a console warning on every load.
   html = html.replace(/\s*<a class="back"[^>]*>.*?<\/a>/s, '');
+  html = html.replace(/\s*<link rel="manifest"[^>]*>/, '');
+  html = html.replace(/\s*<link rel="icon"[^>]*>/, '');
+  html = html.replace(/\s*<link rel="apple-touch-icon"[^>]*>/, '');
+  html = html.replace(/\s*<script type="module" src="[^"]*pwa\.js"><\/script>/, '');
 
   // 3. replace the module imports with inlined IIFEs
   const engine = inlineModule(read(join(here, 'engine.js')));
