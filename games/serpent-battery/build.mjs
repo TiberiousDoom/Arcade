@@ -61,7 +61,11 @@ function build() {
     `<style>\n/* --- inlined from shared/theme.css --- */\n${theme}</style>`
   );
 
-  // 2. replace the module imports with inlined IIFEs
+  // 2. drop the back-to-cabinet link. The standalone is meant to travel on its
+  //    own, where ../../index.html resolves to nothing.
+  html = html.replace(/\s*<a class="back"[^>]*>.*?<\/a>/s, '');
+
+  // 3. replace the module imports with inlined IIFEs
   const engine = inlineModule(read(join(here, 'engine.js')));
   const fit = inlineModule(read(join(shared, 'fit.js')));
 

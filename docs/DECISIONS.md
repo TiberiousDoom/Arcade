@@ -119,3 +119,13 @@ Both games gained a `LAYOUT_TALL` alongside their landscape `LAYOUT`, selected o
 Safe-area insets (`env(safe-area-inset-*)`) were added to `shared/theme.css`, since neither newer game had any and the losing edge of a board should not sit under a home indicator.
 
 **Caveat worth remembering:** all of this was tuned arithmetically and checked in an emulated viewport. Whether the boards feel right in an actual hand is untested.
+
+## 2026-07-22 — The cabinet is plain links, not a router
+
+`index.html` at the repo root lists the three games as cards. Deliberately a set of ordinary `<a href>` links to separate pages rather than a single-page app that swaps games in and out of one canvas.
+
+Reasons: each game already owns its own board size, layout selection, and input wiring, so hosting them in one page would mean tearing all of that apart and rebuilding it as a lifecycle. Separate pages also mean a crash in one game cannot take the cabinet down with it, and the browser's own back button does the navigation work for free. The old scrapped `arcade_games.html` was the single-page version of this idea, and its `startGame(type)` switch is exactly the shape we moved away from.
+
+Each game header gained a `← Arcade` link. `build.mjs` strips it when generating the standalone, because that file is meant to travel on its own where `../../index.html` resolves to nothing.
+
+The cards carry no scores or "continue" state — that needs score persistence, which does not exist yet.

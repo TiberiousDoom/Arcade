@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Arcade</title>
+<meta name="description" content="A small collection of canvas arcade games.">
+<link rel="stylesheet" href="shared/theme.css">
+<style>
+  /* The cabinet is the one page with no board, so it opts out of the
+     fixed-height, overflow-hidden layout the game shells need. */
+  body{
+    display:block;overflow-y:auto;
+    padding-top:calc(28px + env(safe-area-inset-top,0px));
+  }
+  #shell{max-width:760px;margin:0 auto;gap:22px}
+
+  header{align-items:center}
+  .tag{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+
+  #games{
+    display:grid;gap:12px;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    list-style:none;
+  }
+
+  .card{
+    display:flex;flex-direction:column;gap:10px;
+    padding:16px;
+    border:1px solid var(--line);
+    background:linear-gradient(160% 120% at 0% 0%, #16303a 0%, var(--deep) 60%, var(--void) 100%);
+    color:inherit;text-decoration:none;
+    transition:border-color .15s, transform .15s;
+  }
+  .card:hover,.card:focus-visible{
+    border-color:var(--pip);
+    transform:translateY(-2px);
+    outline:none;
+  }
+  .card:focus-visible{box-shadow:0 0 0 2px var(--bone)}
+  /* honour the shared reduced-motion rule for the lift, not just transitions */
+  @media (prefers-reduced-motion:reduce){ .card:hover,.card:focus-visible{transform:none} }
+
+  .card svg{width:100%;height:64px;display:block;color:var(--pip)}
+  .card h2{
+    font-family:'Archivo Black',system-ui,sans-serif;
+    font-size:15px;text-transform:uppercase;letter-spacing:-.01em;
+  }
+  .card p{font-size:11px;line-height:1.6;color:var(--dim)}
+  .card .how{
+    font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--pip);margin-top:auto;padding-top:4px;
+  }
+
+  /* each card tints itself with the accent of the game it opens */
+  .card.serpent{--pip:#c9a227}
+  .card.breakout{--pip:#3fae8f}
+  .card.snake{--pip:#5fc9a4}
+
+  footer{display:flex;flex-direction:column;gap:6px;text-transform:none;letter-spacing:.04em}
+  footer b{color:var(--dim);font-weight:400}
+</style>
+
+<div id="shell">
+  <header>
+    <h1>Ar<span>cade</span></h1>
+    <div class="tag">Three games</div>
+  </header>
+
+  <nav>
+    <ul id="games">
+      <li>
+        <a class="card serpent" href="games/serpent-battery/serpent-battery.html">
+          <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="16" cy="12" r="6"/><circle cx="34" cy="12" r="5"/>
+            <circle cx="50" cy="12" r="5"/><circle cx="66" cy="12" r="5"/>
+            <circle cx="82" cy="12" r="5"/>
+            <path d="M60 36v-8" stroke-linecap="round"/>
+            <path d="M52 36h16" stroke-linecap="round"/>
+          </svg>
+          <h2>Serpent Battery</h2>
+          <p>Cut the chain before it reaches the floor. Bank hits into Overdrive, then spend scrap on the battery.</p>
+          <span class="how">Aim &amp; fire</span>
+        </a>
+      </li>
+      <li>
+        <a class="card breakout" href="games/breakout/breakout.html">
+          <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
+            <rect x="12" y="6" width="22" height="7"/><rect x="38" y="6" width="22" height="7"/>
+            <rect x="64" y="6" width="22" height="7"/><rect x="90" y="6" width="18" height="7"/>
+            <rect x="12" y="17" width="22" height="7"/><rect x="38" y="17" width="22" height="7"/>
+            <rect x="64" y="17" width="22" height="7"/>
+            <circle cx="74" cy="31" r="3" fill="currentColor"/>
+            <path d="M40 36h20" stroke-linecap="round" stroke-width="4"/>
+          </svg>
+          <h2>Breakout</h2>
+          <p>The paddle is your aim — where the ball lands decides the angle it leaves. Back rows take three hits.</p>
+          <span class="how">Slide to steer</span>
+        </a>
+      </li>
+      <li>
+        <a class="card snake" href="games/snake/snake.html">
+          <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M14 30h18v-14h18v14h18v-8h14" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="80" y="16" width="9" height="9" fill="currentColor" stroke="none"/>
+            <circle cx="102" cy="12" r="4" fill="currentColor" stroke="none"/>
+          </svg>
+          <h2>Snake</h2>
+          <p>Longer every meal, faster every meal. You may cross where your tail is leaving — the gold bonus won't wait.</p>
+          <span class="how">Swipe or arrows</span>
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <footer>
+    <b>Everything runs offline. No accounts, no ads, no tracking.</b>
+  </footer>
+</div>
