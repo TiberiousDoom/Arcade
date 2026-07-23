@@ -62,9 +62,16 @@ const fx = {
   die() { gfx.hit(.8); },
 };
 
-const world = E.createWorld({ fx, seed: Date.now() & 0x7fffffff });
+/* Portrait phones get a taller, narrower grid at the same cell size. Chosen
+   once at load — rotating mid-run would rebuild the board under the player. */
+const portrait = matchMedia('(max-aspect-ratio: 4/5)').matches;
+const LAY = portrait ? E.LAYOUT_TALL : E.LAYOUT;
+
+const world = E.createWorld({ fx, layout: LAY, seed: Date.now() & 0x7fffffff });
 const L = world.L;
 cv.width = L.W; cv.height = L.H;
+// keep the CSS shell width in step with whichever board we picked
+document.documentElement.style.setProperty('--board-max', L.W + 'px');
 
 /* ---------- input ---------- */
 const KEYS = {

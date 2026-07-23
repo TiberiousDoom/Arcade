@@ -76,6 +76,9 @@ There is no lint config in the repo.
 - **[engine.js](games/breakout/engine.js)** — same rules as Serpent Battery's engine: no DOM, no canvas, no timers, and here **no randomness at all** (level layouts come from pure arithmetic on row/col, so level N is byte-identical every run and in every test). `step(w, dt)` advances ball flight and its consequences; that's it.
 - **[breakout.html](games/breakout/breakout.html)** is the shell: rendering, pointer/keyboard input, particles, banners, and the `requestAnimationFrame` loop.
 - **Division of labour is deliberately different from Serpent Battery's `step(w, dt, firing)`**: the paddle is moved by the shell calling `setPaddle`/`nudgePaddle` (both clamp to the walls), and the ball is served by the shell calling `launch(w)`. `step` never reads input. This keeps pointer-vs-keyboard control entirely in the shell.
+- **Two layouts**: `LAYOUT` (800×600 landscape) and `LAYOUT_TALL` (600×1200 portrait, with a `THUMB` band). The shell picks one at load via `matchMedia('(max-aspect-ratio: 4/5)')` and passes it as `createWorld({ layout })`.
+  - `FLOOR` (`H - THUMB`), **not `H`**, is the line a ball dies past. The thumb band is canvas below the floor where a finger can rest — the paddle tracks only horizontal position, so steering from down there works without a hand over the court. Draw code must use `FLOOR` for the court border and the loss strip.
+  - `levelSpeed(level, L)` scales by `L.FLOOR / REF_FLOOR` so a ball crosses either board in the **same time**. Absolute px/s would make the taller portrait board play slower and easier. Same principle as Serpent Battery deriving wave speed from path length; there's a test asserting traversal time is layout-independent.
 - Simulation model:
   - `w.balls` is an array (not a single ball) so multiball is a later addition rather than a rewrite. `w.held` means a ball is racked on the paddle awaiting `launch`; while held, `step` skips ball physics.
   - **The paddle is a protractor, not a wall.** Where the ball lands across the paddle sets its outgoing angle (`PADDLE_MAX_ANGLE`, ~60° at the edges); speed is preserved on every bounce, so a ball's speed is fixed for its whole life at `levelSpeed(level)`. That mapping is the entire control scheme — don't "fix" it into a plain reflection.
@@ -87,7 +90,9 @@ There is no lint config in the repo.
 
 ## Architecture: Snake (`games/snake/`)
 
-- **[engine.js](games/snake/engine.js)** — grid/tick model rather than continuous physics. The board is a 32×24 grid of 25px cells (800×600, same as Breakout, so the two could share a cabinet frame without rescaling).
+- **[engine.js](games/snake/engine.js)** — grid/tick model rather than continuous physics. The board is a 32×24 grid of 25px cells (800×600, same as Breakout, so the two could share a cabinet frame without rescaling), or `LAYOUT_TALL`'s 18×34 in portrait, picked by the shell the same way Breakout does it.
+  - **No pace rescaling, unlike Breakout** — the tick rate is seconds *per cell*, so reaction time per move is already board-independent. A portrait grid is just a slightly shorter game to fill. There's a test asserting both layouts tick at the same rate.
+  - **No thumb band either**: steering is a flick, not a hold, so a finger is never parked over the board.
 - **The engine owns the tick clock.** `step(w, dt)` accumulates time and fires as many ticks as have come due; `tick(w)` is exported separately so tests can drive exact discrete steps. Pace lives in the engine because *pace is the difficulty curve here* (`tickRate` shortens with every meal) — it's a game rule, not a rendering concern. This is the opposite call from Breakout, where the shell drives everything.
 - Randomness is a seeded LCG (`rand`), same one Serpent Battery uses. `createWorld({ seed })` makes food sequences reproducible — the shell seeds from the clock, tests pass a fixed seed.
 - Model details worth knowing before editing:

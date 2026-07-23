@@ -15,6 +15,24 @@ export const LAYOUT = {
   get H() { return this.ROWS * this.CELL; },
 };
 
+/** Portrait phones get a taller, narrower grid at the same cell size.
+ *
+ *  No pace adjustment is needed, unlike Breakout: the tick rate is seconds
+ *  *per cell*, so reaction time per move — which is the whole difficulty curve
+ *  — is identical on any grid. A portrait board is a slightly shorter game
+ *  simply because there are fewer cells to fill.
+ *
+ *  No thumb-rest band either: steering is a flick, not a hold, so a finger is
+ *  never parked over the board the way it is in Breakout or Serpent Battery. */
+export const LAYOUT_TALL = {
+  // 450x850, a touch squarer than a modern phone so it doesn't letterbox on
+  // wider devices. 612 cells against the landscape board's 768 — a marginally
+  // shorter game to fill, which is the only balance difference.
+  COLS: 18, ROWS: 34, CELL: 25,
+  get W() { return this.COLS * this.CELL; },
+  get H() { return this.ROWS * this.CELL; },
+};
+
 export const idx = (L, x, y) => y * L.COLS + x;
 export const inBounds = (L, x, y) => x >= 0 && y >= 0 && x < L.COLS && y < L.ROWS;
 

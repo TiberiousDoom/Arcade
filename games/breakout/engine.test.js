@@ -59,6 +59,66 @@ test('every brick sits inside the playfield', () => {
   }
 });
 
+/* ---------- portrait layout ---------- */
+
+const TALL = E.LAYOUT_TALL;
+
+test('the portrait board is actually portrait, and the landscape one is not', () => {
+  assert.ok(TALL.H > TALL.W, 'taller than wide');
+  assert.ok(L.W > L.H, 'landscape stays landscape');
+});
+
+test('the landscape board is unchanged by the addition of FLOOR', () => {
+  // regression: THUMB/FLOOR were introduced for portrait and must not move
+  // anything on the original board
+  assert.equal(L.THUMB, 0);
+  assert.equal(L.FLOOR, L.H);
+  assert.equal(L.PADDLE_Y, 554, 'paddle sits exactly where it always did');
+});
+
+test('the portrait board reserves a thumb rest below the floor', () => {
+  assert.ok(TALL.THUMB > 0);
+  assert.equal(TALL.FLOOR, TALL.H - TALL.THUMB);
+  assert.ok(TALL.PADDLE_Y < TALL.FLOOR, 'paddle sits above the floor line');
+  assert.ok(TALL.FLOOR < TALL.H, 'and there is empty canvas below it to hold');
+});
+
+test('a ball crosses either board in the same time', () => {
+  // the point of scaling speed by playable height: portrait must not play
+  // slower and easier just because the board is taller
+  const t = (LAY) => LAY.FLOOR / E.levelSpeed(1, LAY);
+  assert.ok(Math.abs(t(L) - t(TALL)) < 1e-9, 'traversal time is layout-independent');
+});
+
+test('portrait speed is faster in absolute terms, since the board is taller', () => {
+  assert.ok(E.levelSpeed(1, TALL) > E.levelSpeed(1, L));
+});
+
+test('a world built on the portrait layout is internally consistent', () => {
+  const w = E.createWorld({ layout: TALL });
+  assert.equal(w.L.W, TALL.W);
+  assert.ok(w.bricks.length > 0);
+  for (const b of w.bricks) {
+    assert.ok(b.x >= TALL.MARGIN - 1e-6, 'brick within the left margin');
+    assert.ok(b.x + b.w <= TALL.W - TALL.MARGIN + 1e-6, 'and the right');
+    assert.ok(b.y + b.h < TALL.PADDLE_Y, 'no brick reaches the paddle');
+  }
+  const lim = TALL.WALL + w.paddle.w / 2;
+  E.setPaddle(w, 99999);
+  assert.ok(w.paddle.x <= TALL.W - lim, 'paddle clamps to the narrower board');
+});
+
+test('a portrait ball dies at the floor line, not the bottom of the canvas', () => {
+  const w = E.createWorld({ layout: TALL });
+  w.running = true; w.held = false;
+  w.bricks = [{ x: 40, y: 100, w: 20, h: 20, row: 0, col: 0, hp: 9, maxhp: 9, alive: true, flash: 0 }];
+  // sitting in the thumb band: past the floor, but still inside the canvas
+  w.balls = [{ x: 300, y: TALL.FLOOR + 40, vx: 0, vy: 300, r: TALL.BALL_R }];
+  assert.ok(TALL.FLOOR + 40 < TALL.H, 'setup: still on the canvas');
+  E.step(w, 1 / 60);
+  assert.equal(w.balls.length, 0, 'the ball was lost at the floor');
+});
+
 /* ---------- collision primitives ---------- */
 
 test('circleRect detects overlap and clears a gap', () => {

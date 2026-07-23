@@ -103,3 +103,19 @@ Choices worth recording:
 **Base64-embedded in the standalone build.** The inlined stylesheet lands in `games/serpent-battery/`, where a relative `./fonts/...` path resolves to nothing. Rather than rewrite the paths — which would have quietly made the "standalone" file depend on the repo around it — `build.mjs` embeds them as data URIs. The standalone now loads with **zero** subresource requests, which is the first time it has genuinely lived up to its name. It costs ~63 KB (72 KB → 136 KB), a fair trade for actual portability.
 
 Both families are SIL Open Font License 1.1, which expressly permits self-hosting; the full license text ships alongside the files as the OFL requires, and provenance is documented in `shared/fonts/README.md`.
+
+## 2026-07-22 — Portrait layouts for Breakout and Snake
+
+Both games gained a `LAYOUT_TALL` alongside their landscape `LAYOUT`, selected once at load with `matchMedia('(max-aspect-ratio: 4/5)')` — the same mechanism Serpent Battery already used. Selection happens at load rather than on rotation because rebuilding the board mid-run would yank it out from under the player.
+
+**Breakout needed a floor/canvas split.** A `THUMB` band was added below the paddle, so `FLOOR = H - THUMB` is now the line a ball dies past, rather than the bottom of the canvas. The band is a thumb rest: the paddle tracks only the *horizontal* position of a finger, so resting one below the floor steers perfectly well without a hand covering the court. Verified by dragging in the band and watching the paddle follow. In landscape `THUMB` is 0, so `FLOOR === H` and nothing about the original board moved — there's a regression test pinning `PADDLE_Y` at 554.
+
+**Ball speed is now scaled by playable height** (`levelSpeed(level, L)` multiplies by `L.FLOOR / REF_FLOOR`). Absolute px/s would have made the taller portrait board play noticeably slower and easier — the exact problem Serpent Battery solved by deriving wave speed from path length. A test asserts traversal time is identical on both layouts.
+
+**Snake needed neither.** Its tick rate is seconds *per cell*, so reaction time per move — the whole difficulty curve — is already board-independent; a test asserts both layouts tick at the same rate. It gets no thumb band either, because steering is a flick rather than a hold, so a finger is never parked over the board.
+
+**Aspect ratios are deliberate compromises**, not matched to a specific handset: Breakout is 1:2 and Snake ~0.53, against a modern phone's ~0.46. Matching 19.5:9 exactly would letterbox badly on a tablet or an older 16:9 device. At a 375×812 viewport these use 88% and 83% of the height respectively. The first attempt (600×900, 0.67) wasted about 230px of vertical space, which is what prompted the retune.
+
+Safe-area insets (`env(safe-area-inset-*)`) were added to `shared/theme.css`, since neither newer game had any and the losing edge of a board should not sit under a home indicator.
+
+**Caveat worth remembering:** all of this was tuned arithmetically and checked in an emulated viewport. Whether the boards feel right in an actual hand is untested.

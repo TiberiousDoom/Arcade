@@ -10,13 +10,42 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const LAYOUT = {
   W: 800, H: 600,
   WALL: 12,                 // thickness of the left/right/top playfield border
+  THUMB: 0,                 // no thumb rest needed in landscape
   PADDLE_W: 112, PADDLE_H: 14,
-  get PADDLE_Y() { return this.H - 46; },   // top edge of the paddle
+  get FLOOR() { return this.H - this.THUMB; },   // the line a ball dies past
+  get PADDLE_Y() { return this.FLOOR - 46; },    // top edge of the paddle
   BALL_R: 8,
   // Brick field. Brick width is derived so the columns fill the space between
   // the margins exactly; only the row height and gaps are fixed here.
   BRICK_TOP: 72, MARGIN: 40,
   BRICK_ROWS: 6, BRICK_COLS: 11,
+  BRICK_H: 22, BRICK_GAP: 6,
+};
+
+/** Portrait phones get a narrower, taller board plus an empty band beneath the
+ *  paddle. The band is a thumb rest: the paddle tracks only the horizontal
+ *  position of your finger, so resting it below the floor line steers perfectly
+ *  well without your hand covering the play area. Same reasoning as Serpent
+ *  Battery's LAYOUT_TALL.
+ *
+ *  Fewer, chunkier brick columns because the board is narrower — 11 columns at
+ *  600px wide would be slivers. */
+export const LAYOUT_TALL = {
+  // 1:2 — squarer than a modern phone (~0.46) but much closer than the
+  // landscape board, so the court fills the screen instead of floating in a
+  // band of dead space. Deliberately not matched exactly to one handset: a
+  // board tuned to 19.5:9 would letterbox badly on an iPad or an older 16:9.
+  W: 600, H: 1200,
+  WALL: 12,
+  THUMB: 190,
+  PADDLE_W: 92, PADDLE_H: 14,
+  get FLOOR() { return this.H - this.THUMB; },
+  get PADDLE_Y() { return this.FLOOR - 46; },
+  BALL_R: 8,
+  // 9x8 = 72 bricks, close to the landscape board's 66, so a level is about
+  // the same amount of work.
+  BRICK_TOP: 80, MARGIN: 26,
+  BRICK_ROWS: 9, BRICK_COLS: 8,
   BRICK_H: 22, BRICK_GAP: 6,
 };
 
@@ -29,15 +58,24 @@ export function brickWidth(L = LAYOUT) {
 
 /* ---------- ball dynamics ---------- */
 
-export const BALL_SPEED = 340;          // px/sec at level 1
+export const BALL_SPEED = 340;          // px/sec at level 1, on the reference board
 export const SPEED_PER_LEVEL = 0.06;    // +6% per level, so pace climbs
 export const BALL_SPEED_MAX = 560;
 
+/** The playable height the speeds above are tuned against. */
+export const REF_FLOOR = LAYOUT.FLOOR;
+
 /** Launch and per-hit speed for a given level. A ball keeps this magnitude for
  *  its whole life — every bounce only changes direction — so difficulty is set
- *  entirely here rather than drifting as the ball rattles around. */
-export function levelSpeed(level) {
-  return Math.min(BALL_SPEED_MAX, BALL_SPEED * (1 + (level - 1) * SPEED_PER_LEVEL));
+ *  entirely here rather than drifting as the ball rattles around.
+ *
+ *  Scaled by the board's playable height so a ball crosses it in the same time
+ *  on any layout: absolute px/s would make the taller portrait board play
+ *  noticeably slower and easier. Serpent Battery does the same thing by
+ *  deriving wave speed from path length. */
+export function levelSpeed(level, L = LAYOUT) {
+  const base = Math.min(BALL_SPEED_MAX, BALL_SPEED * (1 + (level - 1) * SPEED_PER_LEVEL));
+  return base * (L.FLOOR / REF_FLOOR);
 }
 
 /** How far off vertical the ball leaves the paddle, mapped from where it lands:
@@ -206,7 +244,7 @@ function makeBall(x, y, vx, vy, r) {
 export function launch(w) {
   if (!w.held) return false;
   const p = heldBallPos(w);
-  const spd = levelSpeed(w.level);
+  const spd = levelSpeed(w.level, w.L);
   w.balls.push(makeBall(p.x, p.y, spd * Math.sin(LAUNCH_ANGLE), -spd * Math.cos(LAUNCH_ANGLE), w.L.BALL_R));
   w.held = false;
   return true;
@@ -300,8 +338,10 @@ export function step(w, dt) {
     }
   }
 
-  // drop any ball that fell past the floor
-  w.balls = w.balls.filter(b => b.y - b.r <= w.L.H);
+  // drop any ball that fell past the floor. FLOOR, not H: on a portrait board
+  // the thumb rest sits below the floor line, and a ball must die at the paddle
+  // line rather than sailing on through the band where your hand is.
+  w.balls = w.balls.filter(b => b.y - b.r <= w.L.FLOOR);
   if (w.balls.length === 0 && !w.held) loseLife(w);
 
   if (aliveBricks(w) === 0 && !w.over) {

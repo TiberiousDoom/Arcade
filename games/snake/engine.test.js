@@ -40,6 +40,55 @@ test('a new world has food on the board, off the snake', () => {
   assert.ok(E.inBounds(L, w.food.x, w.food.y));
 });
 
+/* ---------- portrait layout ---------- */
+
+const TALL = E.LAYOUT_TALL;
+
+test('the portrait grid is taller than wide, at the same cell size', () => {
+  assert.ok(TALL.ROWS > TALL.COLS, 'more rows than columns');
+  assert.ok(TALL.H > TALL.W);
+  assert.equal(TALL.CELL, L.CELL, 'cells stay the same size, so the snake reads the same');
+});
+
+test('pace is identical on both grids — the tick rate is per cell', () => {
+  // this is why Snake needs no speed rescaling, unlike Breakout
+  const a = E.createWorld({ layout: L });
+  const b = E.createWorld({ layout: TALL });
+  a.eaten = b.eaten = 7;
+  assert.equal(E.tickRate(a), E.tickRate(b));
+});
+
+test('a world on the portrait grid starts legally inside it', () => {
+  const w = E.createWorld({ layout: TALL });
+  assert.equal(w.snake.length, E.START_LEN);
+  for (const s of w.snake) {
+    assert.ok(E.inBounds(TALL, s.x, s.y), `start cell ${s.x},${s.y} is on the board`);
+  }
+  assert.ok(E.inBounds(TALL, w.food.x, w.food.y), 'food lands on the board');
+  assert.equal(w.snake.some(s => s.x === w.food.x && s.y === w.food.y), false);
+});
+
+test('food never spawns off the narrower portrait board', () => {
+  const w = E.createWorld({ layout: TALL, seed: 31337 });
+  for (let i = 0; i < 200; i++) {
+    E.spawnFood(w);
+    assert.ok(E.inBounds(TALL, w.food.x, w.food.y), `food ${i} in bounds`);
+  }
+});
+
+test('the portrait board runs a full game without corrupting the snake', () => {
+  const w = E.createWorld({ layout: TALL, seed: 99 });
+  w.running = true;
+  for (let i = 0; i < 800 && !w.over; i++) {
+    if (i % 9 === 0) E.turn(w, 0, i % 18 === 0 ? -1 : 1);
+    if (i % 11 === 0) E.turn(w, i % 22 === 0 ? -1 : 1, 0);
+    E.tick(w);
+    for (const s of w.snake) assert.ok(E.inBounds(TALL, s.x, s.y), `in bounds at tick ${i}`);
+    const keys = new Set(w.snake.map(s => `${s.x},${s.y}`));
+    assert.equal(keys.size, w.snake.length, `no duplicate cells at tick ${i}`);
+  }
+});
+
 /* ---------- determinism ---------- */
 
 test('the same seed produces the same food sequence', () => {

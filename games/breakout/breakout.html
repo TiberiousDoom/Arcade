@@ -55,7 +55,17 @@ const fx = {
   lose() { gfx.hit(.5); },
 };
 
-const world = E.createWorld({ fx });
+/* Portrait phones get the narrower, taller board with a thumb rest below the
+   floor line. Chosen once at load — rotating mid-run would rebuild the board
+   under the player, so it waits for a reload. */
+const portrait = matchMedia('(max-aspect-ratio: 4/5)').matches;
+const LAY = portrait ? E.LAYOUT_TALL : E.LAYOUT;
+
+const world = E.createWorld({ fx, layout: LAY });
+
+cv.width = LAY.W; cv.height = LAY.H;
+// keep the CSS shell width in step with whichever board we picked
+document.documentElement.style.setProperty('--board-max', LAY.W + 'px');
 
 /* brick colour by grid row: back rows (tougher) skew brass, front rows green */
 const BRICK_COL = ['#c9a227', '#c9a227', '#3fae8f', '#3fae8f', '#5fc9a4', '#5fc9a4', '#8dbf4a'];
@@ -151,15 +161,26 @@ function draw() {
   const L = world.L;
   ctx.clearRect(0, 0, W, H);
 
-  // playfield border
+  // playfield border — down to the floor, not the canvas bottom, so on a
+  // portrait board the thumb band reads as being outside the court
   ctx.strokeStyle = 'rgba(99,121,127,.35)';
   ctx.lineWidth = 2;
-  ctx.strokeRect(L.WALL, L.WALL, W - 2 * L.WALL, H - L.WALL);
+  ctx.strokeRect(L.WALL, L.WALL, W - 2 * L.WALL, L.FLOOR - L.WALL);
+
+  // the open floor, marked so the losing edge is visible
+  ctx.strokeStyle = 'rgba(224,80,60,.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.moveTo(L.WALL, L.FLOOR - 1.5);
+  ctx.lineTo(W - L.WALL, L.FLOOR - 1.5);
+  ctx.stroke();
+  ctx.setLineDash([]);
 
   // a lost-ball flash tints the floor red
   if (gfx.flash > 0) {
     ctx.fillStyle = `rgba(224,80,60,${gfx.flash * 0.4})`;
-    ctx.fillRect(0, H - 60, W, 60);
+    ctx.fillRect(0, L.FLOOR - 60, W, 60);
   }
 
   // bricks
