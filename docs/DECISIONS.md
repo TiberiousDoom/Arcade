@@ -25,3 +25,17 @@ This is a solo + AI side project with potentially weeks or months between sessio
 ## 2026-07-22 — Scrapped `arcade_games.html`, will rebuild its games fresh
 
 Deleted the monolithic five-game cabinet rather than fixing it in place. On closer inspection it wasn't just missing a few helper files: it was carved out of a larger personal site (nav links to `index.html`/`tracker.html`, a shared `theme.css`) and its high-score feature posted to a live backend via a secret `SCRIPT_URL`/`API_TOKEN` we don't have and can't reconstruct. Resurrecting all that to keep a structure we'd already rejected (one big file, not unit-testable) wasn't worth it. The five game concepts (Breakout, Missile Command, Snake, Tetris, Space Invaders) will be rebuilt from scratch under `games/<name>/` on the engine/shell pattern if/when we want them. High-score persistence is dropped for now; revisit with a fresh backend choice later if wanted.
+
+## 2026-07-22 — Breakout: paddle-angle steering, and input stays in the shell
+
+Built Breakout fresh under `games/breakout/`. Two choices worth recording:
+
+The paddle sets the ball's *angle* from where it lands (centre → straight up, edges → ~60° out), and ball speed is constant for the ball's whole life. That mapping is the entire control scheme — a plain reflection would look more "physical" but leaves the player no way to aim, which is what makes Breakout a game rather than a waiting room.
+
+Unlike Serpent Battery's `step(w, dt, firing)`, Breakout's `step(w, dt)` takes no input at all: the shell moves the paddle via `setPaddle`/`nudgePaddle` and serves via `launch()`. Pointer and keyboard controls differ enough that folding them into the engine would drag input concerns into the pure layer. The engine/shell split is the constant; the exact seam is per-game.
+
+Deferred deliberately: no powerups (though `w.balls` is an array so multiball won't need a rewrite), no touch controls, no standalone build, and no render smoke test. All logged as open items in STATUS.md.
+
+## 2026-07-22 — Serve over http, not file://
+
+The game shells import `engine.js` as an ES module, which browsers block over `file://`. Added `.claude/launch.json` (an "arcade-static" preview config running `python -m http.server 8123`) and documented the plain command in CLAUDE.md, so a future session doesn't lose ten minutes to a blank page and a CORS error. Committed rather than gitignored, since it's genuinely how the games get run. `.claude/settings.local.json` stays ignored — that one is machine-local.

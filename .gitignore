@@ -1,0 +1,5 @@
+# Claude Code machine-local permissions — not shared
+.claude/settings.local.json
+
+# ad-hoc test deps (installed with `npm install --no-save`, see CLAUDE.md)
+node_modules/

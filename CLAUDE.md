@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collection of standalone HTML5 canvas games. There is no bundler, no `package.json`, and no build step for day-to-day work — each game is either a single `.html` file or a small set of files that a browser can load directly (`file://` or any static server).
 
-Currently one game lives here:
+Two games live here:
 
-1. **Serpent Battery** (`games/serpent-battery/`) — a tower-defense/shooter with a pure-logic engine (`engine.js`) covered by a large unit-test suite. The first game in the `games/<name>/` layout, and the template every future game follows.
+1. **Serpent Battery** (`games/serpent-battery/`) — a tower-defense/shooter with a pure-logic engine (`engine.js`) covered by a large unit-test suite. The first game in the `games/<name>/` layout, and the template every other game follows.
+2. **Breakout** (`games/breakout/`) — a fresh, smaller build on the same engine/shell split. Good starting point for seeing the pattern without Serpent Battery's volume.
 
 An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invaders cabinet) was scrapped — see [docs/DECISIONS.md](docs/DECISIONS.md). Those games will be rebuilt from scratch under `games/` on the engine/shell pattern when we get to them.
 
@@ -25,9 +26,20 @@ No `package.json` exists — install test dependencies ad hoc if needed.
 ```bash
 # Run the engine unit tests (pure logic, no deps beyond Node's built-in test runner)
 node --test games/serpent-battery/engine.test.js
+node --test games/breakout/engine.test.js
+
+# Run every engine suite at once
+node --test games/*/engine.test.js
 
 # Run a single test by name
 node --test --test-name-pattern="a breach costs a life" games/serpent-battery/engine.test.js
+
+# Play a game locally. The shells import engine.js as an ES module, which
+# browsers refuse to load over file:// — so serve the repo rather than opening
+# the .html directly. (Also wired up as the "arcade-static" preview config in
+# .claude/launch.json.)
+python -m http.server 8123
+# then open http://localhost:8123/games/breakout/breakout.html
 
 # Render smoke test — boots the real game in jsdom + node-canvas and drives a
 # few frames, catching draw-path crashes the logic tests can't see.
@@ -51,8 +63,22 @@ There is no lint config in the repo.
   - Overdrive/heat is per-gun (`heat`, `cool`, `locked`) but streak/tier is shared on the battery; `stats(w)` resolves the four upgrade branches (`barrel`/`chamber`/`optics`/`munitions`) into the current effective numbers — read from `stats()`, not the raw `UPGRADES` tables.
   - One `step(w, dt, firing)` call per frame drives cannon → pickups → chains → shots → breach/wave-clear checks, in that order; hit-stop short-circuits everything else at the top of `step`.
 
+## Architecture: Breakout (`games/breakout/`)
+
+- **[engine.js](games/breakout/engine.js)** — same rules as Serpent Battery's engine: no DOM, no canvas, no timers, and here **no randomness at all** (level layouts come from pure arithmetic on row/col, so level N is byte-identical every run and in every test). `step(w, dt)` advances ball flight and its consequences; that's it.
+- **[breakout.html](games/breakout/breakout.html)** is the shell: rendering, pointer/keyboard input, particles, banners, and the `requestAnimationFrame` loop.
+- **Division of labour is deliberately different from Serpent Battery's `step(w, dt, firing)`**: the paddle is moved by the shell calling `setPaddle`/`nudgePaddle` (both clamp to the walls), and the ball is served by the shell calling `launch(w)`. `step` never reads input. This keeps pointer-vs-keyboard control entirely in the shell.
+- Simulation model:
+  - `w.balls` is an array (not a single ball) so multiball is a later addition rather than a rewrite. `w.held` means a ball is racked on the paddle awaiting `launch`; while held, `step` skips ball physics.
+  - **The paddle is a protractor, not a wall.** Where the ball lands across the paddle sets its outgoing angle (`PADDLE_MAX_ANGLE`, ~60° at the edges); speed is preserved on every bounce, so a ball's speed is fixed for its whole life at `levelSpeed(level)`. That mapping is the entire control scheme — don't "fix" it into a plain reflection.
+  - Collision runs in **sub-steps** no longer than the ball's radius, so a fast ball can't tunnel through a brick or the paddle in one frame. `rectHit` resolves against the Minkowski-expanded rectangle and picks the least-penetration face.
+  - `brickBounce` deliberately resolves **at most one brick per sub-step** (the deepest overlap) — resolving two at a corner reflects twice and sends the ball back into itself.
+  - An empty brick field means "level cleared," so a world built with no bricks will flag `levelClear` on its first step. Tests that want bare ball physics need a decoy brick (see `engine.test.js`).
+- **[engine.test.js](games/breakout/engine.test.js)** is organized by subsystem (brick field geometry → collision primitives → paddle → launch → ball dynamics → bricks → lives/level flow → full-run sanity), same convention as Serpent Battery.
+- There is **no standalone single-file build and no render smoke test** for Breakout yet — Serpent Battery has both. If draw-path crashes start slipping through, port `render-test.mjs` over.
+
 ## Architecture: `games/` and `shared/`
 
 Games follow a per-game engine/shell split modeled on Serpent Battery: pure logic with no DOM/canvas/timers, plus a thin rendering/input shell, living under `games/<name>/`. Cross-game code (input handling, canvas fit-to-screen, theme, cabinet/menu shell) belongs in `shared/`, added only once a second game actually needs it — don't speculatively build `shared/` helpers ahead of real code demanding them, which is the failure mode that sank the old `arcade_games.html` (it referenced a `shared/` folder that was never built).
 
-Serpent Battery is the first and currently only game in `games/`. `shared/` is still an empty placeholder — nothing has needed it yet, since there's only one game so far.
+`shared/` is still an empty placeholder. Serpent Battery and Breakout do have overlapping shell code by now — the fit-to-screen routine, the particle/floater lists, and the header/banner CSS are near-duplicates — so that's the natural first extraction whenever a third game makes the duplication annoying enough to be worth the indirection.

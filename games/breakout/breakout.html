@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Breakout</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;600;700&family=Archivo+Black&display=swap');
+
+  :root{
+    --void:#0b1418;
+    --deep:#122229;
+    --brass:#c9a227;
+    --scale:#3fae8f;
+    --alarm:#e0503c;
+    --bone:#e6e9e2;
+    --dim:#63797f;
+    --line:#23383f;
+  }
+
+  *{
+    box-sizing:border-box;margin:0;padding:0;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  html,body{height:100%;overscroll-behavior:none}
+  body{
+    background:var(--void);color:var(--bone);
+    font-family:'Chivo Mono',ui-monospace,monospace;
+    display:flex;align-items:center;justify-content:center;
+    padding:16px;overflow:hidden;
+  }
+
+  #shell{width:100%;max-width:800px;display:flex;flex-direction:column;gap:10px}
+
+  header{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px;
+  }
+  h1{
+    font-family:'Archivo Black',system-ui,sans-serif;
+    font-size:clamp(14px,3.4vw,21px);letter-spacing:-.02em;text-transform:uppercase;
+  }
+  h1 span{color:var(--brass)}
+  .meta{display:flex;gap:14px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .meta b{color:var(--bone);font-weight:600;letter-spacing:.04em}
+
+  #stage{
+    position:relative;width:100%;border:1px solid var(--line);
+    background:radial-gradient(120% 80% at 50% 0%, #16303a 0%, var(--deep) 55%, var(--void) 100%);
+  }
+  canvas{display:block;width:100%;height:auto;touch-action:none;margin:0 auto}
+
+  #banner{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;
+    background:rgba(11,20,24,.9);text-align:center;padding:20px;
+  }
+  #banner.hide{display:none}
+  #banner h2{font-family:'Archivo Black',sans-serif;font-size:clamp(20px,5vw,34px);text-transform:uppercase;letter-spacing:-.02em}
+  #banner p{font-size:12px;color:var(--dim);max-width:40ch;line-height:1.7}
+  #banner kbd{background:#1b2f36;border:1px solid #2c4650;padding:1px 5px;font:inherit;font-size:11px;color:var(--bone)}
+  button{
+    font:600 12px/1 'Chivo Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
+    background:var(--brass);color:#1a1405;border:0;padding:12px 24px;cursor:pointer;
+  }
+  button:hover{background:#e3b929}
+  button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
+
+  footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
+  @media (max-width:560px){ body{padding:8px;align-items:flex-start} footer{display:none} }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div id="shell">
+  <header>
+    <h1>Break<span>out</span></h1>
+    <div class="meta">
+      <div>Level <b id="uiLevel">1</b></div>
+      <div>Score <b id="uiScore">0</b></div>
+      <div>Balls <b id="uiLives">3</b></div>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="cv" width="800" height="600"></canvas>
+    <div id="banner">
+      <h2>Breakout</h2>
+      <p id="hint">Move the paddle with the mouse or <kbd>←</kbd><kbd>→</kbd>. Serve with click or <kbd>Space</kbd>. Where the ball lands on the paddle sets the angle it leaves — the paddle is your aim.</p>
+      <button id="go">Begin</button>
+    </div>
+  </div>
+
+  <footer>
+    <span>Hit the edges of the paddle to steer</span>
+    <span>Back rows take more hits</span>
+    <span>Clear the board to advance</span>
+  </footer>
+</div>
+
+<script type="module">
+import * as E from './engine.js';
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const TAU = E.TAU;
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+const $ = id => document.getElementById(id);
+
+/* purely cosmetic particles live in the shell, not the engine */
+const bits = [];
+const fx = {
+  brick(x, y, row) {
+    if (reduce) return;
+    const col = BRICK_COL[Math.min(row, BRICK_COL.length - 1)] || '#e6e9e2';
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * TAU, sp = 40 + Math.random() * 150;
+      bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .35 + Math.random() * .35, col });
+    }
+  },
+  bounce() {},
+  lose() { flash = 0.5; },
+};
+let flash = 0;
+
+const world = E.createWorld({ fx });
+
+/* brick colour by grid row: back rows (tougher) skew brass, front rows green */
+const BRICK_COL = ['#c9a227', '#c9a227', '#3fae8f', '#3fae8f', '#5fc9a4', '#5fc9a4', '#8dbf4a'];
+const brickFace = (b) => BRICK_COL[Math.min(b.row, BRICK_COL.length - 1)] || '#3fae8f';
+
+/* ---------- input ---------- */
+let keys = {};
+const W = world.L.W, H = world.L.H;
+
+function stageX(e) {
+  const r = cv.getBoundingClientRect();
+  return (e.clientX - r.left) * (W / r.width);
+}
+
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  E.setPaddle(world, stageX(e));
+  if (world.running) E.launch(world);       // the press itself serves the ball
+});
+cv.addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse' || e.buttons) E.setPaddle(world, stageX(e));
+});
+for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
+  cv.addEventListener(ev, e => e.preventDefault());
+}
+
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space') { e.preventDefault(); if (world.running) E.launch(world); }
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+
+/* Fit the board into whatever height is left below the header. */
+function fitStage() {
+  const header = document.querySelector('header');
+  const chrome = header.getBoundingClientRect().height + 34;
+  const avail = Math.max(200, innerHeight - chrome);
+  const stageW = $('stage').clientWidth || innerWidth;
+  const byWidth = stageW / (W / H);
+  const h = Math.min(avail, byWidth);
+  cv.style.height = h + 'px';
+  cv.style.width = (h * (W / H)) + 'px';
+  cv.style.maxWidth = '100%';
+}
+addEventListener('resize', fitStage);
+if (window.visualViewport) visualViewport.addEventListener('resize', fitStage);
+
+/* ---------- banner ---------- */
+function showBanner(h, p, btn) {
+  $('banner').classList.remove('hide');
+  $('banner').querySelector('h2').textContent = h;
+  $('hint').innerHTML = p;
+  const b = $('go'); b.textContent = btn; b.style.display = '';
+}
+function hideBanner() { $('banner').classList.add('hide'); }
+
+/* One handler for every banner state — a game over restarts, a cleared level
+   advances, and the opening banner just starts. Rewiring onclick per state
+   left the original listener attached too, so both fired on the same click. */
+$('go').addEventListener('click', () => {
+  if (world.over) E.resetGame(world);
+  else if (world.levelClear) E.nextLevel(world);
+  world.running = true;
+  hideBanner();
+});
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+
+  if (world.running && !world.over) {
+    let kb = 0;
+    if (keys.ArrowLeft) kb -= 1;
+    if (keys.ArrowRight) kb += 1;
+    if (kb) E.nudgePaddle(world, kb * 620 * dt);
+
+    E.step(world, dt);
+
+    if (world.over) showBanner('Game Over', `Score <b style="color:var(--brass)">${world.score}</b> · reached level ${world.level}`, 'Play again');
+    else if (world.levelClear) {
+      world.running = false;
+      showBanner('Level Cleared', `Level ${world.level} down. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Next level');
+    }
+    sync();
+  }
+
+  // cosmetic particles + hit flash decay regardless of pause
+  for (let i = bits.length - 1; i >= 0; i--) {
+    const b = bits[i];
+    b.life -= dt; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 220 * dt;
+    if (b.life <= 0) bits.splice(i, 1);
+  }
+  if (flash > 0) flash = Math.max(0, flash - dt * 1.5);
+
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function sync() {
+  $('uiLevel').textContent = world.level;
+  $('uiScore').textContent = world.score;
+  $('uiLives').textContent = world.lives;
+}
+
+/* ---------- draw ---------- */
+function draw() {
+  const L = world.L;
+  ctx.clearRect(0, 0, W, H);
+
+  // playfield border
+  ctx.strokeStyle = 'rgba(99,121,127,.35)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(L.WALL, L.WALL, W - 2 * L.WALL, H - L.WALL);
+
+  // a lost-ball flash tints the floor red
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(224,80,60,${flash * 0.4})`;
+    ctx.fillRect(0, H - 60, W, 60);
+  }
+
+  // bricks
+  for (const b of world.bricks) {
+    if (!b.alive) continue;
+    const col = brickFace(b);
+    ctx.fillStyle = col;
+    ctx.globalAlpha = b.hp < b.maxhp ? 0.45 + 0.55 * (b.hp / b.maxhp) : 1;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    if (b.flash > 0) {
+      ctx.globalAlpha = Math.min(1, b.flash * 6);
+      ctx.fillStyle = '#e6e9e2';
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+    }
+    ctx.globalAlpha = 1;
+    // a darker inner edge so tiled bricks stay distinct
+    ctx.strokeStyle = 'rgba(11,20,24,.5)'; ctx.lineWidth = 1;
+    ctx.strokeRect(b.x + .5, b.y + .5, b.w - 1, b.h - 1);
+  }
+
+  // paddle
+  const p = world.paddle;
+  ctx.fillStyle = '#c9a227';
+  ctx.fillRect(p.x - p.w / 2, L.PADDLE_Y, p.w, L.PADDLE_H);
+  ctx.fillStyle = 'rgba(230,233,226,.25)';
+  ctx.fillRect(p.x - p.w / 2, L.PADDLE_Y, p.w, 3);
+
+  // particles
+  for (const b of bits) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2.5));
+    ctx.fillStyle = b.col;
+    ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  // balls — either the live ones, or the racked ball waiting on the paddle
+  ctx.fillStyle = '#e6e9e2';
+  if (world.held) {
+    const hp = E.heldBallPos(world);
+    ball(hp.x, hp.y, L.BALL_R);
+  }
+  for (const b of world.balls) ball(b.x, b.y, b.r);
+}
+
+function ball(x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.fill();
+}
+
+sync();
+fitStage();
+requestAnimationFrame(frame);
+</script>
