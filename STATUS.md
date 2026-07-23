@@ -27,13 +27,21 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 ## Immediate next step
 
-**Extract `shared/`** — recommended over building a fourth game. Concretely: `shared/fit.js` (fit-to-screen), `shared/fx.js` (particles/floaters), `shared/theme.css` (the palette, header, stage, banner, button, footer, media queries), and probably `shared/banner.js`. Do this before a fourth game so the pattern gets copied from one place instead of a fourth divergent copy.
+**The road to a shippable phone app, in agreed order** (see DECISIONS.md for why this sequence):
 
-Do **not** try to unify the engine `step()` signatures while doing it — those differ per game on purpose (see DECISIONS.md).
+1. **Extract `shared/`** — `shared/fit.js` (fit-to-screen), `shared/fx.js` (particles/floaters), `shared/theme.css` (palette, header, stage, banner, button, footer, media queries), probably `shared/banner.js`. First, so everything below gets fixed once instead of three times.
+2. **Self-host the fonts** as part of that CSS. All four shells currently `@import` from the Google Fonts CDN, which breaks offline — the entire point of a service worker.
+3. **Portrait layouts for Breakout and Snake.** Serpent Battery already has one (`LAYOUT_TALL` + thumb rest, pacing held constant across board shapes); the two newer games have no portrait or safe-area handling at all. Snake is nearly free (the grid is `COLS × ROWS × CELL`); Breakout needs its ball speed scaled to board height instead of being absolute px/s.
+4. **The cabinet** — a menu tying the games together. Right now there are three unrelated pages and no app.
+5. **PWA manifest + service worker** — installable and offline.
+
+Do **not** try to unify the engine `step()` signatures while extracting `shared/` — those differ per game on purpose (see DECISIONS.md).
 
 ## Open decisions (not yet settled)
 
-- Touch coverage is uneven: Snake has swipe, Serpent Battery has pointer-drag aiming, Breakout has none. Worth a consistent story before the PWA work.
+- Touch coverage is uneven: Snake has swipe, Serpent Battery has pointer-drag aiming, Breakout has none (it needs drag-to-move-paddle). Worth a consistent story alongside the portrait work.
+- No score persistence anywhere. `localStorage` is the obvious cheap answer for a phone app; the old scrapped cabinet used a remote backend, which we're not restoring.
+- No audio in any game. Fine to defer, but phone arcade games usually want at least hit/death blips.
 - Breakout has no powerups (the classic multiball/wide-paddle/laser set). The engine's `w.balls` array was built as an array specifically to leave that door open.
 - No standalone build or render smoke test for Breakout or Snake, unlike Serpent Battery. Relevant because headless-browser rAF throttling (~0.1fps) makes visual verification unreliable — a jsdom render test is the more dependable safety net. See CLAUDE.md for the workaround used meanwhile.
 - PWA manifest/service worker: not started. Cheap to add early, but not urgent until there's a cabinet/menu tying the games together.

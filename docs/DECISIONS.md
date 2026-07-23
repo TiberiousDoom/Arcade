@@ -53,3 +53,21 @@ Snake also got swipe controls — the first touch input in the repo — because 
 ## 2026-07-22 — Headless browser rAF throttling makes visual checks unreliable
 
 Measured `requestAnimationFrame` running at ~0.1fps in the background/headless preview browser. Games therefore appear frozen or in extreme slow motion there, and any conclusion drawn about pacing from a screenshot is wrong. The workaround (documented in CLAUDE.md): temporarily expose `window.__world`/`window.__frame` from the shell, drive frames with hand-advanced timestamps or call engine functions directly, assert on state, then strip the hook. Worth knowing that banners fire on a false→true edge inside the frame loop, so bypassing it with direct `tick()` calls skips them. The durable fix is a jsdom render test like Serpent Battery's, which is why that's still an open item for the newer games.
+
+## 2026-07-22 — Every game is portrait-capable, following Serpent Battery
+
+Reviewed whether the current structure actually serves the multi-game phone-app goal. Verdict: the foundation (plain JS/canvas, no framework, pure-logic engines) is right and doesn't need revisiting — it ports to a PWA with no rewrite, and deterministic engines are exactly what you want when on-device debugging is painful.
+
+Decided each game supports **both** orientations rather than locking landscape or going portrait-only. Serpent Battery already set this precedent deliberately: `LAYOUT_TALL` adds a thumb-rest band so the player's hand never covers the play area, and wave speed is derived from path length so pacing is identical on either board. Locking landscape would have made that work dead code and put a rotate-your-phone prompt in front of a casual pick-up-and-play app; portrait-only would have meant retuning Serpent, which plays best in landscape.
+
+Retrofit cost is low because the layouts are already parameterized: Snake's board is `COLS × ROWS × CELL` with per-cell tick pacing, so a portrait grid is nearly a constant change; Breakout derives brick width from its column count, and its one real problem — ball speed being absolute px/s rather than relative to board height — has a proven fix in Serpent's derive-speed-from-length approach.
+
+## 2026-07-22 — Phone-readiness gaps, and the order to close them
+
+Three things block a shippable phone app, recorded so they aren't rediscovered later:
+
+1. **Portrait layouts** are missing from Breakout and Snake (Serpent has them). Per the decision above.
+2. **All four shells load fonts from the Google Fonts CDN**, which defeats offline PWA operation — the service worker's whole purpose. Needs self-hosted or system fonts.
+3. **There is no cabinet** — three unrelated pages, no menu or shared identity, so there's no "app" yet.
+
+Agreed order: extract `shared/` first (already overdue), fold self-hosted fonts into it, then portrait layouts for Breakout and Snake, then the cabinet, then the PWA manifest and service worker. The extraction goes first specifically so portrait gets fixed once in shared CSS instead of three times in three divergent copies.
