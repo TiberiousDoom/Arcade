@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Snake</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;600;700&family=Archivo+Black&display=swap');
+
+  :root{
+    --void:#0b1418;
+    --deep:#122229;
+    --brass:#c9a227;
+    --scale:#3fae8f;
+    --alarm:#e0503c;
+    --bone:#e6e9e2;
+    --dim:#63797f;
+    --line:#23383f;
+  }
+
+  *{
+    box-sizing:border-box;margin:0;padding:0;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  html,body{height:100%;overscroll-behavior:none}
+  body{
+    background:var(--void);color:var(--bone);
+    font-family:'Chivo Mono',ui-monospace,monospace;
+    display:flex;align-items:center;justify-content:center;
+    padding:16px;overflow:hidden;
+  }
+
+  #shell{width:100%;max-width:800px;display:flex;flex-direction:column;gap:10px}
+
+  header{
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px;
+  }
+  h1{
+    font-family:'Archivo Black',system-ui,sans-serif;
+    font-size:clamp(14px,3.4vw,21px);letter-spacing:-.02em;text-transform:uppercase;
+  }
+  h1 span{color:var(--scale)}
+  .meta{display:flex;gap:14px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .meta b{color:var(--bone);font-weight:600;letter-spacing:.04em}
+
+  #stage{
+    position:relative;width:100%;
+    border:1px solid var(--line);
+    background:radial-gradient(120% 80% at 50% 0%, #16303a 0%, var(--deep) 55%, var(--void) 100%);
+  }
+  canvas{display:block;width:100%;height:auto;touch-action:none;margin:0 auto}
+
+  #banner{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;
+    background:rgba(11,20,24,.9);text-align:center;padding:20px;
+  }
+  #banner.hide{display:none}
+  #banner h2{font-family:'Archivo Black',sans-serif;font-size:clamp(20px,5vw,34px);text-transform:uppercase;letter-spacing:-.02em}
+  #banner p{font-size:12px;color:var(--dim);max-width:38ch;line-height:1.7}
+  #banner kbd{background:#1b2f36;border:1px solid #2c4650;padding:1px 5px;font:inherit;font-size:11px;color:var(--bone)}
+  button{
+    font:600 12px/1 'Chivo Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
+    background:var(--scale);color:#06201a;border:0;padding:12px 24px;cursor:pointer;
+  }
+  button:hover{background:#5fc9a4}
+  button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
+
+  footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
+
+  @media (max-width:560px){
+    body{padding:8px;align-items:flex-start}
+    .meta{gap:10px;font-size:9px}
+    footer{display:none}
+  }
+</style>
+
+<div id="shell">
+  <header>
+    <h1>Sn<span>ake</span></h1>
+    <div class="meta">
+      <div>Score <b id="uiScore">0</b></div>
+      <div>Length <b id="uiLen">4</b></div>
+      <div>Eaten <b id="uiEaten">0</b></div>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="cv" width="800" height="600"></canvas>
+    <div id="banner">
+      <h2>Snake</h2>
+      <p id="hint">Steer with <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> or <kbd>WASD</kbd> — on a touch screen, swipe. Every meal makes you longer and the board faster. The gold bonus is worth five meals, but it won't wait.</p>
+      <button id="go">Begin</button>
+    </div>
+  </div>
+
+  <footer>
+    <span>You may cross where your tail is leaving</span>
+    <span>Two turns can be buffered</span>
+    <span>The gold one expires</span>
+  </footer>
+</div>
+
+<script type="module">
+import * as E from './engine.js';
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+/* cosmetic only — the engine never sees these */
+const bits = [];
+const fx = {
+  eat(x, y) { burst(x, y, '#c9a227', 10); },
+  bonus(x, y) { burst(x, y, '#e6e9e2', 20); flash = .5; },
+  die() { flash = .8; },
+};
+let flash = 0;
+
+function burst(cx, cy, col, n) {
+  if (reduce) return;
+  const L = world.L;
+  const px = (cx + .5) * L.CELL, py = (cy + .5) * L.CELL;
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 30 + Math.random() * 120;
+    bits.push({ x: px, y: py, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .3 + Math.random() * .35, col });
+  }
+}
+
+const world = E.createWorld({ fx, seed: Date.now() & 0x7fffffff });
+const L = world.L;
+cv.width = L.W; cv.height = L.H;
+
+/* ---------- input ---------- */
+const KEYS = {
+  ArrowLeft: [-1, 0], KeyA: [-1, 0],
+  ArrowRight: [1, 0], KeyD: [1, 0],
+  ArrowUp: [0, -1], KeyW: [0, -1],
+  ArrowDown: [0, 1], KeyS: [0, 1],
+};
+
+addEventListener('keydown', e => {
+  const d = KEYS[e.code];
+  if (!d) return;
+  e.preventDefault();
+  // an arrow key also serves as "start", so the game begins the moment you steer
+  if (!world.running && !world.over) start();
+  E.turn(world, d[0], d[1]);
+});
+
+/* Touch: a swipe picks the dominant axis. Snake is unplayable on a phone
+   without this, and a grid game makes the gesture unambiguous. */
+let swipe = null;
+const SWIPE_MIN = 24;      // px of travel before a flick counts
+
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  cv.setPointerCapture(e.pointerId);
+  swipe = { x: e.clientX, y: e.clientY };
+});
+cv.addEventListener('pointerup', e => {
+  if (!swipe) return;
+  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+  swipe = null;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_MIN) return;
+  if (!world.running && !world.over) start();
+  if (Math.abs(dx) > Math.abs(dy)) E.turn(world, Math.sign(dx), 0);
+  else E.turn(world, 0, Math.sign(dy));
+});
+cv.addEventListener('pointercancel', () => { swipe = null; });
+for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
+  cv.addEventListener(ev, e => e.preventDefault());
+}
+
+/* ---------- banner ---------- */
+function showBanner(h, p, btn) {
+  $('banner').classList.remove('hide');
+  $('banner').querySelector('h2').textContent = h;
+  $('hint').innerHTML = p;
+  $('go').textContent = btn;
+}
+function start() {
+  if (world.over) E.resetGame(world);
+  world.running = true;
+  flash = 0;                 // don't let the death flash bleed into a fresh run
+  bits.length = 0;
+  $('banner').classList.add('hide');
+  sync();
+}
+$('go').addEventListener('click', start);
+
+/* Fit the board into whatever height is left below the header. */
+function fitStage() {
+  const chrome = document.querySelector('header').getBoundingClientRect().height + 34;
+  const avail = Math.max(200, innerHeight - chrome);
+  const stageW = $('stage').clientWidth || innerWidth;
+  const h = Math.min(avail, stageW / (L.W / L.H));
+  cv.style.height = h + 'px';
+  cv.style.width = (h * (L.W / L.H)) + 'px';
+  cv.style.maxWidth = '100%';
+}
+addEventListener('resize', fitStage);
+if (window.visualViewport) visualViewport.addEventListener('resize', fitStage);
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+
+  const wasOver = world.over;
+  E.step(world, dt);
+  if (world.over && !wasOver) {
+    if (world.won) showBanner('Board Cleared', `You filled the grid. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Play again');
+    else showBanner('Game Over', `Score <b style="color:var(--brass)">${world.score}</b> · length ${world.snake.length} · ${world.eaten} eaten`, 'Play again');
+  }
+  if (world.running) sync();
+
+  for (let i = bits.length - 1; i >= 0; i--) {
+    const b = bits[i];
+    b.life -= dt; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 200 * dt;
+    if (b.life <= 0) bits.splice(i, 1);
+  }
+  if (flash > 0) flash = Math.max(0, flash - dt * 1.6);
+
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function sync() {
+  $('uiScore').textContent = world.score;
+  $('uiLen').textContent = world.snake.length;
+  $('uiEaten').textContent = world.eaten;
+}
+
+/* ---------- draw ---------- */
+const C = L.CELL;
+const cx = c => c * C, cy = c => c * C;
+
+function draw() {
+  ctx.clearRect(0, 0, L.W, L.H);
+  drawGrid();
+
+  if (world.food) drawFood(world.food);
+  if (world.bonus) drawBonus(world.bonus);
+  drawSnake();
+
+  for (const b of bits) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2.5));
+    ctx.fillStyle = b.col;
+    ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(224,80,60,${flash * .28})`;
+    ctx.fillRect(0, 0, L.W, L.H);
+  }
+}
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(35,56,63,.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 1; x < L.COLS; x++) { ctx.moveTo(cx(x) + .5, 0); ctx.lineTo(cx(x) + .5, L.H); }
+  for (let y = 1; y < L.ROWS; y++) { ctx.moveTo(0, cy(y) + .5); ctx.lineTo(L.W, cy(y) + .5); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(99,121,127,.4)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, L.W - 2, L.H - 2);
+}
+
+/** Body cells sit on the grid, but the head slides out of the cell it came
+ *  from and the tail retracts into the next one, so motion reads as continuous
+ *  rather than a row of jumps. Both come from the engine's tick progress, so
+ *  the animation can't drift out of sync with the simulation. */
+function drawSnake() {
+  const s = world.snake, n = s.length;
+  const p = world.running && !world.over ? E.tickProgress(world) : 1;
+  const pad = 2;
+
+  for (let i = n - 1; i >= 0; i--) {
+    let px = cx(s[i].x), py = cy(s[i].y), size = C - pad * 2;
+
+    if (i === 0 && n > 1) {
+      // lerp the head out of the cell it just left
+      px = cx(s[1].x) + (cx(s[0].x) - cx(s[1].x)) * p;
+      py = cy(s[1].y) + (cy(s[0].y) - cy(s[1].y)) * p;
+    } else if (i === n - 1 && n > 1 && world.grow === 0) {
+      // the tail is vacating: shrink it as it goes
+      const k = 1 - p * .8;
+      size = (C - pad * 2) * k;
+    }
+
+    const head = i === 0;
+    ctx.fillStyle = head ? '#5fc9a4' : '#3fae8f';
+    ctx.globalAlpha = head ? 1 : Math.max(.45, 1 - i / (n * 1.6));
+    const off = (C - size) / 2;
+    ctx.fillRect(px + off, py + off, size, size);
+    ctx.globalAlpha = 1;
+
+    if (head) {
+      // eyes, so the direction of travel is readable at a glance
+      ctx.fillStyle = '#06201a';
+      const d = world.dir;
+      const ex = px + C / 2 + d.x * 4, ey = py + C / 2 + d.y * 4;
+      const ox = d.x === 0 ? 4 : 0, oy = d.y === 0 ? 4 : 0;
+      ctx.fillRect(ex - ox - 1.5, ey - oy - 1.5, 3, 3);
+      ctx.fillRect(ex + ox - 1.5, ey + oy - 1.5, 3, 3);
+    }
+  }
+}
+
+function drawFood(f) {
+  const t = performance.now() / 400;
+  const r = C * .3 + Math.sin(t) * 1.2;
+  ctx.fillStyle = '#c9a227';
+  ctx.beginPath();
+  ctx.arc(cx(f.x) + C / 2, cy(f.y) + C / 2, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawBonus(b) {
+  const t = performance.now() / 200;
+  // fades as it runs out of time, so urgency is visible without a timer bar
+  const life = b.ttl / E.BONUS_TTL;
+  ctx.globalAlpha = .45 + .55 * Math.abs(Math.sin(t));
+  ctx.fillStyle = life < .3 ? '#e0503c' : '#e6e9e2';
+  const r = C * .34;
+  const px = cx(b.x) + C / 2, py = cy(b.y) + C / 2;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + i * Math.PI * 2 / 5;
+    const a2 = a + Math.PI / 5;
+    ctx.lineTo(px + Math.cos(a) * r, py + Math.sin(a) * r);
+    ctx.lineTo(px + Math.cos(a2) * r * .45, py + Math.sin(a2) * r * .45);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+sync();
+fitStage();
+requestAnimationFrame(frame);
+</script>

@@ -4,6 +4,7 @@ Each game lives in its own directory here, as `games/<name>/`, following the eng
 
 - **[serpent-battery/](serpent-battery/)** — the template for this split: `engine.js` / `engine.test.js` / `render-test.mjs` (logic + tests) and `serpent-battery.html` / `serpent-battery-standalone.html` (playable shells).
 - **[breakout/](breakout/)** — a smaller, newer example of the same split: `engine.js` / `engine.test.js` plus the `breakout.html` shell. Easier to read end to end if you're learning the pattern.
+- **[snake/](snake/)** — grid/tick-based rather than continuous physics, so the engine owns its own tick clock. Also the first game with touch (swipe) controls.
 
 The shells load `engine.js` as an ES module, so serve the repo (`python -m http.server 8123`) rather than opening the `.html` files directly.
 

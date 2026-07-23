@@ -6,10 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collection of standalone HTML5 canvas games. There is no bundler, no `package.json`, and no build step for day-to-day work — each game is either a single `.html` file or a small set of files that a browser can load directly (`file://` or any static server).
 
-Two games live here:
+Three games live here:
 
 1. **Serpent Battery** (`games/serpent-battery/`) — a tower-defense/shooter with a pure-logic engine (`engine.js`) covered by a large unit-test suite. The first game in the `games/<name>/` layout, and the template every other game follows.
 2. **Breakout** (`games/breakout/`) — a fresh, smaller build on the same engine/shell split. Good starting point for seeing the pattern without Serpent Battery's volume.
+3. **Snake** (`games/snake/`) — the first grid/tick-based game rather than continuous physics. Worth reading if you want to see how far the engine/shell split bends for a different genre.
 
 An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invaders cabinet) was scrapped — see [docs/DECISIONS.md](docs/DECISIONS.md). Those games will be rebuilt from scratch under `games/` on the engine/shell pattern when we get to them.
 
@@ -50,6 +51,8 @@ node --test games/serpent-battery/render-test.mjs
 
 There is no lint config in the repo.
 
+**Verifying a shell in a headless/background browser:** `requestAnimationFrame` gets throttled hard there (measured at ~0.1fps), so the game simulates in slow motion and any judgement about pacing — or even "is it moving at all" — will be wrong. Don't fight it: temporarily expose the world at the bottom of the shell's module (`window.__world = world; window.__frame = frame;`), then either drive `__frame(t)` with your own advancing timestamps or call engine functions directly, assert on state, and remove the hook afterward. Note that death/level-clear banners fire on a false→true *edge* inside the frame loop, so killing the world with direct `tick()`/`step()` calls skips them — drive it through `__frame` when that's what you're checking.
+
 ## Architecture: Serpent Battery (`games/serpent-battery/`)
 
 - **[engine.js](games/serpent-battery/engine.js)** is the entire simulation: geometry, enemy chains, guns/battery, upgrades, pickups, and the `step(w, dt, firing)` function that advances the world by one frame. It has **no DOM, no canvas, no timers, no randomness beyond a seeded LCG** (`rollDrop`) — this is what makes it fully unit-testable. Never add `document`/`canvas`/`Date.now()`/`Math.random()` calls here; keep those in the HTML shell.
@@ -77,8 +80,24 @@ There is no lint config in the repo.
 - **[engine.test.js](games/breakout/engine.test.js)** is organized by subsystem (brick field geometry → collision primitives → paddle → launch → ball dynamics → bricks → lives/level flow → full-run sanity), same convention as Serpent Battery.
 - There is **no standalone single-file build and no render smoke test** for Breakout yet — Serpent Battery has both. If draw-path crashes start slipping through, port `render-test.mjs` over.
 
+## Architecture: Snake (`games/snake/`)
+
+- **[engine.js](games/snake/engine.js)** — grid/tick model rather than continuous physics. The board is a 32×24 grid of 25px cells (800×600, same as Breakout, so the two could share a cabinet frame without rescaling).
+- **The engine owns the tick clock.** `step(w, dt)` accumulates time and fires as many ticks as have come due; `tick(w)` is exported separately so tests can drive exact discrete steps. Pace lives in the engine because *pace is the difficulty curve here* (`tickRate` shortens with every meal) — it's a game rule, not a rendering concern. This is the opposite call from Breakout, where the shell drives everything.
+- Randomness is a seeded LCG (`rand`), same one Serpent Battery uses. `createWorld({ seed })` makes food sequences reproducible — the shell seeds from the clock, tests pass a fixed seed.
+- Model details worth knowing before editing:
+  - `w.snake` is an array of cells, **head at index 0**. Growth is deferred via a `w.grow` counter rather than appending immediately, so a meal lengthens the snake over the next few ticks.
+  - **The tail-vacating rule**: the cell the tail is leaving is legal to move into, so chasing your own tail isn't a death. But a snake mid-growth (`w.grow > 0`) keeps its tail put, so that cell *is* solid. Both cases are tested; don't "simplify" the collision check into a plain body scan.
+  - `turn()` buffers up to `MAX_QUEUE` (2) direction changes and validates each against the **last queued** direction, not the current one — otherwise a fast up-then-left jink inside one tick would be wrongly rejected as a reversal.
+  - Filling the board is a **win** (`w.won`), reached when `spawnFood` finds no free cell. One life, no levels — the genre convention.
+  - `tickProgress(w)` exists purely so the shell can interpolate the head sliding out of its previous cell and the tail retracting; derived from engine state so the animation can't drift from the simulation.
+- **[snake.html](games/snake/snake.html)** adds swipe input (dominant-axis flick) alongside arrows/WASD — the first touch control in the repo, since Snake is unplayable on a phone without it.
+- **[engine.test.js](games/snake/engine.test.js)** — board/setup → determinism → movement → turning → eating/growth → bonus → death → time accumulator → win → reset → full-run invariants (no duplicated cells, body stays contiguous).
+
 ## Architecture: `games/` and `shared/`
 
 Games follow a per-game engine/shell split modeled on Serpent Battery: pure logic with no DOM/canvas/timers, plus a thin rendering/input shell, living under `games/<name>/`. Cross-game code (input handling, canvas fit-to-screen, theme, cabinet/menu shell) belongs in `shared/`, added only once a second game actually needs it — don't speculatively build `shared/` helpers ahead of real code demanding them, which is the failure mode that sank the old `arcade_games.html` (it referenced a `shared/` folder that was never built).
 
-`shared/` is still an empty placeholder. Serpent Battery and Breakout do have overlapping shell code by now — the fit-to-screen routine, the particle/floater lists, and the header/banner CSS are near-duplicates — so that's the natural first extraction whenever a third game makes the duplication annoying enough to be worth the indirection.
+`shared/` is **still an empty placeholder, and is now overdue.** All three shells independently duplicate: the `fitStage()` fit-to-screen routine, the particle (`bits`) list and its integrate/draw loop, the banner show/hide plumbing, and effectively all of the CSS (`:root` palette, header, `#stage`, `#banner`, button, footer, media queries). Breakout and Snake also share the same 800×600 board. That's the extraction to do next; the "wait for real duplication" condition it was gated on has been met three times over.
+
+Note the engine/shell **seam legitimately differs per game** and should not be forced into a single shape: Serpent Battery's `step(w, dt, firing)` takes input, Breakout's `step(w, dt)` takes none (the shell drives the paddle), and Snake's engine owns its own tick clock. What's shared is the *principle* — pure logic, no DOM/canvas/timers — not the signature.

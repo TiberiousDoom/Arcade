@@ -39,3 +39,17 @@ Deferred deliberately: no powerups (though `w.balls` is an array so multiball wo
 ## 2026-07-22 — Serve over http, not file://
 
 The game shells import `engine.js` as an ES module, which browsers block over `file://`. Added `.claude/launch.json` (an "arcade-static" preview config running `python -m http.server 8123`) and documented the plain command in CLAUDE.md, so a future session doesn't lose ten minutes to a blank page and a CORS error. Committed rather than gitignored, since it's genuinely how the games get run. `.claude/settings.local.json` stays ignored — that one is machine-local.
+
+## 2026-07-22 — Snake: the engine owns the tick clock, and the seam is per-game
+
+Built Snake under `games/snake/`. Its engine owns the tick accumulator (`step` fires as many ticks as have come due, `tick` is exported for tests) because in Snake the *pace is the difficulty curve* — the board speeds up with every meal — which makes it a game rule, not a rendering concern. Breakout made the opposite call: its `step(w, dt)` takes no input at all and the shell drives the paddle.
+
+The general lesson, worth not re-litigating: **the engine/shell seam is legitimately different per game.** Serpent Battery's `step(w, dt, firing)` takes input, Breakout's takes none, Snake's owns its own clock. What all three share is the principle — pure logic, no DOM/canvas/timers, deterministic — not a common signature. Don't try to unify them into one interface during the `shared/` extraction.
+
+Two rules inside Snake that look like bugs but aren't, and are covered by tests: the cell a tail is vacating is legal to enter (chasing your own tail must not kill you), *except* when the snake is mid-growth and the tail stays put; and `turn()` validates against the last *queued* direction rather than the current one, so a fast up-then-left jink inside a single tick isn't wrongly rejected as a reversal.
+
+Snake also got swipe controls — the first touch input in the repo — because a grid game makes the gesture unambiguous and Snake is simply unplayable on a phone without it.
+
+## 2026-07-22 — Headless browser rAF throttling makes visual checks unreliable
+
+Measured `requestAnimationFrame` running at ~0.1fps in the background/headless preview browser. Games therefore appear frozen or in extreme slow motion there, and any conclusion drawn about pacing from a screenshot is wrong. The workaround (documented in CLAUDE.md): temporarily expose `window.__world`/`window.__frame` from the shell, drive frames with hand-advanced timestamps or call engine functions directly, assert on state, then strip the hook. Worth knowing that banners fire on a false→true edge inside the frame loop, so bypassing it with direct `tick()` calls skips them. The durable fix is a jsdom render test like Serpent Battery's, which is why that's still an open item for the newer games.
