@@ -89,3 +89,17 @@ The extraction forced this. `serpent-battery-standalone.html` must inline everyt
 It inlines each ES module as an IIFE returning **all** top-level names, not just exported ones, because the shell reaches for a few internals (`fireGun`, `_segId`) that were never formally exported — matching what the original generator evidently did. It throws if a JS `import` survives; that guard matches `^\s*import\s` rather than a plain substring, because CSS's legitimate `@import url(...)` tripped the naive version on the first run.
 
 Also fixed a latent Windows bug in `render-test.mjs`: it derived its path from `new URL(...).pathname`, which on Windows produces `/C:/Users/Thulsa%20Doom/...` — a leading slash and percent-encoded spaces that `fs` rejects. The render test had apparently never been run on this machine. It passes now, which is what made it possible to verify the regenerated standalone properly.
+
+## 2026-07-22 — Fonts self-hosted from `shared/fonts/`
+
+Replaced the Google Fonts CDN `@import` with local `@font-face` rules and two WOFF2 files. The CDN dependency meant the games could not render correctly offline, which would have made a service worker pointless.
+
+Choices worth recording:
+
+**Latin subset only.** That is exactly what the CDN was already serving for this content, so nothing regressed — characters outside it (`←` `→` `◀` `▶` `✸` `◈`) fell back to a system font before and still do. Shipping the other subsets would have added weight for glyphs no game uses.
+
+**Chivo Mono as a variable font.** One 26 KB file covers all four weights the shells ask for (300/400/600/700) instead of four static files. Archivo Black is only used at 400, so it stays static. ~45 KB total.
+
+**Base64-embedded in the standalone build.** The inlined stylesheet lands in `games/serpent-battery/`, where a relative `./fonts/...` path resolves to nothing. Rather than rewrite the paths — which would have quietly made the "standalone" file depend on the repo around it — `build.mjs` embeds them as data URIs. The standalone now loads with **zero** subresource requests, which is the first time it has genuinely lived up to its name. It costs ~63 KB (72 KB → 136 KB), a fair trade for actual portability.
+
+Both families are SIL Open Font License 1.1, which expressly permits self-hosting; the full license text ships alongside the files as the OFL requires, and provenance is documented in `shared/fonts/README.md`.

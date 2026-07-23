@@ -7,7 +7,9 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
   `#stage`, `#banner`, buttons, footer, media queries. Every shell links it and
   then adds only its own rules. Per-game variation goes through the custom
   properties (`--accent`, `--accent-hot`, `--accent-ink`, `--board-max`) rather
-  than redeclaring rules.
+  than redeclaring rules. Also declares the `@font-face` rules.
+- **[fonts/](fonts/)** — self-hosted WOFF2 files, so the games render offline.
+  See [fonts/README.md](fonts/README.md) for provenance and OFL licensing.
 - **[fit.js](fit.js)** — `makeFit({ canvas, stage, board, extra })` sizes a
   fixed-ratio board into the space left on screen, and wires the
   resize/orientation listeners. `board` is read on every fit, so a game can

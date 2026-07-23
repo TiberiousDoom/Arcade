@@ -5,10 +5,28 @@
    Per-game variation goes through the custom properties below rather than
    redeclaring rules: set them in a small :root block in the shell.
 
-   NOTE: the webfont still comes from the Google Fonts CDN, which will not work
-   offline and therefore blocks the PWA goal. It is centralised here so the fix
-   is a one-line change in one file — see STATUS.md. */
-@import url('https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@300;400;600;700&family=Archivo+Black&display=swap');
+   Fonts are self-hosted from ./fonts/ rather than the Google Fonts CDN, so the
+   games render correctly offline — a prerequisite for the PWA goal. Both are
+   SIL Open Font License 1.1; see fonts/README.md and the OFL-*.txt files.
+
+   Chivo Mono is a variable font covering 300–700, so the four weights the
+   shells ask for all come from one file. Only the `latin` subset is shipped,
+   matching what the CDN was actually serving for this content: glyphs outside
+   it (← → ◀ ▶ ✸ ◈) already fell back to a system font and still do. */
+@font-face{
+  font-family:'Chivo Mono';
+  font-style:normal;
+  font-weight:300 700;          /* variable — one file, all weights */
+  font-display:swap;
+  src:url('./fonts/chivo-mono-latin.woff2') format('woff2');
+}
+@font-face{
+  font-family:'Archivo Black';
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+  src:url('./fonts/archivo-black-latin.woff2') format('woff2');
+}
 
 :root{
   /* palette */

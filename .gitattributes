@@ -1,0 +1,10 @@
+# Binary assets — never apply line-ending conversion. Git detects these
+# correctly on its own, but autocrlf is active on Windows here and a corrupted
+# webfont fails in a confusing way (text silently renders in a fallback face).
+*.woff2 binary
+*.woff  binary
+*.ttf   binary
+*.otf   binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
