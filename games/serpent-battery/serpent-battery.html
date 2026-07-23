@@ -13,10 +13,9 @@
 <script type="module" src="../../shared/pwa.js"></script>
 <style>
   /* Serpent Battery keeps the default brass accent on an 880-wide board, and
-     adds the touch pad, heat gauge, shop, and legend that only it has. */
+     adds the heat gauge, shop, and segment legend that only it has. */
   :root{
     --board-max:880px;
-    --padH:52px;
   }
 
   #uiBuild{display:flex;gap:6px;align-items:center}
@@ -35,28 +34,11 @@
   #heatTicks{position:absolute;inset:0;pointer-events:none}
   #heatTicks i{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
 
-  /* ---- touch controls: hidden until a touch is detected ---- */
-  #pad{display:none;gap:10px;align-items:stretch;
-    /* reserved band below the board — never overlaps the play area, and
-       clears the home indicator on iOS */
-    min-height:var(--padH);
-    padding-bottom:env(safe-area-inset-bottom,0px);
-  }
-  body.touch #pad{display:flex}
-  body.touch #hint{display:none}
-  .tbtn{
-    flex:1;border:1px solid var(--line);background:#132630;color:var(--bone);
-    font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.14em;text-transform:uppercase;
-    display:flex;align-items:center;justify-content:center;
-    text-align:center;touch-action:none;border-radius:3px;
-    min-height:var(--padH);
-  }
-  .tbtn:active{background:#1a3340}
-  .tbtn.on{background:var(--brass);color:#1a1405;border-color:var(--brass)}
 
-  #legend{display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;max-width:34ch;margin-top:2px}
-  #legend span{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
-  #legend i{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+  /* segment legend, shown inside the help panel */
+  #helpPanel .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:2px}
+  #helpPanel .legend span{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+  #helpPanel .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
 
   #shop{position:absolute;inset:0;display:none;flex-direction:column;
     background:rgba(11,20,24,.94);padding:18px 16px;overflow-y:auto;gap:12px}
@@ -121,23 +103,9 @@
     <div id="fxbar"></div>
     <div id="banner">
       <h2>Serpent Battery</h2>
-      <p id="hint">Aim with the mouse or <kbd>←</kbd><kbd>→</kbd>. Fire with click or <kbd>Space</kbd>. Land consecutive hits to push the cannon into Overdrive — miss and it cools.</p>
-      <p id="hintTouch" style="display:none">Rest your thumb in the band at the bottom, hold to fire, and slide to aim. Flick fast to swing across; move slowly for fine control. The trim buttons nudge one notch.</p>
-      <div id="legend">
-        <span><i style="background:#7f8fa0"></i>Armored</span>
-        <span><i style="background:#e0503c"></i>Volatile</span>
-        <span><i style="background:#4d7fb3"></i>Plated — hit the flank</span>
-        <span><i style="background:#8f5fb8"></i>Regen</span>
-        <span><i style="background:#e8d5a0"></i>Carrier — drops a pickup</span>
-        <span><i style="background:#d8763a"></i>Splitter — it divides</span>
-      </div>
+      <p id="hint">Drag to aim, hold to fire.</p>
       <button id="go">Begin</button>
     </div>
-  </div>
-
-  <div id="pad">
-    <div class="tbtn" id="tLeft">◀ Trim</div>
-    <div class="tbtn" id="tRight">Trim ▶</div>
   </div>
 
   <footer>
@@ -150,6 +118,7 @@
 <script type="module">
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
+import { makeHelp } from '../../shared/help.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -169,20 +138,28 @@ const fx = {
   push(txt, x, y, col) { world.floaters.push({ txt, x, y, col, life: .9 }); },
 };
 
-/* Portrait phones get the same board plus an empty band beneath the cannon:
-   somewhere to rest and drag a thumb without covering the play area. */
-const portrait = matchMedia('(max-aspect-ratio: 4/5)').matches;
-const LAY = portrait ? E.LAYOUT_TALL : E.LAYOUT;
-cv.width = LAY.W; cv.height = LAY.H;
+/* Portrait phones get a tall board plus an empty band beneath the cannon:
+   somewhere to rest and drag a thumb without covering the play area. Landscape
+   uses the wide board and the side gutters. Re-picked whenever the phone
+   turns — see applyLayout. */
+const pickLayout = () =>
+  matchMedia('(max-aspect-ratio: 4/5)').matches ? E.LAYOUT_TALL : E.LAYOUT;
 
-W = LAY.W; H = LAY.H;
-
-const world = E.createWorld({ fx, layout: LAY });
+const world = E.createWorld({ fx, layout: pickLayout() });
 E.spawnWave(world);
+
+const board = { w: world.L.W, h: world.L.H };   // makeFit re-reads this
+
+function adoptLayout() {
+  W = world.L.W; H = world.L.H;
+  board.w = W; board.h = H;
+  cv.width = W; cv.height = H;
+  document.documentElement.style.setProperty('--board-max', W + 'px');
+}
+adoptLayout();
 
 /* ---------- input ---------- */
 let keys = {}, firing = false;
-let trimDir = 0, trimHeld = 0;
 
 function stagePt(e) {
   const r = cv.getBoundingClientRect();
@@ -229,10 +206,8 @@ addEventListener('pointercancel', endPointer);
 /* Belt and braces on top of the CSS: a long press must not start a selection
    or open the context menu mid-game. Scoped to the game surface so normal
    page behaviour survives on desktop. */
-for (const el of [cv, $('pad')]) {
-  for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
-    el.addEventListener(ev, e => e.preventDefault());
-  }
+for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
+  cv.addEventListener(ev, e => e.preventDefault());
 }
 // a drag that starts on the board can still paint a selection across the
 // header, so cancel any selection that begins while a touch is down
@@ -244,35 +219,51 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Space') firing = false; });
 
-/* touch trim buttons — fine correction, ramping to coarse if held */
-if (isTouch) {
-  document.body.classList.add('touch');
-  $('hint').style.display = 'none';
-  $('hintTouch').style.display = '';
-}
-function holdBtn(el, dir) {
-  el.addEventListener('pointerdown', e => {
-    e.preventDefault(); el.setPointerCapture(e.pointerId);
-    el.classList.add('on'); trimDir = dir; trimHeld = 0;
-  });
-  const end = () => { el.classList.remove('on'); if (trimDir === dir) { trimDir = 0; trimHeld = 0; } };
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
-  el.addEventListener('lostpointercapture', end);
-}
-holdBtn($('tLeft'), -1);
-holdBtn($('tRight'), 1);
+if (isTouch) document.body.classList.add('touch');
 
-/* Fit the board into whatever height is left after the header and the touch
-   pad, so the whole play area is visible without scrolling. The pad only
-   exists on touch layouts, hence the `extra` hook. */
-const fitStage = makeFit({
-  canvas: cv,
+/* The trim buttons are gone — they ate scarce screen for a job the drag now
+   does well enough on its own, so there is no furniture below the board and
+   `extra` is unnecessary. */
+const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
+
+/* Rotating the phone moves the run onto the other board. Chains are positioned
+   by arc-length, so scaling by the ratio of path lengths puts every segment at
+   the same fraction of its journey; wave, score, scrap, lives, upgrades and the
+   battery all carry over. */
+function applyLayout() {
+  const L2 = pickLayout();
+  if (L2 === world.L) return;
+  E.relayout(world, L2);
+  adoptLayout();
+  fitStage();
+  sync();
+}
+addEventListener('resize', applyLayout);
+addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
+
+makeHelp({
   stage: $('stage'),
-  board: { w: LAY.W, h: LAY.H },
-  extra: () => document.body.classList.contains('touch')
-    ? $('pad').getBoundingClientRect().height
-    : 0,
+  title: 'Serpent Battery',
+  rows: [
+    ['Aim', 'Press and drag anywhere. The cannon turns with your finger — move slowly for fine aim, flick to swing right across.'],
+    ['Fire', 'Holding down fires continuously. The press itself always looses one shot, so a tap never feels dropped.'],
+    ['Keyboard', 'Left and right arrows to aim, Space to fire.'],
+    ['Segments', '<div class="legend">' +
+      '<span><i style="background:#7f8fa0"></i>Armored</span>' +
+      '<span><i style="background:#e0503c"></i>Volatile</span>' +
+      '<span><i style="background:#4d7fb3"></i>Plated</span>' +
+      '<span><i style="background:#8f5fb8"></i>Regen</span>' +
+      '<span><i style="background:#e8d5a0"></i>Carrier</span>' +
+      '<span><i style="background:#d8763a"></i>Splitter</span></div>'],
+  ],
+  notes: [
+    'Consecutive hits build Overdrive: faster shots, then harder ones, then piercing. A miss cools it back down.',
+    'Firing builds heat. Overheat and that barrel locks until it cools.',
+    'Cutting the chain in the middle shoves it backwards — often worth more than killing the head.',
+    'Plated segments glance shots off the front. Come at them from the side, or clear a neighbour first.',
+    'Clear a wave to open the refit shop and spend scrap.',
+    'Turn the phone at any time — the board changes shape and your run comes with it.',
+  ],
 });
 
 /* ---------- loop ---------- */
@@ -288,10 +279,6 @@ function frame(now) {
     if (keys.ArrowRight) kb += 1;
     if (kb) c.ang = E.clampAim(c.ang + kb * 2.0 * dt);
 
-    if (trimDir) {
-      trimHeld += dt;
-      c.ang = E.clampAim(c.ang + trimDir * E.trimRate(trimHeld) * dt);
-    }
     if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
 
     E.step(world, dt, firing);
@@ -464,7 +451,7 @@ function openShop() {
 $('shopGo').addEventListener('click', () => {
   $('shop').classList.remove('on');
   E.nextWave(world);
-  firing = false; trimDir = 0; trimHeld = 0; drag = null;
+  firing = false; drag = null;
   sync();
 });
 
@@ -757,13 +744,13 @@ function draw() {
 
   // thumb rest: the band below the cannon. Marked out so it reads as a place
   // to hold rather than dead space, and kept dim so it never pulls the eye.
-  if (LAY.THUMB > 0) {
-    const top = H - LAY.THUMB;
+  if (world.L.THUMB > 0) {
+    const top = H - world.L.THUMB;
     const g = ctx.createLinearGradient(0, top, 0, H);
     g.addColorStop(0, 'rgba(11,20,24,0)');
     g.addColorStop(1, 'rgba(11,20,24,.55)');
     ctx.fillStyle = g;
-    ctx.fillRect(0, top, W, LAY.THUMB);
+    ctx.fillRect(0, top, W, world.L.THUMB);
 
     ctx.strokeStyle = 'rgba(99,121,127,.22)';
     ctx.lineWidth = 1;
@@ -939,11 +926,7 @@ function sync() {
 function showBanner(h, p, btn) {
   $('banner').classList.remove('hide');
   $('banner').querySelector('h2').textContent = h;
-  $('hint').style.display = 'none';
-  $('hintTouch').style.display = 'none';
-  $('legend').style.display = 'none';
-  const p2 = $('banner').querySelector('p');
-  p2.style.display = ''; p2.textContent = p;
+  $('hint').textContent = p;
   $('go').textContent = btn;
 }
 $('go').addEventListener('click', () => {
@@ -951,7 +934,7 @@ $('go').addEventListener('click', () => {
   if (world.over || !world.running) E.resetRun(world);
   world.running = true;
   $('banner').classList.add('hide');
-  firing = false; trimDir = 0; trimHeld = 0; drag = null;
+  firing = false; drag = null;
   fitStage(); sync();
 });
 

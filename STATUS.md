@@ -56,7 +56,7 @@ Neither store takes a PWA directly — both need a native binary, so a wrapper (
 - [ ] Score persistence (localStorage — no backend, no privacy surface)
 - [ ] Audio, at least hit/death blips
 - [ ] More depth: powerups, more games, or progression
-- [ ] Real-device testing — **unblocked**: the app is deployed to GitHub Pages, so it can be opened on a phone directly. See the portrait caveat below for what to actually check.
+- [x] Real-device testing — done once, on a phone via GitHub Pages. Findings acted on (see below); worth repeating after every batch of feel changes.
 
 **Guard this:** no tracking, no ads, no accounts, no network calls. That keeps Apple's privacy label "Data Not Collected" and Play's Data Safety form near-empty, which is where most submission pain lives. Adding an analytics or ads SDK imports that whole compliance surface.
 
@@ -68,9 +68,22 @@ Pages serves project sites from a **subpath** (`/Arcade/`, not a domain root), w
 
 `.nojekyll` is present so Pages serves files verbatim instead of running them through Jekyll.
 
+## Device feedback, round one (acted on)
+
+From a real phone, via the Pages deploy:
+
+- Rotating kept the *portrait* board and shrank it to 19% of screen width — layout was picked once at load and never re-picked. **Fixed**, and rotation now hands the game over to the other board while keeping your progress.
+- Angle Iron's portrait thumb rest sat too shallow → deepened (190 → 250).
+- In landscape a thumb covered the paddle, with dead space either side → the side gutters are now live control surface (drag there to steer; tap the board to jump the paddle).
+- Serpent Battery's portrait board was nearly square (880x800) and wasted a third of the screen → now 600x1150 with ten rows.
+- Trim buttons ate scarce screen for little gain → removed.
+- Live Wire's swipe threshold swallowed deliberate flicks (24px → 10px).
+- Serpent Battery's aim needed ~500px of drag to cross its arc, more than a phone is wide → gain roughly doubled, now ~245px.
+- Instructions overflowed the banner and were written for mouse and keyboard → moved behind a `?` button per game, rewritten for tap and swipe.
+
 ## Open decisions (not yet settled)
 
-- Portrait boards are tuned by arithmetic and a desktop-emulated viewport, **not on a real handset**. The aspect ratios (Angle Iron 1:2, Live Wire ~0.53) are deliberate compromises that avoid letterboxing on tablets and 16:9 phones; whether they feel right in the hand is unverified.
+- Portrait is now device-tested and tuned. **Landscape is not** — the wide layouts, the gutter thumb rests and the rotation handover were built after that session and have only been checked in an emulator.
 - No score persistence anywhere. `localStorage` is the obvious cheap answer for a phone app; the old scrapped cabinet used a remote backend, which we're not restoring.
 - No audio in any game. Fine to defer, but phone arcade games usually want at least hit/death blips.
 - Angle Iron has no powerups (the classic multiball/wide-paddle/laser set). The engine's `w.balls` array was built as an array specifically to leave that door open.

@@ -19,9 +19,14 @@ export const LAYOUT = {
  *  cannon, so your hand never covers the play area. The board itself is
  *  unchanged, so difficulty and pacing carry over exactly. */
 export const LAYOUT_TALL = {
-  W: 880, H: 800,
-  MARGIN: 64, ROW_TOP: 70, ROW_GAP: 62, ROWS: 7,
-  THUMB: 180,
+  // 600x1150 (~1:1.9). The first attempt at 880x800 was nearly square, so on a
+  // phone it filled the width and left a third of the screen empty below —
+  // measured on a real device. A narrower, much taller board fills the screen
+  // and gives the snake more rows to cross, which is the point of the extra
+  // height. Deliberately not matched to one handset's exact ratio.
+  W: 600, H: 1150,
+  MARGIN: 44, ROW_TOP: 76, ROW_GAP: 72, ROWS: 10,
+  THUMB: 210,
   get FLOOR() { return this.H - 96 - this.THUMB; },
   get CANNON_Y() { return this.H - 44 - this.THUMB; },
 };
@@ -195,13 +200,17 @@ export const clampAim = (a) => clamp(a, AIM_MIN, AIM_MAX);
 
 /* ---------- touch aiming ---------- */
 
-/** Radians per CSS pixel of horizontal drag at the slow end of the curve. */
-export const AIM_FINE = 0.0052;
+/** Radians per CSS pixel of horizontal drag at the slow end of the curve.
+ *  Raised from 0.0052 after real-device testing: the aim arc is ~2.58 rad, so
+ *  the old value needed nearly 500px of drag — more than a phone is wide — to
+ *  cross it, and small corrections felt like hard work. At this gain a
+ *  comfortable ~100px thumb drag covers about 40% of the arc. */
+export const AIM_FINE = 0.0105;
 /** Multiplier applied at full speed, so a fast swipe crosses the arc. */
 export const AIM_COARSE_MULT = 3.4;
 /** Drag speed (px/s) at which the curve reaches full coarse gain. Lower means
  *  acceleration arrives sooner, which reads as a more responsive stick. */
-export const AIM_RAMP = 520;
+export const AIM_RAMP = 420;
 
 /** Pointer-accel curve: responsive from the first pixel, then accelerating.
  *  A purely quadratic ramp feels dead at low speed because the curve is flat
@@ -370,6 +379,39 @@ export function createWorld(opts = {}) {
   // existing call sites keep working; per-gun state lives in battery.guns
   w.cannon = w.battery;
   w.cannon.x = L.W / 2;
+  return w;
+}
+
+/** Move an in-progress run onto a different board, as when the phone is
+ *  rotated. Essentially lossless: chains are positioned by arc-length along the
+ *  path, so scaling `s` by the ratio of path lengths puts every segment at the
+ *  same fraction of its journey on the new board. Wave, score, scrap, lives,
+ *  upgrades and the whole battery carry over untouched.
+ *
+ *  Shots and falling pickups are dropped — they are in flight, and there is no
+ *  honest place to put them on a board of another shape. */
+export function relayout(w, L2) {
+  const { path, pathLen } = buildPath(L2);
+  const ratio = pathLen / w.pathLen;
+
+  for (const ch of w.chains) {
+    ch.s *= ratio;
+    ch.speed = waveSpeed(w.wave, pathLen);
+    ch.spacing *= ratio;
+    ch.recoil *= ratio;
+  }
+
+  w.L = L2;
+  w.path = path;
+  w.pathLen = pathLen;
+  w.shots = [];
+  w.pickups = [];
+
+  // the battery sits on the new floor line, keeping its aim and heat
+  const b = w.battery;
+  b.y = L2.CANNON_Y;
+  for (let i = 0; i < b.guns.length; i++) b.guns[i].x = L2.W * MOUNT_X[i];
+  w.cannon.x = L2.W / 2;
   return w;
 }
 

@@ -8,18 +8,25 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /* ---------- geometry ---------- */
 
+/** Both layouts share one brick grid — 8 rows by 9 columns — and differ only
+ *  in pixel geometry. That is deliberate: it means a brick at (row, col) exists
+ *  on both boards, so rotating the phone can carry damage across index-for-index
+ *  instead of throwing the level away. See `relayout`. */
+export const BRICK_ROWS = 8;
+export const BRICK_COLS = 9;
+
 export const LAYOUT = {
   W: 800, H: 600,
   WALL: 12,                 // thickness of the left/right/top playfield border
-  THUMB: 0,                 // no thumb rest needed in landscape
+  THUMB: 0,                 // landscape rests thumbs in the side gutters instead
   PADDLE_W: 112, PADDLE_H: 14,
   get FLOOR() { return this.H - this.THUMB; },   // the line a ball dies past
   get PADDLE_Y() { return this.FLOOR - 46; },    // top edge of the paddle
   BALL_R: 8,
-  // Brick field. Brick width is derived so the columns fill the space between
-  // the margins exactly; only the row height and gaps are fixed here.
+  // Brick width is derived so the columns fill the space between the margins
+  // exactly; only the row height and gaps are fixed here.
   BRICK_TOP: 72, MARGIN: 40,
-  BRICK_ROWS: 6, BRICK_COLS: 11,
+  BRICK_ROWS, BRICK_COLS,
   BRICK_H: 22, BRICK_GAP: 6,
 };
 
@@ -27,10 +34,7 @@ export const LAYOUT = {
  *  paddle. The band is a thumb rest: the paddle tracks only the horizontal
  *  position of your finger, so resting it below the floor line steers perfectly
  *  well without your hand covering the play area. Same reasoning as Serpent
- *  Battery's LAYOUT_TALL.
- *
- *  Fewer, chunkier brick columns because the board is narrower — 11 columns at
- *  600px wide would be slivers. */
+ *  Battery's LAYOUT_TALL. */
 export const LAYOUT_TALL = {
   // 1:2 — squarer than a modern phone (~0.46) but much closer than the
   // landscape board, so the court fills the screen instead of floating in a
@@ -38,15 +42,15 @@ export const LAYOUT_TALL = {
   // board tuned to 19.5:9 would letterbox badly on an iPad or an older 16:9.
   W: 600, H: 1200,
   WALL: 12,
-  THUMB: 190,
+  // Deep enough to park a thumb below the floor line without reaching. Tuned
+  // on a real phone; the first attempt at 190 sat too close to the paddle.
+  THUMB: 250,
   PADDLE_W: 92, PADDLE_H: 14,
   get FLOOR() { return this.H - this.THUMB; },
   get PADDLE_Y() { return this.FLOOR - 46; },
   BALL_R: 8,
-  // 9x8 = 72 bricks, close to the landscape board's 66, so a level is about
-  // the same amount of work.
   BRICK_TOP: 80, MARGIN: 26,
-  BRICK_ROWS: 9, BRICK_COLS: 8,
+  BRICK_ROWS, BRICK_COLS,
   BRICK_H: 22, BRICK_GAP: 6,
 };
 
@@ -127,7 +131,9 @@ export function buildBricks(level = 1, L = LAYOUT) {
   const bricks = [];
   for (let r = 0; r < L.BRICK_ROWS; r++) {
     for (let c = 0; c < L.BRICK_COLS; c++) {
-      if (!brickPresent(level, r, c)) continue;
+      // pass the layout's own dimensions — relying on brickPresent's defaults
+      // silently used the landscape grid whatever board was being built
+      if (!brickPresent(level, r, c, L.BRICK_ROWS, L.BRICK_COLS)) continue;
       const hp = brickHp(r, L.BRICK_ROWS);
       bricks.push({
         x: L.MARGIN + c * (bw + L.BRICK_GAP),
@@ -208,6 +214,31 @@ export function resetGame(w) {
   w.bricks = buildBricks(1, w.L);
   w.balls = []; w.held = true;
   w.paddle.x = w.L.W / 2; w.paddle.w = w.L.PADDLE_W;
+}
+
+/** Move an in-progress game onto a different board, as when the phone is
+ *  rotated. Lossless for everything that matters: level, score, lives and the
+ *  exact damage state of every brick survive, because both layouts share one
+ *  brick grid and only differ in pixel geometry.
+ *
+ *  The ball is the one casualty — its position and heading mean nothing on a
+ *  board of another shape — so it is re-racked on the paddle. */
+export function relayout(w, L2) {
+  const rebuilt = buildBricks(w.level, L2);
+  const byCell = new Map(w.bricks.map(b => [`${b.row},${b.col}`, b]));
+  for (const b of rebuilt) {
+    const was = byCell.get(`${b.row},${b.col}`);
+    if (was) { b.hp = was.hp; b.alive = was.alive; b.flash = 0; }
+  }
+
+  const centreFrac = w.paddle.x / w.L.W;      // keep the paddle where it sat
+  w.L = L2;
+  w.bricks = rebuilt;
+  w.balls = [];
+  w.held = true;
+  w.paddle.w = L2.PADDLE_W;
+  setPaddle(w, centreFrac * L2.W);
+  return w;
 }
 
 /* ---------- paddle ---------- */

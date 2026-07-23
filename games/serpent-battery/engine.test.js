@@ -92,12 +92,17 @@ test('the tall board plays at the same pace as the standard one', () => {
   }
 });
 
-test('the portrait board plays identically to the standard one', () => {
-  // the thumb rest adds height below the cannon only — the play area,
-  // row count and path length must be unchanged
-  const tall = E.buildPath(E.LAYOUT_TALL);
-  assert.equal(E.LAYOUT_TALL.ROWS, E.LAYOUT.ROWS, 'same number of rows');
-  assert.ok(Math.abs(tall.pathLen - pathLen) < 1, 'same path length');
+test('the portrait board is genuinely phone-shaped, not the landscape one squashed', () => {
+  // Retuned after real-device testing: the first portrait board was 880x800,
+  // nearly square, and left a third of a phone screen empty. It is now much
+  // taller than wide, with more rows to fill the extra height. Pace is NOT
+  // affected — the traversal-time test above pins that across both layouts.
+  const T = E.LAYOUT_TALL, L = E.LAYOUT;
+  assert.ok(T.H / T.W > 1.6, `portrait aspect is ${(T.H / T.W).toFixed(2)}, wanted > 1.6`);
+  assert.ok(T.W < L.W, 'narrower than landscape');
+  assert.ok(T.ROWS > L.ROWS, 'more rows to cross, since there is more height');
+  const tall = E.buildPath(T);
+  assert.ok(tall.pathLen > pathLen, 'a longer journey on the taller board');
 });
 
 test('the thumb rest sits below the cannon, not inside the play area', () => {
@@ -237,9 +242,20 @@ test('damageSeg is safe on indices that no longer exist', () => {
 test('aim gain is fine when dragging slowly', () => {
   const g = E.aimGain(0);
   assert.equal(g, E.AIM_FINE);
-  // a 40px careful drag stays a correction, not a wild swing
+  // A 40px careful drag stays a correction rather than a wild swing. Measured
+  // against the arc rather than an absolute figure, so retuning the gain does
+  // not silently invalidate the intent.
+  const span = E.AIM_MAX - E.AIM_MIN;
   const swing = 40 * g;
-  assert.ok(swing < 0.3, `40px slow drag moved ${swing.toFixed(3)} rad`);
+  assert.ok(swing < span * 0.2, `40px slow drag covered ${(swing / span * 100).toFixed(0)}% of the arc`);
+});
+
+test('a full sweep of the arc fits inside a phone-width drag', () => {
+  // regression on real-device feedback: at the old gain, crossing the arc took
+  // nearly 500px of drag — wider than the phone — so aiming felt like work
+  const span = E.AIM_MAX - E.AIM_MIN;
+  const pxAtFineGain = span / E.aimGain(0);
+  assert.ok(pxAtFineGain < 300, `needs ${pxAtFineGain.toFixed(0)}px of slow drag to cross the arc`);
 });
 
 test('aim responds from the very first pixel', () => {
@@ -275,8 +291,9 @@ test('a normal drag makes real progress across the arc', () => {
 });
 
 test('a slow drag still gives fine control', () => {
+  const span = E.AIM_MAX - E.AIM_MIN;
   const step = Math.abs(E.aimDelta(6, 6 / 60));
-  assert.ok(step < 0.06, `6px drag moved ${step.toFixed(4)} rad`);
+  assert.ok(step < span * 0.04, `6px drag covered ${(step / span * 100).toFixed(1)}% of the arc`);
 });
 
 test('aimDelta preserves drag direction', () => {

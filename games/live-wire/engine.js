@@ -145,6 +145,53 @@ export function resetGame(w) {
   spawnFood(w);
 }
 
+/** Move an in-progress game onto a different grid, as when the phone is
+ *  rotated.
+ *
+ *  Unlike Angle Iron, this **cannot** be lossless, and the limitation is the
+ *  game's rather than the code's: the grid genuinely changes shape (32x24 vs
+ *  18x34), so a wire spanning thirty columns has nowhere to exist on an
+ *  eighteen-wide board. Score, meals eaten and *length* carry over — the wire
+ *  is simply re-laid at that length, horizontally from the middle, and food is
+ *  respawned. Pace is untouched, since the tick rate is per-cell.
+ *
+ *  If the wire is longer than a single row of the new grid it wraps into
+ *  stacked rows, so even a very long wire survives the move. */
+export function relayout(w, L2) {
+  const want = Math.min(w.wire.length, L2.COLS * L2.ROWS);
+  const cells = [];
+
+  // Head starts mid-row, halfway across, with the body trailing to its right
+  // and wrapping down a row whenever it reaches a wall. That leaves the head
+  // half a board of clear space in its direction of travel, and keeps the body
+  // contiguous no matter how long it is.
+  let x = Math.floor(L2.COLS / 2);
+  let y = Math.floor(L2.ROWS / 2);
+  let lay = 1;                                  // +1 lays rightward
+
+  for (let i = 0; i < want; i++) {
+    cells.push({ x, y });
+    const nx = x + lay;
+    if (nx < 0 || nx >= L2.COLS) {
+      y += 1;                                   // drop a row and double back
+      lay = -lay;
+      if (y >= L2.ROWS) break;                  // board is full; wire is capped
+    } else {
+      x = nx;
+    }
+  }
+
+  w.L = L2;
+  w.wire = cells;
+  w.dir = { x: -1, y: 0 };                      // away from the body, into open board
+  w.queue = [];
+  w.grow = 0;
+  w.bonus = null;
+  w.food = null;
+  spawnFood(w);
+  return w;
+}
+
 /* ---------- input ---------- */
 
 /** How many turns can be buffered. Two is the sweet spot: it lets you set up a

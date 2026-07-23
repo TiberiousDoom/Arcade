@@ -84,6 +84,12 @@ function build() {
     `const { makeFit } = ${fit};`
   );
 
+  const help = inlineModule(read(join(shared, 'help.js')));
+  html = html.replace(
+    /^import \{ makeHelp \} from '\.\.\/\.\.\/shared\/help\.js';$/m,
+    `const { makeHelp } = ${help};`
+  );
+
   // JS imports only — CSS's own `@import url(...)` is legitimate and stays.
   const stray = html.match(/^\s*import\s.+$/m);
   if (stray) {

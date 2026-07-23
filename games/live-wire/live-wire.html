@@ -38,7 +38,7 @@
     <canvas id="cv" width="800" height="600"></canvas>
     <div id="banner">
       <h2>Live Wire</h2>
-      <p id="hint">Steer with <kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> or <kbd>WASD</kbd> — on a touch screen, swipe. Every meal makes you longer and the board faster. The gold bonus is worth five meals, but it won't wait.</p>
+      <p id="hint">Swipe to steer.</p>
       <button id="go">Begin</button>
     </div>
   </div>
@@ -54,6 +54,7 @@
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
+import { makeHelp } from '../../shared/help.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -73,16 +74,23 @@ const fx = {
   die() { gfx.hit(.8); },
 };
 
-/* Portrait phones get a taller, narrower grid at the same cell size. Chosen
-   once at load — rotating mid-run would rebuild the board under the player. */
-const portrait = matchMedia('(max-aspect-ratio: 4/5)').matches;
-const LAY = portrait ? E.LAYOUT_TALL : E.LAYOUT;
+/* Portrait phones get a taller, narrower grid at the same cell size.
+   Re-picked whenever the phone turns — see applyLayout. */
+const pickLayout = () =>
+  matchMedia('(max-aspect-ratio: 4/5)').matches ? E.LAYOUT_TALL : E.LAYOUT;
 
-const world = E.createWorld({ fx, layout: LAY, seed: Date.now() & 0x7fffffff });
-const L = world.L;
-cv.width = L.W; cv.height = L.H;
-// keep the CSS shell width in step with whichever board we picked
-document.documentElement.style.setProperty('--board-max', L.W + 'px');
+const world = E.createWorld({ fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff });
+
+let L = world.L;
+const board = { w: L.W, h: L.H };      // makeFit re-reads this on every fit
+
+function adoptLayout() {
+  L = world.L;
+  board.w = L.W; board.h = L.H;
+  cv.width = L.W; cv.height = L.H;
+  document.documentElement.style.setProperty('--board-max', L.W + 'px');
+}
+adoptLayout();
 
 /* ---------- input ---------- */
 const KEYS = {
@@ -104,14 +112,20 @@ addEventListener('keydown', e => {
 /* Touch: a swipe picks the dominant axis. Wire is unplayable on a phone
    without this, and a grid game makes the gesture unambiguous. */
 let swipe = null;
-const SWIPE_MIN = 24;      // px of travel before a flick counts
+// Lowered from 24 after real-device testing — deliberate flicks were being
+// swallowed. Low enough to feel immediate, high enough that a tap is not a turn.
+const SWIPE_MIN = 10;
 
-cv.addEventListener('pointerdown', e => {
+// Listen on the stage, not just the canvas, so a swipe that starts in the
+// side gutters (landscape, where the board cannot fill the width) still steers.
+const surface = $('stage');
+surface.addEventListener('pointerdown', e => {
+  if (e.target.closest('button')) return;      // let ? and Begin work
   e.preventDefault();
-  cv.setPointerCapture(e.pointerId);
+  try { surface.setPointerCapture(e.pointerId); } catch {}
   swipe = { x: e.clientX, y: e.clientY };
 });
-cv.addEventListener('pointerup', e => {
+surface.addEventListener('pointerup', e => {
   if (!swipe) return;
   const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
   swipe = null;
@@ -120,7 +134,7 @@ cv.addEventListener('pointerup', e => {
   if (Math.abs(dx) > Math.abs(dy)) E.turn(world, Math.sign(dx), 0);
   else E.turn(world, 0, Math.sign(dy));
 });
-cv.addEventListener('pointercancel', () => { swipe = null; });
+surface.addEventListener('pointercancel', () => { swipe = null; });
 for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
   cv.addEventListener(ev, e => e.preventDefault());
 }
@@ -141,7 +155,38 @@ function start() {
 }
 $('go').addEventListener('click', start);
 
-const fitStage = makeFit({ canvas: cv, stage: $('stage'), board: { w: L.W, h: L.H } });
+const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
+
+/* Rotating the phone moves the run onto the other grid. Score, meals and
+   length come with you; the wire itself is re-laid, because a wire thirty
+   columns wide has nowhere to exist on an eighteen-wide board. */
+function applyLayout() {
+  const L2 = pickLayout();
+  if (L2 === world.L) return;
+  E.relayout(world, L2);
+  adoptLayout();
+  fitStage();
+  sync();
+}
+addEventListener('resize', applyLayout);
+addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
+
+makeHelp({
+  stage: $('stage'),
+  title: 'Live Wire',
+  rows: [
+    ['Steer', 'Swipe anywhere on the board — up, down, left or right. A short flick is enough; you do not need to drag.'],
+    ['Start', 'Swipe, or tap Begin.'],
+    ['Keyboard', 'Arrow keys or WASD.'],
+  ],
+  notes: [
+    'Every meal makes you one segment longer and the board a little faster.',
+    'The gold star is worth five meals, but it fades and leaves.',
+    'You may cross the square your tail is leaving — chasing your own tail is safe.',
+    'Two turns can be queued, so a quick double-flick around a corner registers.',
+    'Turn the phone at any time — your score and length come with you.',
+  ],
+});
 
 /* ---------- loop ---------- */
 let last = performance.now();

@@ -129,11 +129,49 @@ button{
 button:hover{background:var(--accent-hot)}
 button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 
+/* ---- the "?" help button and its panel ---- */
+#helpBtn{
+  position:absolute;top:8px;right:8px;z-index:5;
+  /* 40px is the smallest comfortable touch target; the visible dot is smaller */
+  width:40px;height:40px;padding:0;
+  background:transparent;color:var(--dim);
+  border:1px solid var(--line);border-radius:50%;
+  font:700 14px/1 'Chivo Mono',monospace;letter-spacing:0;
+  display:flex;align-items:center;justify-content:center;
+}
+#helpBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
+
+#helpPanel{
+  position:absolute;inset:0;z-index:6;display:none;
+  flex-direction:column;gap:12px;
+  background:rgba(11,20,24,.97);
+  padding:22px 20px;overflow-y:auto;
+  text-align:left;
+}
+#helpPanel.on{display:flex}
+#helpPanel h2{
+  font-family:'Archivo Black',sans-serif;
+  font-size:clamp(14px,4vw,18px);text-transform:uppercase;letter-spacing:-.01em;
+}
+#helpPanel dl{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;align-items:baseline}
+#helpPanel dt{
+  font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--accent);font-weight:700;white-space:nowrap;
+}
+#helpPanel dd{font-size:12px;line-height:1.55;color:var(--bone)}
+#helpPanel ul{list-style:none;display:flex;flex-direction:column;gap:6px;margin-top:2px}
+#helpPanel li{
+  font-size:11px;line-height:1.5;color:var(--dim);
+  padding-left:12px;position:relative;
+}
+#helpPanel li::before{content:'—';position:absolute;left:0;color:var(--line)}
+#helpClose{align-self:flex-start;margin-top:auto;padding:10px 20px}
+
 footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
 
 @media (max-width:560px){
   body{
-    padding:8px;align-items:flex-start;
+    padding:8px;
     padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
     padding-left:calc(8px + env(safe-area-inset-left,0px));
     padding-right:calc(8px + env(safe-area-inset-right,0px));
@@ -141,14 +179,33 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
   .meta{gap:10px;font-size:9px}
   footer{display:none}
 }
+
+/* Short and wide — a phone held sideways. The board is height-limited here, so
+   there is dead space either side of it; the shell spreads to full width and
+   that space becomes somewhere to rest a thumb without covering the board. */
+@media (max-height:520px) and (orientation:landscape){
+  body{padding:4px;padding-left:calc(4px + env(safe-area-inset-left,0px));padding-right:calc(4px + env(safe-area-inset-right,0px))}
+  #shell{max-width:none;gap:4px}
+  header{padding-bottom:4px}
+  h1{font-size:13px}
+  .meta{font-size:9px;gap:9px}
+  footer{display:none}
+  /* the gutters either side of the canvas are live control surface */
+  #stage{display:flex;align-items:center;justify-content:center}
+  #stage::before,#stage::after{
+    content:'';position:absolute;top:0;bottom:0;width:16%;
+    pointer-events:none;
+    background:linear-gradient(90deg,rgba(99,121,127,.07),transparent);
+  }
+  #stage::after{right:0;transform:scaleX(-1)}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 <style>
   /* Serpent Battery keeps the default brass accent on an 880-wide board, and
-     adds the touch pad, heat gauge, shop, and legend that only it has. */
+     adds the heat gauge, shop, and segment legend that only it has. */
   :root{
     --board-max:880px;
-    --padH:52px;
   }
 
   #uiBuild{display:flex;gap:6px;align-items:center}
@@ -167,28 +224,11 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
   #heatTicks{position:absolute;inset:0;pointer-events:none}
   #heatTicks i{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
 
-  /* ---- touch controls: hidden until a touch is detected ---- */
-  #pad{display:none;gap:10px;align-items:stretch;
-    /* reserved band below the board — never overlaps the play area, and
-       clears the home indicator on iOS */
-    min-height:var(--padH);
-    padding-bottom:env(safe-area-inset-bottom,0px);
-  }
-  body.touch #pad{display:flex}
-  body.touch #hint{display:none}
-  .tbtn{
-    flex:1;border:1px solid var(--line);background:#132630;color:var(--bone);
-    font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.14em;text-transform:uppercase;
-    display:flex;align-items:center;justify-content:center;
-    text-align:center;touch-action:none;border-radius:3px;
-    min-height:var(--padH);
-  }
-  .tbtn:active{background:#1a3340}
-  .tbtn.on{background:var(--brass);color:#1a1405;border-color:var(--brass)}
 
-  #legend{display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;max-width:34ch;margin-top:2px}
-  #legend span{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
-  #legend i{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+  /* segment legend, shown inside the help panel */
+  #helpPanel .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:2px}
+  #helpPanel .legend span{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+  #helpPanel .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
 
   #shop{position:absolute;inset:0;display:none;flex-direction:column;
     background:rgba(11,20,24,.94);padding:18px 16px;overflow-y:auto;gap:12px}
@@ -252,23 +292,9 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
     <div id="fxbar"></div>
     <div id="banner">
       <h2>Serpent Battery</h2>
-      <p id="hint">Aim with the mouse or <kbd>←</kbd><kbd>→</kbd>. Fire with click or <kbd>Space</kbd>. Land consecutive hits to push the cannon into Overdrive — miss and it cools.</p>
-      <p id="hintTouch" style="display:none">Rest your thumb in the band at the bottom, hold to fire, and slide to aim. Flick fast to swing across; move slowly for fine control. The trim buttons nudge one notch.</p>
-      <div id="legend">
-        <span><i style="background:#7f8fa0"></i>Armored</span>
-        <span><i style="background:#e0503c"></i>Volatile</span>
-        <span><i style="background:#4d7fb3"></i>Plated — hit the flank</span>
-        <span><i style="background:#8f5fb8"></i>Regen</span>
-        <span><i style="background:#e8d5a0"></i>Carrier — drops a pickup</span>
-        <span><i style="background:#d8763a"></i>Splitter — it divides</span>
-      </div>
+      <p id="hint">Drag to aim, hold to fire.</p>
       <button id="go">Begin</button>
     </div>
-  </div>
-
-  <div id="pad">
-    <div class="tbtn" id="tLeft">◀ Trim</div>
-    <div class="tbtn" id="tRight">Trim ▶</div>
   </div>
 
   <footer>
@@ -302,9 +328,14 @@ const LAYOUT = {
  *  cannon, so your hand never covers the play area. The board itself is
  *  unchanged, so difficulty and pacing carry over exactly. */
 const LAYOUT_TALL = {
-  W: 880, H: 800,
-  MARGIN: 64, ROW_TOP: 70, ROW_GAP: 62, ROWS: 7,
-  THUMB: 180,
+  // 600x1150 (~1:1.9). The first attempt at 880x800 was nearly square, so on a
+  // phone it filled the width and left a third of the screen empty below —
+  // measured on a real device. A narrower, much taller board fills the screen
+  // and gives the snake more rows to cross, which is the point of the extra
+  // height. Deliberately not matched to one handset's exact ratio.
+  W: 600, H: 1150,
+  MARGIN: 44, ROW_TOP: 76, ROW_GAP: 72, ROWS: 10,
+  THUMB: 210,
   get FLOOR() { return this.H - 96 - this.THUMB; },
   get CANNON_Y() { return this.H - 44 - this.THUMB; },
 };
@@ -478,13 +509,17 @@ const clampAim = (a) => clamp(a, AIM_MIN, AIM_MAX);
 
 /* ---------- touch aiming ---------- */
 
-/** Radians per CSS pixel of horizontal drag at the slow end of the curve. */
-const AIM_FINE = 0.0052;
+/** Radians per CSS pixel of horizontal drag at the slow end of the curve.
+ *  Raised from 0.0052 after real-device testing: the aim arc is ~2.58 rad, so
+ *  the old value needed nearly 500px of drag — more than a phone is wide — to
+ *  cross it, and small corrections felt like hard work. At this gain a
+ *  comfortable ~100px thumb drag covers about 40% of the arc. */
+const AIM_FINE = 0.0105;
 /** Multiplier applied at full speed, so a fast swipe crosses the arc. */
 const AIM_COARSE_MULT = 3.4;
 /** Drag speed (px/s) at which the curve reaches full coarse gain. Lower means
  *  acceleration arrives sooner, which reads as a more responsive stick. */
-const AIM_RAMP = 520;
+const AIM_RAMP = 420;
 
 /** Pointer-accel curve: responsive from the first pixel, then accelerating.
  *  A purely quadratic ramp feels dead at low speed because the curve is flat
@@ -653,6 +688,39 @@ function createWorld(opts = {}) {
   // existing call sites keep working; per-gun state lives in battery.guns
   w.cannon = w.battery;
   w.cannon.x = L.W / 2;
+  return w;
+}
+
+/** Move an in-progress run onto a different board, as when the phone is
+ *  rotated. Essentially lossless: chains are positioned by arc-length along the
+ *  path, so scaling `s` by the ratio of path lengths puts every segment at the
+ *  same fraction of its journey on the new board. Wave, score, scrap, lives,
+ *  upgrades and the whole battery carry over untouched.
+ *
+ *  Shots and falling pickups are dropped — they are in flight, and there is no
+ *  honest place to put them on a board of another shape. */
+function relayout(w, L2) {
+  const { path, pathLen } = buildPath(L2);
+  const ratio = pathLen / w.pathLen;
+
+  for (const ch of w.chains) {
+    ch.s *= ratio;
+    ch.speed = waveSpeed(w.wave, pathLen);
+    ch.spacing *= ratio;
+    ch.recoil *= ratio;
+  }
+
+  w.L = L2;
+  w.path = path;
+  w.pathLen = pathLen;
+  w.shots = [];
+  w.pickups = [];
+
+  // the battery sits on the new floor line, keeping its aim and heat
+  const b = w.battery;
+  b.y = L2.CANNON_Y;
+  for (let i = 0; i < b.guns.length; i++) b.guns[i].x = L2.W * MOUNT_X[i];
+  w.cannon.x = L2.W / 2;
   return w;
 }
 
@@ -1259,7 +1327,7 @@ function nextWave(w) {
   w.running = true;
 }
 
-return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, kindForIndex, makeChain, _segId, nextSegId, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, spawnWave, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
+return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, kindForIndex, makeChain, _segId, nextSegId, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
 })();
 const { makeFit } = (() => {
 /* Fit a fixed-size game board into whatever space is left on screen.
@@ -1313,6 +1381,58 @@ function makeFit({ canvas, stage, board, extra }) {
 
 return { GAP_AND_PADDING, makeFit };
 })();
+const { makeHelp } = (() => {
+/* A "?" button in the corner of the board that opens the instructions.
+
+   Instructions used to live in the opening banner, which meant they were long,
+   they pushed the Play button down, and on a phone they simply ran off the
+   bottom of the screen. Behind a button they can be as detailed as they like
+   and cost no space until asked for. */
+
+/**
+ * @param stage    the positioned element the button and panel are placed in
+ * @param title    heading for the panel
+ * @param rows     [[term, description], …] — the controls table
+ * @param notes    array of short strings shown under the table
+ */
+function makeHelp({ stage, title, rows = [], notes = [] }) {
+  const btn = document.createElement('button');
+  btn.id = 'helpBtn';
+  btn.type = 'button';
+  btn.textContent = '?';
+  btn.setAttribute('aria-label', 'How to play');
+  btn.setAttribute('aria-expanded', 'false');
+
+  const panel = document.createElement('div');
+  panel.id = 'helpPanel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'How to play');
+
+  panel.innerHTML =
+    `<h2>${title}</h2>` +
+    `<dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>` +
+    (notes.length ? `<ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
+    `<button type="button" id="helpClose">Got it</button>`;
+
+  stage.append(btn, panel);
+
+  const set = (open) => {
+    panel.classList.toggle('on', open);
+    btn.setAttribute('aria-expanded', String(open));
+  };
+  const toggle = () => set(!panel.classList.contains('on'));
+
+  btn.addEventListener('click', toggle);
+  panel.querySelector('#helpClose').addEventListener('click', () => set(false));
+  // tapping the backdrop dismisses, but taps on the text inside must not
+  panel.addEventListener('click', e => { if (e.target === panel) set(false); });
+  addEventListener('keydown', e => { if (e.key === 'Escape') set(false); });
+
+  return { open: () => set(true), close: () => set(false), toggle };
+}
+
+return { makeHelp };
+})();
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -1332,20 +1452,28 @@ const fx = {
   push(txt, x, y, col) { world.floaters.push({ txt, x, y, col, life: .9 }); },
 };
 
-/* Portrait phones get the same board plus an empty band beneath the cannon:
-   somewhere to rest and drag a thumb without covering the play area. */
-const portrait = matchMedia('(max-aspect-ratio: 4/5)').matches;
-const LAY = portrait ? E.LAYOUT_TALL : E.LAYOUT;
-cv.width = LAY.W; cv.height = LAY.H;
+/* Portrait phones get a tall board plus an empty band beneath the cannon:
+   somewhere to rest and drag a thumb without covering the play area. Landscape
+   uses the wide board and the side gutters. Re-picked whenever the phone
+   turns — see applyLayout. */
+const pickLayout = () =>
+  matchMedia('(max-aspect-ratio: 4/5)').matches ? E.LAYOUT_TALL : E.LAYOUT;
 
-W = LAY.W; H = LAY.H;
-
-const world = E.createWorld({ fx, layout: LAY });
+const world = E.createWorld({ fx, layout: pickLayout() });
 E.spawnWave(world);
+
+const board = { w: world.L.W, h: world.L.H };   // makeFit re-reads this
+
+function adoptLayout() {
+  W = world.L.W; H = world.L.H;
+  board.w = W; board.h = H;
+  cv.width = W; cv.height = H;
+  document.documentElement.style.setProperty('--board-max', W + 'px');
+}
+adoptLayout();
 
 /* ---------- input ---------- */
 let keys = {}, firing = false;
-let trimDir = 0, trimHeld = 0;
 
 function stagePt(e) {
   const r = cv.getBoundingClientRect();
@@ -1392,10 +1520,8 @@ addEventListener('pointercancel', endPointer);
 /* Belt and braces on top of the CSS: a long press must not start a selection
    or open the context menu mid-game. Scoped to the game surface so normal
    page behaviour survives on desktop. */
-for (const el of [cv, $('pad')]) {
-  for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
-    el.addEventListener(ev, e => e.preventDefault());
-  }
+for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
+  cv.addEventListener(ev, e => e.preventDefault());
 }
 // a drag that starts on the board can still paint a selection across the
 // header, so cancel any selection that begins while a touch is down
@@ -1407,35 +1533,51 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Space') firing = false; });
 
-/* touch trim buttons — fine correction, ramping to coarse if held */
-if (isTouch) {
-  document.body.classList.add('touch');
-  $('hint').style.display = 'none';
-  $('hintTouch').style.display = '';
-}
-function holdBtn(el, dir) {
-  el.addEventListener('pointerdown', e => {
-    e.preventDefault(); el.setPointerCapture(e.pointerId);
-    el.classList.add('on'); trimDir = dir; trimHeld = 0;
-  });
-  const end = () => { el.classList.remove('on'); if (trimDir === dir) { trimDir = 0; trimHeld = 0; } };
-  el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', end);
-  el.addEventListener('lostpointercapture', end);
-}
-holdBtn($('tLeft'), -1);
-holdBtn($('tRight'), 1);
+if (isTouch) document.body.classList.add('touch');
 
-/* Fit the board into whatever height is left after the header and the touch
-   pad, so the whole play area is visible without scrolling. The pad only
-   exists on touch layouts, hence the `extra` hook. */
-const fitStage = makeFit({
-  canvas: cv,
+/* The trim buttons are gone — they ate scarce screen for a job the drag now
+   does well enough on its own, so there is no furniture below the board and
+   `extra` is unnecessary. */
+const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
+
+/* Rotating the phone moves the run onto the other board. Chains are positioned
+   by arc-length, so scaling by the ratio of path lengths puts every segment at
+   the same fraction of its journey; wave, score, scrap, lives, upgrades and the
+   battery all carry over. */
+function applyLayout() {
+  const L2 = pickLayout();
+  if (L2 === world.L) return;
+  E.relayout(world, L2);
+  adoptLayout();
+  fitStage();
+  sync();
+}
+addEventListener('resize', applyLayout);
+addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
+
+makeHelp({
   stage: $('stage'),
-  board: { w: LAY.W, h: LAY.H },
-  extra: () => document.body.classList.contains('touch')
-    ? $('pad').getBoundingClientRect().height
-    : 0,
+  title: 'Serpent Battery',
+  rows: [
+    ['Aim', 'Press and drag anywhere. The cannon turns with your finger — move slowly for fine aim, flick to swing right across.'],
+    ['Fire', 'Holding down fires continuously. The press itself always looses one shot, so a tap never feels dropped.'],
+    ['Keyboard', 'Left and right arrows to aim, Space to fire.'],
+    ['Segments', '<div class="legend">' +
+      '<span><i style="background:#7f8fa0"></i>Armored</span>' +
+      '<span><i style="background:#e0503c"></i>Volatile</span>' +
+      '<span><i style="background:#4d7fb3"></i>Plated</span>' +
+      '<span><i style="background:#8f5fb8"></i>Regen</span>' +
+      '<span><i style="background:#e8d5a0"></i>Carrier</span>' +
+      '<span><i style="background:#d8763a"></i>Splitter</span></div>'],
+  ],
+  notes: [
+    'Consecutive hits build Overdrive: faster shots, then harder ones, then piercing. A miss cools it back down.',
+    'Firing builds heat. Overheat and that barrel locks until it cools.',
+    'Cutting the chain in the middle shoves it backwards — often worth more than killing the head.',
+    'Plated segments glance shots off the front. Come at them from the side, or clear a neighbour first.',
+    'Clear a wave to open the refit shop and spend scrap.',
+    'Turn the phone at any time — the board changes shape and your run comes with it.',
+  ],
 });
 
 /* ---------- loop ---------- */
@@ -1451,10 +1593,6 @@ function frame(now) {
     if (keys.ArrowRight) kb += 1;
     if (kb) c.ang = E.clampAim(c.ang + kb * 2.0 * dt);
 
-    if (trimDir) {
-      trimHeld += dt;
-      c.ang = E.clampAim(c.ang + trimDir * E.trimRate(trimHeld) * dt);
-    }
     if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
 
     E.step(world, dt, firing);
@@ -1627,7 +1765,7 @@ function openShop() {
 $('shopGo').addEventListener('click', () => {
   $('shop').classList.remove('on');
   E.nextWave(world);
-  firing = false; trimDir = 0; trimHeld = 0; drag = null;
+  firing = false; drag = null;
   sync();
 });
 
@@ -1920,13 +2058,13 @@ function draw() {
 
   // thumb rest: the band below the cannon. Marked out so it reads as a place
   // to hold rather than dead space, and kept dim so it never pulls the eye.
-  if (LAY.THUMB > 0) {
-    const top = H - LAY.THUMB;
+  if (world.L.THUMB > 0) {
+    const top = H - world.L.THUMB;
     const g = ctx.createLinearGradient(0, top, 0, H);
     g.addColorStop(0, 'rgba(11,20,24,0)');
     g.addColorStop(1, 'rgba(11,20,24,.55)');
     ctx.fillStyle = g;
-    ctx.fillRect(0, top, W, LAY.THUMB);
+    ctx.fillRect(0, top, W, world.L.THUMB);
 
     ctx.strokeStyle = 'rgba(99,121,127,.22)';
     ctx.lineWidth = 1;
@@ -2102,11 +2240,7 @@ function sync() {
 function showBanner(h, p, btn) {
   $('banner').classList.remove('hide');
   $('banner').querySelector('h2').textContent = h;
-  $('hint').style.display = 'none';
-  $('hintTouch').style.display = 'none';
-  $('legend').style.display = 'none';
-  const p2 = $('banner').querySelector('p');
-  p2.style.display = ''; p2.textContent = p;
+  $('hint').textContent = p;
   $('go').textContent = btn;
 }
 $('go').addEventListener('click', () => {
@@ -2114,7 +2248,7 @@ $('go').addEventListener('click', () => {
   if (world.over || !world.running) E.resetRun(world);
   world.running = true;
   $('banner').classList.add('hide');
-  firing = false; trimDir = 0; trimHeld = 0; drag = null;
+  firing = false; drag = null;
   fitStage(); sync();
 });
 

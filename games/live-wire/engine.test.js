@@ -89,6 +89,75 @@ test('the portrait board runs a full game without corrupting the wire', () => {
   }
 });
 
+/* ---------- rotating the phone ---------- */
+
+/** Lay a straight wire of `n` cells across the middle of the landscape board.
+ *  Built directly rather than grown by ticking: ticking a long wire in a
+ *  straight line just runs it into a wall, which is a different test. */
+function withWire(w, n) {
+  const y = Math.floor(w.L.ROWS / 2);
+  const headX = w.L.COLS - 2;
+  w.wire = [];
+  for (let i = 0; i < n; i++) w.wire.push({ x: headX - i, y });
+  w.dir = { x: 1, y: 0 };
+  w.grow = 0;
+  return w;
+}
+
+test('relayout keeps score, meals and length — the honest maximum here', () => {
+  const w = withWire(world({ seed: 5 }), 13);
+  w.score = 480; w.eaten = 12;
+  const len = w.wire.length;
+
+  E.relayout(w, TALL);
+
+  assert.equal(w.score, 480, 'score survives');
+  assert.equal(w.eaten, 12, 'meals survive');
+  assert.equal(w.wire.length, len, 'length survives — the grid reshapes, the progress does not vanish');
+  assert.equal(w.L.COLS, TALL.COLS, 'now on the portrait grid');
+});
+
+test('the re-laid wire is legal: in bounds, contiguous, no duplicates', () => {
+  const w = withWire(world({ seed: 7 }), 28);
+  E.relayout(w, TALL);
+
+  const keys = new Set(w.wire.map(c => `${c.x},${c.y}`));
+  assert.equal(keys.size, w.wire.length, 'no cell used twice');
+  for (const c of w.wire) assert.ok(E.inBounds(TALL, c.x, c.y), `${c.x},${c.y} is on the board`);
+  for (let i = 1; i < w.wire.length; i++) {
+    const a = w.wire[i - 1], b = w.wire[i];
+    assert.equal(Math.abs(a.x - b.x) + Math.abs(a.y - b.y), 1, `cells ${i - 1}/${i} adjoin`);
+  }
+});
+
+test('the re-laid wire can move without instantly killing itself', () => {
+  // the head must face open board, not its own neck
+  const w = withWire(world({ seed: 11 }), 25);
+  assert.equal(w.over, false, 'setup: wire is alive before rotating');
+  E.relayout(w, TALL);
+  w.running = true;
+  for (let i = 0; i < 5; i++) E.tick(w);
+  assert.equal(w.over, false, 'survived the first ticks after rotating');
+});
+
+test('a wire longer than one row still lays out legally', () => {
+  const w = withWire(world({ seed: 3 }), TALL.COLS + 6);
+  E.relayout(w, TALL);
+  const rows = new Set(w.wire.map(c => c.y));
+  assert.ok(rows.size > 1, 'wrapped onto more than one row');
+  for (let i = 1; i < w.wire.length; i++) {
+    const a = w.wire[i - 1], b = w.wire[i];
+    assert.equal(Math.abs(a.x - b.x) + Math.abs(a.y - b.y), 1, `wrapped body stays contiguous at ${i}`);
+  }
+});
+
+test('food is respawned onto the new grid, off the wire', () => {
+  const w = world({ seed: 13 });
+  E.relayout(w, TALL);
+  assert.ok(E.inBounds(TALL, w.food.x, w.food.y));
+  assert.equal(w.wire.some(c => c.x === w.food.x && c.y === w.food.y), false);
+});
+
 /* ---------- determinism ---------- */
 
 test('the same seed produces the same food sequence', () => {

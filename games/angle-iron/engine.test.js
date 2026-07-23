@@ -119,6 +119,65 @@ test('a portrait ball dies at the floor line, not the bottom of the canvas', () 
   assert.equal(w.balls.length, 0, 'the ball was lost at the floor');
 });
 
+/* ---------- rotating the phone ---------- */
+
+test('both layouts share one brick grid, which is what makes rotation lossless', () => {
+  assert.equal(L.BRICK_ROWS, TALL.BRICK_ROWS);
+  assert.equal(L.BRICK_COLS, TALL.BRICK_COLS);
+  assert.equal(E.buildBricks(1, L).length, E.buildBricks(1, TALL).length);
+});
+
+test('relayout carries every brick\'s damage across, index for index', () => {
+  const w = E.createWorld();
+  E.nextLevel(w);              // reach level 2 properly, so bricks match the level
+  w.score = 1234; w.lives = 2;
+  // chew up the field: kill some outright, wound others
+  w.bricks[0].alive = false;
+  w.bricks[1].hp = 1;
+  w.bricks[5].alive = false;
+  const before = w.bricks.map(b => `${b.row},${b.col}:${b.hp}:${b.alive}`);
+
+  E.relayout(w, TALL);
+
+  assert.equal(w.L.W, TALL.W, 'moved onto the portrait board');
+  assert.deepEqual(w.bricks.map(b => `${b.row},${b.col}:${b.hp}:${b.alive}`), before,
+    'every brick kept its damage');
+  assert.equal(w.score, 1234, 'score survives');
+  assert.equal(w.lives, 2, 'lives survive');
+  assert.equal(w.level, 2, 'level survives');
+});
+
+test('relayout re-racks the ball and refits the paddle', () => {
+  const w = E.createWorld();
+  E.launch(w);
+  assert.equal(w.balls.length, 1);
+  E.relayout(w, TALL);
+  assert.equal(w.held, true, 'ball is racked, since its flight means nothing on a new board');
+  assert.equal(w.balls.length, 0);
+  assert.equal(w.paddle.w, TALL.PADDLE_W, 'paddle takes the new board\'s width');
+  const lim = TALL.WALL + w.paddle.w / 2;
+  assert.ok(w.paddle.x >= lim && w.paddle.x <= TALL.W - lim, 'and sits inside the new walls');
+});
+
+test('rotating out and back is a round trip', () => {
+  const w = E.createWorld();
+  w.bricks[3].alive = false;
+  w.bricks[7].hp = 1;
+  const before = w.bricks.map(b => `${b.hp}:${b.alive}`);
+  E.relayout(w, TALL);
+  E.relayout(w, L);
+  assert.deepEqual(w.bricks.map(b => `${b.hp}:${b.alive}`), before);
+  assert.equal(w.L.W, L.W);
+});
+
+test('the ball is still speed-correct after a relayout', () => {
+  const w = E.createWorld();
+  E.relayout(w, TALL);
+  E.launch(w);
+  const b = w.balls[0];
+  assert.ok(Math.abs(Math.hypot(b.vx, b.vy) - E.levelSpeed(w.level, TALL)) < 1e-6);
+});
+
 /* ---------- collision primitives ---------- */
 
 test('circleRect detects overlap and clears a gap', () => {
