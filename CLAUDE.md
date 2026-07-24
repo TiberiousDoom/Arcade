@@ -6,11 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collection of standalone HTML5 canvas games. There is no bundler, no `package.json`, and no build step for day-to-day work — each game is either a single `.html` file or a small set of files that a browser can load directly (`file://` or any static server).
 
-Three games live here:
+Four games live here:
 
 1. **Serpent Battery** (`games/serpent-battery/`) — a tower-defense/shooter with a pure-logic engine (`engine.js`) covered by a large unit-test suite. The first game in the `games/<name>/` layout, and the template every other game follows.
 2. **Angle Iron** (`games/angle-iron/`) — a fresh, smaller build on the same engine/shell split. Good starting point for seeing the pattern without Serpent Battery's volume.
 3. **Live Wire** (`games/live-wire/`) — the first grid/tick-based game rather than continuous physics. Worth reading if you want to see how far the engine/shell split bends for a different genre.
+4. **Circuit Breaker** (`games/circuit-breaker/`) — a grid tower-defense: build auto-firing towers to stop surges flowing along a fixed path. Placement + economy rather than reflex, and the fullest example of the shared-module wiring (fit, fx, help, scores, audio, plus a controls strip).
 
 An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invaders cabinet — those were its names) was scrapped — see [docs/DECISIONS.md](docs/DECISIONS.md). Those games will be rebuilt from scratch under `games/` on the engine/shell pattern when we get to them.
 
@@ -28,6 +29,7 @@ No `package.json` exists — install test dependencies ad hoc if needed.
 # Run the engine unit tests (pure logic, no deps beyond Node's built-in test runner)
 node --test games/serpent-battery/engine.test.js
 node --test games/angle-iron/engine.test.js
+node --test games/circuit-breaker/engine.test.js
 
 # Run every engine suite at once
 node --test games/*/engine.test.js
@@ -106,13 +108,28 @@ There is no lint config in the repo.
 - **[live-wire.html](games/live-wire/live-wire.html)** adds swipe input (dominant-axis flick) alongside arrows/WASD — the first touch control in the repo, since Live Wire is unplayable on a phone without it.
 - **[engine.test.js](games/live-wire/engine.test.js)** — board/setup → determinism → movement → turning → eating/growth → bonus → death → time accumulator → win → reset → full-run invariants (no duplicated cells, body stays contiguous).
 
+## Architecture: Circuit Breaker (`games/circuit-breaker/`)
+
+A grid tower-defense — placement + economy, not reflex. Reuses two patterns from
+earlier games rather than inventing anything.
+
+- **[engine.js](games/circuit-breaker/engine.js)** — pure logic, seeded LCG only.
+  - **Enemy movement is Serpent Battery's arc-length model**: `buildPath(L)` turns a fixed `route` of `[col,row]` waypoints into a polyline with cumulative `s`, and `atS(path, pathLen, s)` gives the pixel position at any distance. An enemy is just a `dist` that grows by `speed·dt`.
+  - **Rotation is Live Wire's transpose trick.** `LAYOUT_TALL` is the exact transpose of `LAYOUT` (COLS×ROWS ↔ ROWS×COLS, same square `CELL`), and the route is transposed cell-for-cell. Because cells are square the two paths have an **identical length**, so `relayout` maps towers `(c,r)→(r,c)` and leaves every enemy's `dist` untouched — lossless, and no pace rescaling needed (a flat px/s speed is already layout-independent). Tests pin the transpose and the equal length.
+  - `TOWER_TYPES` (node/breaker/coil, 3 tiers each) resolved through `stats(tower)` — read that, not the raw tiers, exactly like Serpent Battery's `stats()`. Towers are **hitscan**: `step` acquires the furthest-along enemy in range, applies damage (plus splash / slow), and emits an `fx.shot` the shell draws as a beam. Projectiles are deferred (see STATUS).
+  - `wavePlan(wave)` is a pure, escalating spawn schedule; `startWave` queues it onto a timeline `step` releases over time (player-triggered, like Serpent's `nextWave`, giving a build phase). Economy: `charge` (kill bounty in, build/upgrade out, partial `sellValue` refund), `integrity` (a leak decrements; 0 = over), endless.
+  - Public API mirrors the others plus TD verbs: `canBuild`/`buildTower`/`upgradeTower`/`sellTower`, `startWave`, `cellAt`/`towerAt`, `relayout`.
+- **[circuit-breaker.html](games/circuit-breaker/circuit-breaker.html)** is the fullest shell: the standard layout/rotation/pause + help + audio + scores wiring from Angle Iron, plus a **`#controls` strip** (tower palette + Start Wave) reserved via `makeFit`'s `extra` hook — the same mechanism Serpent Battery used for its touch pad — and a tap-a-tower upgrade/sell popup. Tap a palette tower to select, tap an empty cell to build, tap a tower to adjust.
+- **[engine.test.js](games/circuit-breaker/engine.test.js)** — board/transpose invariant → path geometry → building → tower firing (range/cooldown/splash/slow) → enemies (movement/kill/leak) → waves → rotation (lossless round-trip) → full-run sanity.
+- **No standalone build, no render test** — matches Angle Iron and Live Wire.
+
 ## Architecture: the PWA layer
 
 - **[manifest.webmanifest](manifest.webmanifest)** — installable metadata. `start_url`/`scope` are `./` (relative, so the app survives being served from a subpath), `display: standalone`, `orientation: any` because every game handles both orientations.
 - **[sw.js](sw.js)** — precaches the entire app on install, then serves **cache-first** with a network fallback, plus a cabinet fallback for failed navigations. Cache-first is right here (everything is static, offline play is the point) but see the version warning above. It deliberately does *not* cache `serpent-battery-standalone.html` — that's a distribution artifact carrying its own inlined copy of everything.
-- **[shared/pwa.js](shared/pwa.js)** — registration, imported by all four pages so landing directly on a game installs the cache too. Resolves the worker URL via `import.meta.url` rather than an absolute `/sw.js`, again for subpath safety.
+- **[shared/pwa.js](shared/pwa.js)** — registration, imported by all five pages (cabinet + four games) so landing directly on a game installs the cache too. Resolves the worker URL via `import.meta.url` rather than an absolute `/sw.js`, again for subpath safety.
 - **[tools/make-icons.mjs](tools/make-icons.mjs)** — regenerates `shared/icons/` (needs `npm install --no-save canvas`). The icons are committed; only re-run when the mark changes.
-- The PWA head tags are duplicated across the four HTML files. That's deliberate — injecting them from JS is unreliable for iOS, and there's no build step to template them. `build.mjs` strips them (and the back link) from the standalone.
+- The PWA head tags are duplicated across the game HTML files. That's deliberate — injecting them from JS is unreliable for iOS, and there's no build step to template them. `build.mjs` strips them (and the back link) from the standalone.
 
 ## Architecture: `games/` and `shared/`
 

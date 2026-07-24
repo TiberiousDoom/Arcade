@@ -42,6 +42,10 @@
     {
       "name": "Live Wire",
       "url": "games/live-wire/live-wire.html"
+    },
+    {
+      "name": "Circuit Breaker",
+      "url": "games/circuit-breaker/circuit-breaker.html"
     }
   ]
 }

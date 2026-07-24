@@ -241,3 +241,16 @@ Three realities the module has to handle, all in code:
 - No AudioContext at all (old browsers, jsdom) must be a silent no-op, not a crash — every access is guarded. The render smoke test, which boots the standalone in jsdom, exercises this path.
 
 Serpent Battery needed one small, in-pattern engine addition: `fire()` now calls `w.fx.shot?.(count)` once per volley, so the shell can sound a single blip however many barrels loosed. Optional-chained like every fx call, so worlds built without a `shot` hook (every test, older callers) are unaffected — there's a test for both the hook firing and its absence being safe. Breaches have no fx hook; the shell watches `world.lives` across the step instead.
+
+## 2026-07-22 — Circuit Breaker: a tower-defense built by reusing two existing patterns
+
+Added a fourth game to answer the last item on the Apple-4.2 checklist ("more depth"). Chose tower-defense specifically because it's a *different genre* from the other three — placement and economy with auto-firing towers, not reflex/aim. Decided with the user: name Circuit Breaker; classic auto-firing towers (most distinct from Serpent Battery's manual aim, and all-taps for a phone); endless escalating waves (fits `scores.js`'s personal-best model).
+
+The build is almost entirely reuse, which is the point worth recording:
+
+- **Enemy movement is Serpent Battery's arc-length path** (`buildPath` + `atS`): an enemy is a `dist` along a polyline, positioned by binary search on cumulative length. No new movement code, just a different route (a fixed circuit instead of a serpentine).
+- **Rotation is Live Wire's transpose.** The portrait layout is the exact transpose of landscape; because cells are square the two paths have an *identical length*, so `relayout` maps towers `(c,r)→(r,c)` and every enemy's `dist` carries over untouched — lossless. This is the third game to solve rotation by making the two states mirror images rather than writing a migration (shared brick grid for Angle Iron, transposed grid for Live Wire, transposed path here). It also means no pace rescaling: a flat px/s enemy speed is already layout-independent.
+- **Towers are hitscan, not projectiles.** Instant damage on the furthest-along enemy in range, with the "beam" drawn by the shell from an `fx.shot` hook. Simplest, fully deterministic, and reads as an electrical zap. Projectiles are deferred — a feel/visual upgrade, not a mechanics one.
+- The shell is the fullest example of the shared-module wiring, and reuses `makeFit`'s `extra` hook (built originally for Serpent Battery's touch pad) to reserve the tower-palette controls strip.
+
+No standalone build or render test, matching Angle Iron and Live Wire — only Serpent Battery has those.

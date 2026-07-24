@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Circuit Breaker</title>
+<link rel="manifest" href="../../manifest.webmanifest">
+<meta name="theme-color" content="#0b1418">
+<link rel="icon" href="../../shared/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../../shared/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Arcade">
+<link rel="stylesheet" href="../../shared/theme.css">
+<script type="module" src="../../shared/pwa.js"></script>
+<style>
+  /* Circuit Breaker runs electrical blue, on a 780x520 board. */
+  :root{
+    --accent:#4d7fb3;
+    --accent-hot:#6fb7e8;
+    --accent-ink:#06121f;
+    --board-max:780px;
+  }
+
+  /* the controls strip below the board: tower palette + start-wave. Lives in
+     #shell (not footer, which is hidden on phones); its height is reserved by
+     makeFit's `extra` hook so the board never hides behind it. */
+  #controls{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;
+    padding-bottom:env(safe-area-inset-bottom,0px)}
+  .pick{
+    flex:1 1 0;min-width:78px;min-height:54px;
+    border:1px solid var(--line);background:#0f2027;color:var(--bone);
+    border-radius:4px;padding:6px 8px;cursor:pointer;text-align:left;
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .pick.on{border-color:var(--accent-hot);background:#13293a}
+  .pick:disabled{opacity:.5;cursor:default}
+  .pick b{font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+  .pick .cost{font-size:10px;color:var(--accent-hot)}
+  .pick .blurb{font-size:9px;color:var(--dim);line-height:1.3}
+  #startWave{flex:1 1 100%;min-height:44px}
+  #startWave.hide{display:none}
+
+  /* the tap-a-tower popup: upgrade / sell */
+  #tsel{position:absolute;z-index:6;display:none;flex-direction:column;gap:6px;
+    background:rgba(11,20,24,.97);border:1px solid var(--line);border-radius:6px;
+    padding:10px;min-width:150px}
+  #tsel.on{display:flex}
+  #tsel h3{font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-hot)}
+  #tsel button{padding:9px 12px;font-size:10px}
+  #tsel .sell{background:#2a1a17;color:#e0a89c}
+  #tsel .sell:hover{background:#3a241f}
+</style>
+
+<div id="shell">
+  <header>
+    <div class="titles">
+      <a class="back" href="../../index.html">&larr; Arcade</a>
+      <h1>Circuit <span>Breaker</span></h1>
+    </div>
+    <div class="meta">
+      <div>Wave <b id="uiWave">0</b></div>
+      <div>Score <b id="uiScore">0</b></div>
+      <div>Charge <b id="uiCharge">0</b></div>
+      <div>Core <b id="uiIntegrity">20</b></div>
+      <div>Best <b id="uiBest">—</b></div>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="cv" width="780" height="520"></canvas>
+    <div id="tsel"></div>
+    <div id="banner">
+      <h2>Circuit Breaker</h2>
+      <p id="hint">Pick a tower, tap an empty cell to build it, then start the wave.</p>
+      <button id="go">Begin</button>
+    </div>
+  </div>
+
+  <div id="controls"></div>
+</div>
+
+<script type="module">
+import * as E from './engine.js';
+import { makeFit } from '../../shared/fit.js';
+import { makeFx } from '../../shared/fx.js';
+import { makeHelp } from '../../shared/help.js';
+import { best, submit } from '../../shared/scores.js';
+import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const TAU = E.TAU;
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+const $ = id => document.getElementById(id);
+const GAME_ID = 'circuit-breaker';
+
+const gfx = makeFx({ reduce });
+const audio = makeAudio();
+
+/* short-lived hit beams, drawn by the shell. Purely cosmetic. */
+const beams = [];
+
+const fx = {
+  kill(x, y, type) { gfx.burst(x, y, E.ENEMY_TYPES[type].col, 12); audio.hit(); },
+  leak(x, y) { gfx.hit(.6); audio.breach(); },
+  shot(x, y, target, type) {
+    if (!reduce) {
+      const p = E.enemyPos(world, target);
+      beams.push({ x1: x, y1: y, x2: p.x, y2: p.y, col: E.TOWER_TYPES[type].col, life: .08 });
+    }
+    audio.fire();
+  },
+  build() { audio.eat(); },
+};
+
+/* ---------- layout ---------- */
+const pickLayout = () =>
+  matchMedia('(max-aspect-ratio: 4/5)').matches ? E.LAYOUT_TALL : E.LAYOUT;
+
+const world = E.createWorld({ fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff });
+
+let W = world.L.W, H = world.L.H;
+const board = { w: W, h: H };
+
+function adoptLayout() {
+  W = world.L.W; H = world.L.H;
+  board.w = W; board.h = H;
+  cv.width = W; cv.height = H;
+  document.documentElement.style.setProperty('--board-max', W + 'px');
+}
+adoptLayout();
+
+/* ---------- tower palette ---------- */
+let selected = 'node';   // currently-picked tower type for building
+
+const controls = $('controls');
+const pickBtns = {};
+for (const key of E.TOWER_KEYS) {
+  const T = E.TOWER_TYPES[key];
+  const b = document.createElement('button');
+  b.className = 'pick';
+  b.type = 'button';
+  b.innerHTML = `<b style="color:${T.col}">${T.name}</b><span class="cost">${T.cost}</span><span class="blurb">${T.blurb}</span>`;
+  b.addEventListener('click', () => { selected = key; syncPalette(); });
+  controls.append(b);
+  pickBtns[key] = b;
+}
+const startBtn = document.createElement('button');
+startBtn.id = 'startWave';
+startBtn.type = 'button';
+startBtn.textContent = 'Start Wave';
+startBtn.addEventListener('click', () => { if (world.running) E.startWave(world); syncPalette(); });
+controls.append(startBtn);
+
+function syncPalette() {
+  for (const key of E.TOWER_KEYS) {
+    pickBtns[key].classList.toggle('on', key === selected);
+    pickBtns[key].disabled = world.charge < E.TOWER_TYPES[key].cost;
+  }
+  startBtn.classList.toggle('hide', !(world.running && world.betweenWaves && !world.over));
+}
+
+/* ---------- tower popup (upgrade / sell) ---------- */
+const tsel = $('tsel');
+let popupIndex = -1;
+
+function openTowerPopup(i, px, py) {
+  popupIndex = i;
+  const t = world.towers[i];
+  const up = E.upgradeCost(t);
+  tsel.innerHTML =
+    `<h3>${E.TOWER_TYPES[t.type].name} ·${' ★'.repeat(t.tier + 1)}</h3>` +
+    (up === null
+      ? `<button disabled>Maxed</button>`
+      : `<button id="tUp">Upgrade · ${up}</button>`) +
+    `<button class="sell" id="tSell">Sell · +${E.sellValue(t)}</button>`;
+  // place near the tap, clamped into the stage
+  const rect = cv.getBoundingClientRect();
+  tsel.style.left = Math.min(px, rect.width - 160) + 'px';
+  tsel.style.top = Math.min(py, rect.height - 110) + 'px';
+  tsel.classList.add('on');
+  const upBtn = $('tUp'); if (upBtn) upBtn.addEventListener('click', () => { E.upgradeTower(world, popupIndex); closePopup(); sync(); });
+  $('tSell').addEventListener('click', () => { E.sellTower(world, popupIndex); closePopup(); sync(); });
+}
+function closePopup() { tsel.classList.remove('on'); popupIndex = -1; }
+
+/* ---------- input ---------- */
+function stagePt(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height),
+           lx: e.clientX - r.left, ly: e.clientY - r.top };
+}
+
+cv.addEventListener('pointerdown', e => {
+  if (e.target.closest('button')) return;
+  e.preventDefault();
+  if (!world.running) return;
+  if (tsel.classList.contains('on')) { closePopup(); return; }
+
+  const p = stagePt(e);
+  const cell = E.cellAt(world.L, p.x, p.y);
+  if (!cell) return;
+
+  const existing = world.towers.findIndex(t => t.c === cell.c && t.r === cell.r);
+  if (existing >= 0) { openTowerPopup(existing, p.lx, p.ly); return; }
+
+  if (E.buildTower(world, cell.c, cell.r, selected)) sync();
+});
+for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
+  cv.addEventListener(ev, e => e.preventDefault());
+}
+
+addEventListener('keydown', e => {
+  if (e.code === 'Digit1') selected = 'node';
+  else if (e.code === 'Digit2') selected = 'breaker';
+  else if (e.code === 'Digit3') selected = 'coil';
+  else if (e.code === 'Enter' || e.code === 'Space') {
+    e.preventDefault();
+    if (world.running && world.betweenWaves) E.startWave(world);
+  } else return;
+  syncPalette();
+});
+
+/* keep the popup reserved-height aware: makeFit reserves the controls strip */
+const fitStage = makeFit({
+  canvas: cv, stage: $('stage'), board,
+  extra: () => controls.getBoundingClientRect().height + 10,
+});
+
+/* ---------- rotation ---------- */
+function applyLayout() {
+  const L2 = pickLayout();
+  if (L2 === world.L) return;
+  const wasRunning = world.running;
+  closePopup();
+  E.relayout(world, L2);
+  adoptLayout();
+  fitStage();
+  sync();
+  if (wasRunning) {
+    world.running = false;
+    showBanner('Turned', 'The board turned. Your towers came with it.', 'Resume');
+  }
+}
+addEventListener('resize', applyLayout);
+addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
+
+mountAudioToggle({ stage: $('stage'), audio });
+
+makeHelp({
+  stage: $('stage'),
+  title: 'Circuit Breaker',
+  rows: [
+    ['Build', 'Pick a tower below, then tap an empty cell. Towers fire on their own.'],
+    ['Wave', 'Tap Start Wave when you\'re ready. Kills earn charge to build more.'],
+    ['Adjust', 'Tap one of your towers to upgrade or sell it.'],
+  ],
+  notes: [
+    'Node is cheap and fast; Breaker hits hard and splashes; Coil slows.',
+    'Every surge that reaches the core costs an integrity point — lose them all and it\'s over.',
+    'Keyboard: 1/2/3 pick a tower, Enter starts a wave.',
+  ],
+});
+
+/* ---------- banner ---------- */
+function showBanner(h, p, btn) {
+  $('banner').classList.remove('hide');
+  $('banner').querySelector('h2').textContent = h;
+  $('hint').innerHTML = p;
+  $('go').textContent = btn;
+}
+function hideBanner() { $('banner').classList.add('hide'); }
+
+$('go').addEventListener('click', () => {
+  if (world.over) E.resetGame(world);
+  world.running = true;
+  gfx.clear();
+  hideBanner();
+  sync();
+});
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+
+  if (world.running && !world.over) {
+    E.step(world, dt);
+    if (world.over) {
+      const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
+      syncBest();
+      showBanner('Core Breached',
+        r.record ? `New best — <b style="color:var(--accent-hot)">${world.score}</b>, wave ${world.wave}`
+                 : `Score <b style="color:var(--accent-hot)">${world.score}</b> · wave ${world.wave} · best ${r.best}`,
+        'Play again');
+    }
+    sync();
+  }
+
+  gfx.step(dt, 1.5);
+  for (let i = beams.length - 1; i >= 0; i--) { beams[i].life -= dt; if (beams[i].life <= 0) beams.splice(i, 1); }
+
+  draw();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- ui sync ---------- */
+function syncBest() {
+  const b = best(GAME_ID);
+  $('uiBest').textContent = b ? b.score : '—';
+}
+function sync() {
+  $('uiWave').textContent = world.wave;
+  $('uiScore').textContent = world.score;
+  $('uiCharge').textContent = world.charge;
+  $('uiIntegrity').textContent = world.integrity;
+  syncPalette();
+}
+
+/* ---------- draw ---------- */
+const C = () => world.L.CELL;
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawGrid();
+  drawPath();
+  drawCore();
+  for (let i = 0; i < world.towers.length; i++) drawTower(world.towers[i]);
+  for (const e of world.enemies) drawEnemy(e);
+  drawBeams();
+  gfx.draw(ctx);
+  if (gfx.flash > 0) { ctx.fillStyle = `rgba(224,80,60,${gfx.flash * .3})`; ctx.fillRect(0, 0, W, H); }
+  // range preview for the selected build type, under the pointer cell
+  if (hoverCell) drawRangePreview();
+}
+
+function drawGrid() {
+  const cell = C();
+  ctx.strokeStyle = 'rgba(35,56,63,.5)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let c = 1; c < world.L.COLS; c++) { ctx.moveTo(c * cell + .5, 0); ctx.lineTo(c * cell + .5, H); }
+  for (let r = 1; r < world.L.ROWS; r++) { ctx.moveTo(0, r * cell + .5); ctx.lineTo(W, r * cell + .5); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(99,121,127,.4)'; ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, W - 2, H - 2);
+}
+
+function drawPath() {
+  const p = world.path;
+  ctx.strokeStyle = 'rgba(77,127,179,.35)';
+  ctx.lineWidth = C() * .7;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(p[0].x, p[0].y);
+  for (let i = 1; i < p.length; i++) ctx.lineTo(p[i].x, p[i].y);
+  ctx.stroke();
+  // dashed centre line, so direction of flow reads
+  ctx.strokeStyle = 'rgba(111,183,232,.5)'; ctx.lineWidth = 2; ctx.setLineDash([7, 9]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawCore() {
+  const e = world.path[world.path.length - 1];
+  ctx.fillStyle = '#e0503c';
+  ctx.globalAlpha = .25 + .2 * Math.abs(Math.sin(performance.now() / 400));
+  ctx.beginPath(); ctx.arc(e.x, e.y, C() * .5, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#e0503c';
+  ctx.beginPath(); ctx.arc(e.x, e.y, C() * .26, 0, TAU); ctx.fill();
+}
+
+function drawTower(t) {
+  const cell = C();
+  const cx = (t.c + .5) * cell, cy = (t.r + .5) * cell;
+  const col = E.TOWER_TYPES[t.type].col;
+  const rr = cell * .32;
+  ctx.fillStyle = '#0f2027';
+  ctx.strokeStyle = col; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.fill(); ctx.stroke();
+  // a little barrel toward the current target
+  if (t.aim && world.enemies.includes(t.aim)) {
+    const p = E.enemyPos(world, t.aim);
+    const a = Math.atan2(p.y - cy, p.x - cx);
+    ctx.strokeStyle = col; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * rr * 1.4, cy + Math.sin(a) * rr * 1.4); ctx.stroke();
+  }
+  // tier pips
+  ctx.fillStyle = col;
+  for (let i = 0; i <= t.tier; i++) ctx.fillRect(cx - rr + 2 + i * 5, cy + rr - 3, 3, 3);
+}
+
+function drawEnemy(e) {
+  const p = E.enemyPos(world, e);
+  const col = E.ENEMY_TYPES[e.type].col;
+  ctx.fillStyle = e.slow > 0 ? '#6fb7e8' : col;
+  ctx.beginPath(); ctx.arc(p.x, p.y, e.r, 0, TAU); ctx.fill();
+  // hp bar
+  const w = e.r * 2, frac = Math.max(0, e.hp / e.maxhp);
+  ctx.fillStyle = 'rgba(11,20,24,.7)'; ctx.fillRect(p.x - w / 2, p.y - e.r - 7, w, 3);
+  ctx.fillStyle = frac > .5 ? '#3fae8f' : frac > .25 ? '#c9a227' : '#e0503c';
+  ctx.fillRect(p.x - w / 2, p.y - e.r - 7, w * frac, 3);
+}
+
+function drawBeams() {
+  for (const b of beams) {
+    ctx.globalAlpha = Math.min(1, b.life * 12);
+    ctx.strokeStyle = b.col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+let hoverCell = null;
+cv.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  const p = stagePt(e);
+  hoverCell = E.cellAt(world.L, p.x, p.y);
+});
+cv.addEventListener('pointerleave', () => { hoverCell = null; });
+
+function drawRangePreview() {
+  if (!world.running) return;
+  const { c, r } = hoverCell;
+  const existing = E.towerAt(world, c, r);
+  const range = existing ? E.stats(existing).range : E.TOWER_TYPES[selected].tiers[0].range;
+  const cx = (c + .5) * C(), cy = (r + .5) * C();
+  const ok = existing || E.canBuild(world, c, r, selected);
+  ctx.strokeStyle = ok ? 'rgba(111,183,232,.5)' : 'rgba(224,80,60,.4)';
+  ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.arc(cx, cy, range, 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+syncBest();
+sync();
+requestAnimationFrame(frame);
+</script>

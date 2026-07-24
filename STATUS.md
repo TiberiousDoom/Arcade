@@ -16,8 +16,9 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Serpent Battery** ([games/serpent-battery/serpent-battery.html](games/serpent-battery/serpent-battery.html)) — playable, backed by a tested engine ([engine.js](games/serpent-battery/engine.js) / [engine.test.js](games/serpent-battery/engine.test.js), 153 tests passing). [serpent-battery-standalone.html](games/serpent-battery/serpent-battery-standalone.html) is a *generated* single-file build — never edit it directly, run `node games/serpent-battery/build.mjs`.
 - **Angle Iron** ([games/angle-iron/angle-iron.html](games/angle-iron/angle-iron.html)) — playable and complete: paddle-angle steering, armoured back rows, four rotating level patterns, lives, level-clear bonus. Engine has 29 passing tests. Verified end to end in a browser (play, ball loss, game over, restart, level advance).
 - **Live Wire** ([games/live-wire/live-wire.html](games/live-wire/live-wire.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe. Engine has 34 passing tests. Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
+- **Circuit Breaker** ([games/circuit-breaker/circuit-breaker.html](games/circuit-breaker/circuit-breaker.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build. Engine has 25 passing tests. Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**228 engine tests pass across all three games** (`node --test games/*/engine.test.js`), plus 2 render smoke tests (`node --test games/serpent-battery/render-test.mjs`, after `npm install --no-save jsdom canvas`).
+**267 engine tests pass across all four games** (`node --test games/*/engine.test.js`), plus 2 render smoke tests (`node --test games/serpent-battery/render-test.mjs`, after `npm install --no-save jsdom canvas`).
 
 ## In progress / just decided
 
@@ -55,7 +56,7 @@ Neither store takes a PWA directly — both need a native binary, so a wrapper (
 
 - [x] Score persistence — `shared/scores.js`, personal bests in localStorage, shown in each game's HUD, on the game-over banner ("New best"), and on the cabinet cards. No backend, no identifier, no privacy surface.
 - [x] Audio — `shared/audio.js`, all effects synthesized with WebAudio (no sound files, stays offline). Mute toggle per game, remembered. Wired into all three.
-- [ ] More depth: powerups, more games, or progression
+- [x] More depth — added Circuit Breaker, a grid tower-defense (a genuinely different genre: placement + economy, not reflex). Angle Iron powerups / further games remain options but the 4.2 bar is now much better answered.
 - [x] Real-device testing — done once, on a phone via GitHub Pages. Findings acted on (see below); worth repeating after every batch of feel changes.
 
 **Guard this:** no tracking, no ads, no accounts, no network calls. That keeps Apple's privacy label "Data Not Collected" and Play's Data Safety form near-empty, which is where most submission pain lives. Adding an analytics or ads SDK imports that whole compliance surface.
@@ -91,12 +92,11 @@ From a real phone, via the Pages deploy:
 
 ## Open decisions (not yet settled)
 
-- Portrait is now device-tested and tuned. **Landscape is not** — the wide layouts, the gutter thumb rests and the rotation handover were built after that session and have only been checked in an emulator.
-- No score persistence anywhere. `localStorage` is the obvious cheap answer for a phone app; the old scrapped cabinet used a remote backend, which we're not restoring.
-- No audio in any game. Fine to defer, but phone arcade games usually want at least hit/death blips.
+- Portrait is now device-tested and tuned. **Landscape is not**, and neither is Circuit Breaker on any real device — the wide layouts, the gutter thumb rests, the rotation handover, and all of Circuit Breaker have only been checked in an emulator. A device pass on the new game is the obvious next thing.
 - Angle Iron has no powerups (the classic multiball/wide-paddle/laser set). The engine's `w.balls` array was built as an array specifically to leave that door open.
-- No render smoke test for Angle Iron or Live Wire, unlike Serpent Battery. Now more tractable: `build.mjs` shows how to inline a module shell for jsdom, so the same approach would work for the other two. Relevant because headless-browser rAF throttling (~0.1fps) makes visual verification unreliable — a jsdom render test is the more dependable safety net.
-- The cabinet now shows personal bests. Still no "continue where you left off" — that needs mid-run state saving, which is a bigger job than a single number.
+- Circuit Breaker towers are **hitscan** (instant zap). Projectiles (travelling shots) were deferred — a visual/feel upgrade, not a mechanics one.
+- No render smoke test for Angle Iron, Live Wire, or Circuit Breaker, unlike Serpent Battery. Now more tractable: `build.mjs` shows how to inline a module shell for jsdom, so the same approach would work for the others. Relevant because headless-browser rAF throttling (~0.1fps) makes visual verification unreliable — a jsdom render test is the more dependable safety net.
+- The cabinet shows personal bests. Still no "continue where you left off" — that needs mid-run state saving, a bigger job than a single number.
 
 ## How to update this file
 
