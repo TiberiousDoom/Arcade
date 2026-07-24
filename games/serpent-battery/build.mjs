@@ -96,6 +96,12 @@ function build() {
     `const { makeHelp } = ${help};`
   );
 
+  const audio = inlineModule(read(join(shared, 'audio.js')));
+  html = html.replace(
+    /^import \{ makeAudio, mountAudioToggle \} from '\.\.\/\.\.\/shared\/audio\.js';$/m,
+    `const { makeAudio, mountAudioToggle } = ${audio};`
+  );
+
   // JS imports only — CSS's own `@import url(...)` is legitimate and stays.
   const stray = html.match(/^\s*import\s.+$/m);
   if (stray) {

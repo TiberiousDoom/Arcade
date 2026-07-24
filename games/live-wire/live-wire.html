@@ -56,23 +56,25 @@ import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
+import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
 const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
 
 const gfx = makeFx({ reduce, gravity: 200 });
+const audio = makeAudio();
 
 /* Translate grid coordinates to pixels before handing off to the shared
    particle layer, which works in pixels like every other shell's does. */
 const cellBurst = (cx, cy, col, n) =>
   gfx.burst((cx + .5) * L.CELL, (cy + .5) * L.CELL, col, n, 120);
 
-/* cosmetic only — the engine never sees these */
+/* the engine never sees these — cosmetic particles, plus sound */
 const fx = {
-  eat(x, y) { cellBurst(x, y, '#c9a227', 10); },
-  bonus(x, y) { cellBurst(x, y, '#e6e9e2', 20); gfx.hit(.5); },
-  die() { gfx.hit(.8); },
+  eat(x, y) { cellBurst(x, y, '#c9a227', 10); audio.eat(); },
+  bonus(x, y) { cellBurst(x, y, '#e6e9e2', 20); gfx.hit(.5); audio.bonus(); },
+  die() { gfx.hit(.8); audio.die(); },
 };
 
 /* Portrait phones get a taller, narrower grid at the same cell size.
@@ -176,6 +178,8 @@ function applyLayout() {
 }
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
+
+mountAudioToggle({ stage: $('stage'), audio });
 
 makeHelp({
   stage: $('stage'),

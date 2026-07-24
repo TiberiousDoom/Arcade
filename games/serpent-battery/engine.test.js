@@ -1407,6 +1407,23 @@ test('firing respects the cooldown', () => {
   assert.equal(E.fire(w), 1, 'fires again once cool');
 });
 
+test('a volley calls fx.shot exactly once, with the number of barrels', () => {
+  let calls = 0, lastCount = 0;
+  const w = E.createWorld({ fx: { burst() {}, push() {}, shot(n) { calls++; lastCount = n; } } });
+  E.fire(w);
+  assert.equal(calls, 1, 'one hook per volley');
+  assert.equal(lastCount, 1, 'reports how many guns fired');
+  // a blocked volley (still cooling) must not sound
+  E.fire(w);
+  assert.equal(calls, 1, 'no hook when nothing fires');
+});
+
+test('fire tolerates an fx object without a shot hook', () => {
+  // every fx call is optional; older shells and tests pass burst/push only
+  const w = E.createWorld({ fx: { burst() {}, push() {} } });
+  assert.doesNotThrow(() => E.fire(w));
+});
+
 test('sustained fire overheats and locks the barrel', () => {
   const w = E.createWorld();
   for (let i = 0; i < 60; i++) {

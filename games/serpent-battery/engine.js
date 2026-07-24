@@ -376,7 +376,7 @@ export function createWorld(opts = {}) {
     running: false, over: false,
     waveClear: false, clearTimer: 0,
     breaches: 0,
-    fx: opts.fx || { burst() {}, push() {} },
+    fx: opts.fx || { burst() {}, push() {}, shot() {} },
     battery: makeBattery(L, 1),
   };
   // `cannon` remains as an alias to the battery for shared aim/streak/od, so
@@ -547,6 +547,9 @@ export function fire(w) {
   for (const gun of w.battery.guns) {
     if (fireGun(w, gun)) fired++;
   }
+  // one hook per volley, so the shell can sound a single blip regardless of how
+  // many barrels loosed. Optional, like every fx call — silence is the default.
+  if (fired) w.fx.shot?.(fired);
   return fired;
 }
 

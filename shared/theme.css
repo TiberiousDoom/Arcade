@@ -131,6 +131,23 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 }
 #helpBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
 
+/* ---- the mute toggle, matched to the "?" button but top-left ---- */
+#muteBtn{
+  position:absolute;top:8px;left:8px;z-index:5;
+  width:40px;height:40px;padding:0;
+  background:transparent;color:var(--dim);
+  border:1px solid var(--line);border-radius:50%;
+  font:700 15px/1 'Chivo Mono',monospace;letter-spacing:0;
+  display:flex;align-items:center;justify-content:center;
+}
+#muteBtn:hover{color:var(--bone);border-color:var(--dim)}
+/* muted: dim the note and strike it through, so state is legible at a glance */
+#muteBtn.off{color:#3a4b52}
+#muteBtn.off::after{
+  content:'';position:absolute;left:9px;right:9px;top:50%;height:1.5px;
+  background:currentColor;transform:rotate(-45deg);
+}
+
 #helpPanel{
   position:absolute;inset:0;z-index:6;display:none;
   flex-direction:column;gap:12px;

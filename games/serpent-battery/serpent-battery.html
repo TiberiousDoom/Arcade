@@ -121,6 +121,7 @@ import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
+import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -128,16 +129,28 @@ const TAU = E.TAU;
 const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
 const $ = id => document.getElementById(id);
 
-/* effects live in the shell, not the engine */
+const audio = makeAudio();
+
+/* effects live in the shell, not the engine. A kill or bomb bursts, so `burst`
+   is a fair proxy for an impact sound; `push` carries the overdrive/overheat
+   floaters, which double as the cue for those tones. Firing and breaches have
+   no fx hook — the frame loop watches world state for them instead. */
 const fx = {
   burst(x, y, col, n = 10) {
+    audio.hit();
     if (reduce) return;
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU, sp = 40 + Math.random() * 140;
       world.bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .35 + Math.random() * .4, col });
     }
   },
-  push(txt, x, y, col) { world.floaters.push({ txt, x, y, col, life: .9 }); },
+  push(txt, x, y, col) {
+    world.floaters.push({ txt, x, y, col, life: .9 });
+    if (txt === 'OVERHEAT') audio.overheat();
+    else if (txt === 'WARM' || txt === 'HOT' || txt === 'CRITICAL') audio.overdrive();
+  },
+  // one blip per volley, however many barrels loosed — the engine calls this
+  shot() { audio.fire(); },
 };
 
 /* Portrait phones get a tall board plus an empty band beneath the cannon:
@@ -251,6 +264,8 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
+mountAudioToggle({ stage: $('stage'), audio });
+
 makeHelp({
   stage: $('stage'),
   title: 'Serpent Battery',
@@ -281,7 +296,12 @@ function frame(now) {
 
     if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
 
+    const livesBefore = world.lives;
     E.step(world, dt, firing);
+    // a breach costs a life; the last one ends the run. Sound it either way,
+    // read from state since the engine has no breach fx hook.
+    if (world.lives < livesBefore) audio[world.over ? 'lose' : 'breach']();
+
     if (world.over) {
       const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
       syncBest();

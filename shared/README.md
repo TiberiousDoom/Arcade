@@ -15,6 +15,11 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
   resize/orientation listeners. `board` is read on every fit, so a game can
   mutate it in place when it swaps to a portrait layout. `extra` reserves room
   for furniture below the board (Serpent Battery's touch pad).
+- **[audio.js](audio.js)** — `makeAudio()` synthesizes all sound effects with
+  WebAudio (no files), plus `mountAudioToggle(...)` for the mute button. Guarded
+  against no-AudioContext environments and remembers mute in localStorage.
+- **[scores.js](scores.js)** — `best()` / `submit()` for local personal bests.
+- **[help.js](help.js)** — `makeHelp(...)` builds the "?" instructions overlay.
 - **[fx.js](fx.js)** — `makeFx({ reduce, gravity })` gives particles and a
   screen-flash value. Used by Angle Iron and Live Wire. **Serpent Battery does not
   use it**: its bits and floaters live on the world object and are stepped

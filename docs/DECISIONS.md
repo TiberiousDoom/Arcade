@@ -229,3 +229,15 @@ That is a store decision as much as a technical one. The current privacy posture
 Two details worth keeping: every storage access is wrapped, because localStorage genuinely throws in Safari private browsing and under storage policies, and a high score is not worth crashing a game over — it falls back to memory for the tab. And `best()` validates what it reads rather than trusting it, since anything could be sitting under that key (another tab, an older build, devtools). Both are covered by hand-testing against corrupted values.
 
 The key is namespaced because GitHub Pages puts every project site on one origin, where an unprefixed key like `best` would be a genuine collision risk.
+
+
+## 2026-07-22 — Audio is synthesized, not sampled
+
+`shared/audio.js` makes every sound effect from oscillators and short noise bursts through WebAudio. No `.wav`/`.mp3` files ship. This is the same reasoning as self-hosting the fonts: the app stays a fixed, small set of self-contained files that work offline, and the precache doesn't grow by hundreds of KB of samples. The trade is that the sounds are simple 8-bit-ish blips rather than rich effects — which suits these games, and can be tuned by editing numbers rather than re-recording.
+
+Three realities the module has to handle, all in code:
+- A browser won't let an AudioContext play until the user has interacted, so the context is created lazily and resumed on the first pointer/key event.
+- iOS plays WebAudio through the ringer switch even in silent mode, so a visible mute toggle is not optional. It's a speaker button mirroring the "?" help button, and the choice is remembered in localStorage (`arcade:muted`).
+- No AudioContext at all (old browsers, jsdom) must be a silent no-op, not a crash — every access is guarded. The render smoke test, which boots the standalone in jsdom, exercises this path.
+
+Serpent Battery needed one small, in-pattern engine addition: `fire()` now calls `w.fx.shot?.(count)` once per volley, so the shell can sound a single blip however many barrels loosed. Optional-chained like every fx call, so worlds built without a `shot` hook (every test, older callers) are unaffected — there's a test for both the hook firing and its absence being safe. Breaches have no fx hook; the shell watches `world.lives` across the step instead.

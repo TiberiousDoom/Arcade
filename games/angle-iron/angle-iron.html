@@ -52,6 +52,7 @@ import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
+import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
@@ -59,14 +60,16 @@ const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
 const $ = id => document.getElementById(id);
 
 const gfx = makeFx({ reduce });
+const audio = makeAudio();
 
-/* purely cosmetic — the engine never sees these */
+/* the engine never sees these — cosmetic particles, plus sound */
 const fx = {
   brick(x, y, row) {
     gfx.burst(x, y, BRICK_COL[Math.min(row, BRICK_COL.length - 1)] || '#e6e9e2');
+    audio.brick(row);
   },
-  bounce() {},
-  lose() { gfx.hit(.5); },
+  bounce() { audio.bounce(); },
+  lose() { gfx.hit(.5); audio.lose(); },
 };
 
 /* Portrait phones get the narrower, taller board with a thumb rest below the
@@ -173,6 +176,8 @@ function applyLayout() {
 }
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
+
+mountAudioToggle({ stage: $('stage'), audio });
 
 makeHelp({
   stage: $('stage'),

@@ -141,6 +141,23 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 }
 #helpBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
 
+/* ---- the mute toggle, matched to the "?" button but top-left ---- */
+#muteBtn{
+  position:absolute;top:8px;left:8px;z-index:5;
+  width:40px;height:40px;padding:0;
+  background:transparent;color:var(--dim);
+  border:1px solid var(--line);border-radius:50%;
+  font:700 15px/1 'Chivo Mono',monospace;letter-spacing:0;
+  display:flex;align-items:center;justify-content:center;
+}
+#muteBtn:hover{color:var(--bone);border-color:var(--dim)}
+/* muted: dim the note and strike it through, so state is legible at a glance */
+#muteBtn.off{color:#3a4b52}
+#muteBtn.off::after{
+  content:'';position:absolute;left:9px;right:9px;top:50%;height:1.5px;
+  background:currentColor;transform:rotate(-45deg);
+}
+
 #helpPanel{
   position:absolute;inset:0;z-index:6;display:none;
   flex-direction:column;gap:12px;
@@ -686,7 +703,7 @@ function createWorld(opts = {}) {
     running: false, over: false,
     waveClear: false, clearTimer: 0,
     breaches: 0,
-    fx: opts.fx || { burst() {}, push() {} },
+    fx: opts.fx || { burst() {}, push() {}, shot() {} },
     battery: makeBattery(L, 1),
   };
   // `cannon` remains as an alias to the battery for shared aim/streak/od, so
@@ -857,6 +874,9 @@ function fire(w) {
   for (const gun of w.battery.guns) {
     if (fireGun(w, gun)) fired++;
   }
+  // one hook per volley, so the shell can sound a single blip regardless of how
+  // many barrels loosed. Optional, like every fx call — silence is the default.
+  if (fired) w.fx.shot?.(fired);
   return fired;
 }
 
@@ -1507,6 +1527,145 @@ function clear(game) {
 
 return { KEY, memory, warned, readRaw, writeRaw, best, submit, clear };
 })();
+const { makeAudio, mountAudioToggle } = (() => {
+/* Sound effects, synthesized on the fly with WebAudio.
+
+   No audio files ship. Every blip is a few oscillators and an envelope, which
+   keeps the app's zero-external-assets, works-offline property intact — the
+   whole point of self-hosting the fonts applies here too.
+
+   Two realities this has to respect:
+   - A browser won't let an AudioContext make noise until the user has
+     interacted with the page, so the context is created lazily and resumed on
+     the first gesture.
+   - iOS plays WebAudio through the ringer switch regardless of silent mode, so
+     a visible mute toggle is not optional. The choice is remembered. */
+
+const MUTE_KEY = 'arcade:muted';
+
+function readMuted() {
+  try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; }
+}
+function writeMuted(v) {
+  try { localStorage.setItem(MUTE_KEY, v ? '1' : '0'); } catch { /* private mode: keep in memory only */ }
+}
+
+function makeAudio() {
+  let ctx = null, master = null, noiseBuf = null;
+  let muted = readMuted();
+
+  function ensure() {
+    if (ctx) return ctx;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    try {
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = 0.22;          // headroom; individual sounds sit under this
+      master.connect(ctx.destination);
+      // one second of white noise, reused for every crunch
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch { ctx = null; }
+    return ctx;
+  }
+
+  function resume() {
+    const c = ensure();
+    if (c && c.state === 'suspended') c.resume();
+  }
+
+  /** A single enveloped oscillator. Frequencies glide from f0 to f1. */
+  function tone(f0, f1, dur, { type = 'square', gain = 0.3, attack = 0.004, delay = 0 } = {}) {
+    const c = ensure();
+    if (!c || muted) return;
+    const t = c.currentTime + delay;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g); g.connect(master);
+    osc.start(t); osc.stop(t + dur + 0.02);
+  }
+
+  /** A short filtered noise burst — the crunch under a break or explosion. */
+  function noise(dur, { f = 1400, q = 0.8, gain = 0.25 } = {}) {
+    const c = ensure();
+    if (!c || muted || !noiseBuf) return;
+    const t = c.currentTime;
+    const src = c.createBufferSource(); src.buffer = noiseBuf;
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+    const g = c.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(bp); bp.connect(g); g.connect(master);
+    src.start(t); src.stop(t + dur);
+  }
+
+  return {
+    resume,
+    get muted() { return muted; },
+    toggle() { muted = !muted; writeMuted(muted); if (!muted) resume(); return muted; },
+
+    /* --- the named library, one method per game event --- */
+
+    // Angle Iron
+    bounce() { tone(210, 170, 0.05, { type: 'triangle', gain: 0.16 }); },
+    brick(row = 0) {
+      tone(360 + row * 70, 260 + row * 60, 0.06, { type: 'square', gain: 0.2 });
+      noise(0.05, { f: 1800, gain: 0.12 });
+    },
+
+    // Live Wire
+    eat() { tone(520, 700, 0.07, { type: 'square', gain: 0.2 }); },
+    bonus() {
+      tone(660, 660, 0.08, { type: 'triangle', gain: 0.22 });
+      tone(990, 990, 0.1, { type: 'triangle', gain: 0.22, delay: 0.07 });
+    },
+
+    // Serpent Battery
+    fire() { tone(680, 300, 0.05, { type: 'sawtooth', gain: 0.12 }); },
+    hit() { tone(300, 220, 0.045, { type: 'square', gain: 0.16 }); noise(0.04, { f: 900, gain: 0.1 }); },
+    overdrive() { tone(500, 820, 0.12, { type: 'triangle', gain: 0.22 }); },
+    overheat() { tone(150, 110, 0.22, { type: 'sawtooth', gain: 0.24 }); },
+    breach() { tone(130, 70, 0.3, { type: 'square', gain: 0.28 }); noise(0.2, { f: 300, gain: 0.18 }); },
+
+    // shared endings
+    lose() { tone(300, 90, 0.35, { type: 'sawtooth', gain: 0.28 }); },
+    die() { tone(320, 80, 0.4, { type: 'sawtooth', gain: 0.3 }); noise(0.25, { f: 500, gain: 0.15 }); },
+  };
+}
+
+/** Add a speaker toggle to a game's stage, matched to the "?" help button.
+ *  Resumes audio on the first interaction with the page, since a browser will
+ *  not let it play before then. */
+function mountAudioToggle({ stage, audio }) {
+  const btn = document.createElement('button');
+  btn.id = 'muteBtn';
+  btn.type = 'button';
+  btn.textContent = '♪';
+  const label = () => {
+    btn.classList.toggle('off', audio.muted);
+    btn.setAttribute('aria-label', audio.muted ? 'Unmute' : 'Mute');
+    btn.setAttribute('aria-pressed', String(audio.muted));
+  };
+  label();
+  btn.addEventListener('click', () => { audio.toggle(); label(); });
+  stage.append(btn);
+
+  const wake = () => audio.resume();
+  addEventListener('pointerdown', wake, { once: true });
+  addEventListener('keydown', wake, { once: true });
+  return btn;
+}
+
+return { MUTE_KEY, readMuted, writeMuted, makeAudio, mountAudioToggle };
+})();
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -1514,16 +1673,28 @@ const TAU = E.TAU;
 const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
 const $ = id => document.getElementById(id);
 
-/* effects live in the shell, not the engine */
+const audio = makeAudio();
+
+/* effects live in the shell, not the engine. A kill or bomb bursts, so `burst`
+   is a fair proxy for an impact sound; `push` carries the overdrive/overheat
+   floaters, which double as the cue for those tones. Firing and breaches have
+   no fx hook — the frame loop watches world state for them instead. */
 const fx = {
   burst(x, y, col, n = 10) {
+    audio.hit();
     if (reduce) return;
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU, sp = 40 + Math.random() * 140;
       world.bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .35 + Math.random() * .4, col });
     }
   },
-  push(txt, x, y, col) { world.floaters.push({ txt, x, y, col, life: .9 }); },
+  push(txt, x, y, col) {
+    world.floaters.push({ txt, x, y, col, life: .9 });
+    if (txt === 'OVERHEAT') audio.overheat();
+    else if (txt === 'WARM' || txt === 'HOT' || txt === 'CRITICAL') audio.overdrive();
+  },
+  // one blip per volley, however many barrels loosed — the engine calls this
+  shot() { audio.fire(); },
 };
 
 /* Portrait phones get a tall board plus an empty band beneath the cannon:
@@ -1637,6 +1808,8 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
+mountAudioToggle({ stage: $('stage'), audio });
+
 makeHelp({
   stage: $('stage'),
   title: 'Serpent Battery',
@@ -1667,7 +1840,12 @@ function frame(now) {
 
     if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
 
+    const livesBefore = world.lives;
     E.step(world, dt, firing);
+    // a breach costs a life; the last one ends the run. Sound it either way,
+    // read from state since the engine has no breach fx hook.
+    if (world.lives < livesBefore) audio[world.over ? 'lose' : 'breach']();
+
     if (world.over) {
       const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
       syncBest();
