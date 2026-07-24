@@ -56,10 +56,13 @@
   .card .how{
     font-size:9px;letter-spacing:.14em;text-transform:uppercase;
     color:var(--pip);margin-top:auto;padding-top:4px;
+    display:flex;justify-content:space-between;gap:10px;align-items:baseline;
   }
+  .card .best{color:var(--dim);letter-spacing:.08em}
+  .card .best b{color:var(--bone);font-weight:600}
 
   /* each card tints itself with the accent of the game it opens */
-  .card.serpent{--pip:#c9a227}
+  .card.serpent-battery{--pip:#c9a227}
   .card.angle-iron{--pip:#3fae8f}
   .card.live-wire{--pip:#5fc9a4}
 
@@ -71,12 +74,13 @@
   <header>
     <h1>Ar<span>cade</span></h1>
     <div class="tag">Three games</div>
+
   </header>
 
   <nav>
     <ul id="games">
       <li>
-        <a class="card serpent" href="games/serpent-battery/serpent-battery.html">
+        <a class="card serpent-battery" href="games/serpent-battery/serpent-battery.html">
           <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
             <circle cx="16" cy="12" r="6"/><circle cx="34" cy="12" r="5"/>
             <circle cx="50" cy="12" r="5"/><circle cx="66" cy="12" r="5"/>
@@ -123,3 +127,18 @@
     <b>Everything runs offline. No accounts, no ads, no tracking.</b>
   </footer>
 </div>
+<script type="module">
+/* Personal bests on the cards. Read-only here — the games do the writing. */
+import { best } from './shared/scores.js';
+
+for (const card of document.querySelectorAll('.card')) {
+  // the card's second class IS the game id — keep them in step
+  const id = [...card.classList].find(c => c !== 'card');
+  const b = best(id);
+  if (!b) continue;
+  const slot = document.createElement('span');
+  slot.className = 'best';
+  slot.innerHTML = `Best <b>${b.score}</b>${b.detail ? ' · ' + b.detail : ''}`;
+  card.querySelector('.how').append(slot);
+}
+</script>

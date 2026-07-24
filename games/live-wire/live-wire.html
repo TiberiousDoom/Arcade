@@ -30,7 +30,7 @@
     <div class="meta">
       <div>Score <b id="uiScore">0</b></div>
       <div>Length <b id="uiLen">4</b></div>
-      <div>Eaten <b id="uiEaten">0</b></div>
+      <div>Best <b id="uiBest">—</b></div>
     </div>
   </header>
 
@@ -55,6 +55,7 @@ import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { makeHelp } from '../../shared/help.js';
+import { best, submit } from '../../shared/scores.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -199,8 +200,14 @@ function frame(now) {
   const wasOver = world.over;
   E.step(world, dt);
   if (world.over && !wasOver) {
+    const r = submit(GAME_ID, world.score, `Length ${world.wire.length}`);
+    syncBest();
     if (world.won) showBanner('Board Cleared', `You filled the grid. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Play again');
-    else showBanner('Game Over', `Score <b style="color:var(--brass)">${world.score}</b> · length ${world.wire.length} · ${world.eaten} eaten`, 'Play again');
+    else showBanner('Game Over',
+      r.record
+        ? `New best — <b style="color:var(--brass)">${world.score}</b>, length ${world.wire.length}`
+        : `Score <b style="color:var(--brass)">${world.score}</b> · length ${world.wire.length} · best ${r.best}`,
+      'Play again');
   }
   if (world.running) sync();
 
@@ -210,10 +217,16 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+const GAME_ID = 'live-wire';
+
+function syncBest() {
+  const b = best(GAME_ID);
+  $('uiBest').textContent = b ? b.score : '—';
+}
+
 function sync() {
   $('uiScore').textContent = world.score;
   $('uiLen').textContent = world.wire.length;
-  $('uiEaten').textContent = world.eaten;
 }
 
 /* ---------- draw ---------- */
@@ -318,6 +331,7 @@ function drawBonus(b) {
   ctx.globalAlpha = 1;
 }
 
+syncBest();
 sync();                      // makeFit already performed the first fit
 requestAnimationFrame(frame);
 </script>

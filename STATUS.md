@@ -53,7 +53,7 @@ Neither store takes a PWA directly — both need a native binary, so a wrapper (
 
 **Apple Guideline 4.2 (minimum functionality) is the binding constraint.** Three simple arcade games with no scores, audio, or progression is the profile Apple rejects. Google Play would accept this today. So the items below are *entry requirements for Apple*, not polish:
 
-- [ ] Score persistence (localStorage — no backend, no privacy surface)
+- [x] Score persistence — `shared/scores.js`, personal bests in localStorage, shown in each game's HUD, on the game-over banner ("New best"), and on the cabinet cards. No backend, no identifier, no privacy surface.
 - [ ] Audio, at least hit/death blips
 - [ ] More depth: powerups, more games, or progression
 - [x] Real-device testing — done once, on a phone via GitHub Pages. Findings acted on (see below); worth repeating after every batch of feel changes.
@@ -96,7 +96,7 @@ From a real phone, via the Pages deploy:
 - No audio in any game. Fine to defer, but phone arcade games usually want at least hit/death blips.
 - Angle Iron has no powerups (the classic multiball/wide-paddle/laser set). The engine's `w.balls` array was built as an array specifically to leave that door open.
 - No render smoke test for Angle Iron or Live Wire, unlike Serpent Battery. Now more tractable: `build.mjs` shows how to inline a module shell for jsdom, so the same approach would work for the other two. Relevant because headless-browser rAF throttling (~0.1fps) makes visual verification unreliable — a jsdom render test is the more dependable safety net.
-- The cabinet is a plain list of links. No score display, no "continue where you left off", no per-game high scores — all of which want the score persistence above to exist first.
+- The cabinet now shows personal bests. Still no "continue where you left off" — that needs mid-run state saving, which is a bigger job than a single number.
 
 ## How to update this file
 

@@ -218,3 +218,14 @@ Even with progress preserved, being dropped straight back into a live game on a 
 Found while chasing what looked like a caching annoyance and turned out to be a genuine defect: `cache.addAll(PRECACHE)` fetches through the browser's **HTTP cache**, so a stale copy sitting there gets faithfully precached and then served forever. Bumping `CACHE_VERSION` would have re-cached the *old* build — quietly defeating the one mechanism the whole update story depends on. Fixed with `new Request(url, { cache: 'reload' })`, which forces a network fetch.
 
 Also added a `?nosw` escape hatch to `shared/pwa.js`: loading any page with it unregisters the worker and drops its caches. Cache-first intercepts even a forced reload, so without this, editing a file and reloading keeps showing the old page and the symptom looks like "my change did nothing".
+
+
+## 2026-07-22 — Scores are local-only, on purpose
+
+`shared/scores.js` keeps one personal best per game in localStorage under `arcade:best:<game>`. No account, no server, no device identifier, nothing to sync.
+
+That is a store decision as much as a technical one. The current privacy posture — no tracking, no ads, no accounts, no network calls — is what keeps Apple's label at "Data Not Collected" and Play's Data Safety form empty, which is where most submission pain lives. A real leaderboard means a backend, an identifier, a privacy policy and a compliance surface, and would trade away the one thing this project has for free. If a leaderboard is ever wanted, read this entry first and price it properly.
+
+Two details worth keeping: every storage access is wrapped, because localStorage genuinely throws in Safari private browsing and under storage policies, and a high score is not worth crashing a game over — it falls back to memory for the tab. And `best()` validates what it reads rather than trusting it, since anything could be sitting under that key (another tab, an older build, devtools). Both are covered by hand-testing against corrupted values.
+
+The key is namespaced because GitHub Pages puts every project site on one origin, where an unprefixed key like `best` would be a genuine collision risk.

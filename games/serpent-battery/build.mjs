@@ -84,6 +84,12 @@ function build() {
     `const { makeFit } = ${fit};`
   );
 
+  const scores = inlineModule(read(join(shared, 'scores.js')));
+  html = html.replace(
+    /^import \{ best, submit \} from '\.\.\/\.\.\/shared\/scores\.js';$/m,
+    `const { best, submit } = ${scores};`
+  );
+
   const help = inlineModule(read(join(shared, 'help.js')));
   html = html.replace(
     /^import \{ makeHelp \} from '\.\.\/\.\.\/shared\/help\.js';$/m,

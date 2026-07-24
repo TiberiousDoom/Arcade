@@ -26,6 +26,7 @@
       <div>Level <b id="uiLevel">1</b></div>
       <div>Score <b id="uiScore">0</b></div>
       <div>Balls <b id="uiLives">3</b></div>
+      <div>Best <b id="uiBest">—</b></div>
     </div>
   </header>
 
@@ -50,6 +51,7 @@ import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { makeHelp } from '../../shared/help.js';
+import { best, submit } from '../../shared/scores.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
@@ -220,7 +222,15 @@ function frame(now) {
 
     E.step(world, dt);
 
-    if (world.over) showBanner('Game Over', `Score <b style="color:var(--brass)">${world.score}</b> · reached level ${world.level}`, 'Play again');
+    if (world.over) {
+      const r = submit(GAME_ID, world.score, `Level ${world.level}`);
+      syncBest();
+      showBanner('Game Over',
+        r.record
+          ? `New best — <b style="color:var(--brass)">${world.score}</b>`
+          : `Score <b style="color:var(--brass)">${world.score}</b> · best ${r.best}`,
+        'Play again');
+    }
     else if (world.levelClear) {
       world.running = false;
       showBanner('Level Cleared', `Level ${world.level} down. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Next level');
@@ -233,6 +243,13 @@ function frame(now) {
 
   draw();
   requestAnimationFrame(frame);
+}
+
+const GAME_ID = 'angle-iron';
+
+function syncBest() {
+  const b = best(GAME_ID);
+  $('uiBest').textContent = b ? b.score : '—';
 }
 
 function sync() {
@@ -310,6 +327,7 @@ function ball(x, y, r) {
   ctx.fill();
 }
 
+syncBest();
 sync();                      // makeFit already performed the first fit
 requestAnimationFrame(frame);
 </script>

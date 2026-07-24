@@ -76,6 +76,7 @@
       <div>Score <b id="uiScore">0</b></div>
       <div>Scrap <b id="uiScrap">0</b></div>
       <div>Cells <b id="uiLives">3</b></div>
+      <div>Best <b id="uiBest">—</b></div>
       <div id="uiBuild" title="Barrel / Chamber / Optics / Munitions"></div>
     </div>
   </header>
@@ -119,6 +120,7 @@
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeHelp } from '../../shared/help.js';
+import { best, submit } from '../../shared/scores.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -280,7 +282,14 @@ function frame(now) {
     if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
 
     E.step(world, dt, firing);
-    if (world.over) showBanner('Battery Down', `Score ${world.score} · Wave ${world.wave}`, 'Try again');
+    if (world.over) {
+      const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
+      syncBest();
+      showBanner('Battery Down',
+        r.record ? `New best — ${world.score}, wave ${world.wave}`
+                 : `Score ${world.score} · Wave ${world.wave} · best ${r.best}`,
+        'Try again');
+    }
     else if (world.shopOpen && !$('shop').classList.contains('on')) openShop();
     sync();
   }
@@ -892,6 +901,13 @@ function draw() {
 }
 
 /* ---------- ui ---------- */
+const GAME_ID = 'serpent-battery';
+
+function syncBest() {
+  const b = best(GAME_ID);
+  $('uiBest').textContent = b ? b.score : '—';
+}
+
 function sync() {
   $('uiWave').textContent = world.wave;
   $('uiScore').textContent = world.score;
@@ -939,6 +955,6 @@ $('go').addEventListener('click', () => {
   fitStage(); sync();
 });
 
-fitStage(); sync();
+fitStage(); syncBest(); sync();
 requestAnimationFrame(frame);
 </script>
