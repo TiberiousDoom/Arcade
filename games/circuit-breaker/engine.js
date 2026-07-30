@@ -21,29 +21,59 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
  *  alongside only to keep the backing canvas sharp. */
 export const CELL = 64;
 
-/** The circuit path, as a list of [col, row] waypoints in landscape space.
- *  Enters top-left, snakes across, and ends at the core on the right edge.
- *  Transposing (swap each pair) yields a valid portrait route by construction,
- *  since the grid dimensions swap too. Kept within a 12x8 grid. */
-const ROUTE = [
-  [0, 1], [9, 1], [9, 3], [2, 3], [2, 5], [11, 5], [11, 7],
+/** The circuits, each a list of [col, row] waypoints in landscape space, within
+ *  a 12x8 grid. Consecutive waypoints must be axis-aligned (only one coordinate
+ *  changes) — `pathCells` walks between them a cell at a time and relies on it.
+ *
+ *  Several of them because a single fixed circuit meant every run was the same
+ *  board: the whole game was one puzzle, solved once. A route is picked per run
+ *  (not per wave — swapping the path mid-run would strand towers), so replaying
+ *  is a different defence problem rather than the same one faster.
+ *
+ *  Transposing each (swap every pair) yields a valid portrait route by
+ *  construction, since the grid dimensions swap too, and because cells are
+ *  square the transposed path has an identical length. That is what keeps
+ *  rotation lossless — see `relayout`. */
+const ROUTES = [
+  // A: three long sweeps, doubling back — the original. Plenty of cells that
+  // cover two lanes at once, so it rewards finding the pinch points.
+  [[0, 1], [9, 1], [9, 3], [2, 3], [2, 5], [11, 5], [11, 7]],
+  // B: enters low and climbs, then descends in steps. Longer and more wound,
+  // so there is more time on the board but the lanes are further apart.
+  [[0, 6], [10, 6], [10, 1], [3, 1], [3, 4], [7, 4], [7, 7], [11, 7]],
+  // C: fewer turns and long straights. Shortest of the three, so less time to
+  // kill, but the straights concentrate fire nicely.
+  [[0, 0], [8, 0], [8, 4], [1, 4], [1, 7], [11, 7]],
 ];
+export const ROUTE_COUNT = ROUTES.length;
+
+const transpose = (route) => route.map(([c, r]) => [r, c]);
 
 export const LAYOUT = {
   COLS: 12, ROWS: 8, CELL,
-  route: ROUTE,
+  routes: ROUTES,
+  /** The default circuit. Kept so callers that predate multiple routes, and
+   *  anything that only needs "a" route, still work. */
+  get route() { return this.routes[0]; },
   get W() { return this.COLS * this.CELL; },
   get H() { return this.ROWS * this.CELL; },
 };
 
-/** Portrait phones get the exact transpose — same cells, same route, stood on
- *  its end. Keep these mirrored; `relayout` and a test both rely on it. */
+/** Portrait phones get the exact transpose — same cells, same routes, stood on
+ *  their end. Keep these mirrored; `relayout` and a test both rely on it. */
 export const LAYOUT_TALL = {
   COLS: LAYOUT.ROWS, ROWS: LAYOUT.COLS, CELL,
-  route: ROUTE.map(([c, r]) => [r, c]),
+  routes: ROUTES.map(transpose),
+  get route() { return this.routes[0]; },
   get W() { return this.COLS * this.CELL; },
   get H() { return this.ROWS * this.CELL; },
 };
+
+/** The route at `i` on this layout, wrapping so an out-of-range index is safe. */
+export function routeAt(L, i = 0) {
+  const rs = L.routes || [L.route];
+  return rs[((i % rs.length) + rs.length) % rs.length];
+}
 
 export const cellCenter = (L, c, r) => ({ x: (c + 0.5) * L.CELL, y: (r + 0.5) * L.CELL });
 export const inGrid = (L, c, r) => c >= 0 && r >= 0 && c < L.COLS && r < L.ROWS;
@@ -59,8 +89,8 @@ export function cellAt(L, px, py) {
 
 /** Build the polyline through the route's cell centres, tagging each vertex
  *  with cumulative arc-length `s`. Returns the points and the total length. */
-export function buildPath(L) {
-  const pts = L.route.map(([c, r]) => cellCenter(L, c, r));
+export function buildPath(L, routeIndex = 0) {
+  const pts = routeAt(L, routeIndex).map(([c, r]) => cellCenter(L, c, r));
   const path = [{ x: pts[0].x, y: pts[0].y, s: 0 }];
   let acc = 0;
   for (let i = 1; i < pts.length; i++) {
@@ -87,11 +117,12 @@ export function atS(path, pathLen, s) {
 
 /** The set of cells the path runs through — non-buildable. Every cell a route
  *  segment crosses (segments are axis-aligned, so this is exact). */
-export function pathCells(L) {
+export function pathCells(L, routeIndex = 0) {
   const set = new Set();
-  for (let i = 1; i < L.route.length; i++) {
-    let [c0, r0] = L.route[i - 1];
-    const [c1, r1] = L.route[i];
+  const route = routeAt(L, routeIndex);
+  for (let i = 1; i < route.length; i++) {
+    let [c0, r0] = route[i - 1];
+    const [c1, r1] = route[i];
     const dc = Math.sign(c1 - c0), dr = Math.sign(r1 - r0);
     set.add(cellKey(c0, r0));
     while (c0 !== c1 || r0 !== r1) { c0 += dc; r0 += dr; set.add(cellKey(c0, r0)); }
@@ -122,7 +153,7 @@ export const TOWER_TYPES = {
     ],
   },
   coil: {
-    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Slows what it hits',
+    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Slows, and softens for others',
     tiers: [
       { range: 84, rate: 0.8, dmg: 2, splash: 0, slow: 0.4, slowDur: 1.2 },
       { range: 92, rate: 0.72, dmg: 3, splash: 0, slow: 0.5, slowDur: 1.4 },
@@ -158,11 +189,47 @@ export function stats(tower) {
 /** Base speed a surge covers in pixels per second. Flat, not scaled by board
  *  size: because both layouts share a path length, a flat speed already gives
  *  the same crossing time either way. */
+/*  Enemies used to differ only in hp, speed and bounty, which meant there was
+ *  never a reason to build a *mix* of towers — more of whatever was strongest
+ *  was always correct. These traits exist to make specific towers the wrong
+ *  answer, so a defence has to cover several cases:
+ *
+ *    armor        flat reduction on every hit, so many weak shots (Node) are
+ *                 wasted and few heavy ones (Breaker) are right
+ *    splashResist takes only part of splash damage — the mirror case, where
+ *                 Breaker's area damage is the wrong tool
+ *    slowImmune   Coil cannot slow it, so it cannot be set up for `brittle`
+ *    heals        repairs nearby enemies, which makes target priority matter
+ *                 rather than just total damage
+ */
 export const ENEMY_TYPES = {
   surge: { name: 'Surge', hp: 20, speed: 62, bounty: 3, r: 12, col: '#e6e9e2' },
   spark: { name: 'Spark', hp: 12, speed: 112, bounty: 4, r: 10, col: '#c9a227' },
   load:  { name: 'Load',  hp: 92, speed: 40, bounty: 8, r: 15, col: '#7f8fa0' },
+  // many, tiny and quick: the case splash damage is *for*
+  swarm: { name: 'Swarm', hp: 7, speed: 128, bounty: 2, r: 8, col: '#d8763a' },
+  // plated: chips a flat amount off every hit, so a tier-0 Node barely dents it
+  // while a Breaker hardly notices. Deliberately 3 and not higher — at 6 it
+  // exceeded Node's base damage outright, which made Node permanently useless
+  // here rather than something worth *upgrading* to make viable.
+  shell: { name: 'Shell', hp: 70, speed: 46, bounty: 11, r: 15, col: '#4d7fb3', armor: 3 },
+  // insulated against splash, and quick — punish leaning on Breaker
+  phase: { name: 'Phase', hp: 34, speed: 104, bounty: 9, r: 11, col: '#b58fd0',
+           splashResist: 0.8, slowImmune: true },
+  // repairs its neighbours. Towers shoot the furthest-along enemy, so a patch
+  // trailing the pack is safe unless you build to reach it.
+  patch: { name: 'Patch', hp: 44, speed: 54, bounty: 10, r: 13, col: '#5fc9a4', heals: 7 },
 };
+export const ENEMY_KEYS = Object.keys(ENEMY_TYPES);
+
+/** How far a Patch's repair reaches, in pixels. */
+export const HEAL_RADIUS = 96;
+/** No hit is ever fully absorbed — armour caps out at leaving this through. */
+export const MIN_DAMAGE = 1;
+/** A slowed enemy takes this much extra damage. This is what makes Coil worth
+ *  building: on its own it barely scratches anything, but it sets targets up
+ *  for everything else, so it becomes a support piece rather than a weak gun. */
+export const SLOW_BRITTLE = 1.4;
 
 /* ---------- waves ---------- */
 
@@ -173,10 +240,28 @@ export const START_INTEGRITY = 20;
  *  a count, and the gap in seconds between spawns. Escalates forever, and
  *  introduces the tougher types at thresholds. HP and counts climb with the
  *  wave; the shell scales enemy hp via `hpScale`. */
+/** The wave each enemy type first appears on. One new idea at a time, so each
+ *  trait can be met and understood on its own rather than all at once — same
+ *  reasoning as Serpent Battery's KIND_UNLOCK. */
+export const ENEMY_UNLOCK = {
+  surge: 1, spark: 3, swarm: 4, load: 5, shell: 7, phase: 9, patch: 11,
+};
+
+/** Types available on a given wave, in unlock order. */
+export function enemiesForWave(wave) {
+  return ENEMY_KEYS.filter(k => wave >= ENEMY_UNLOCK[k]);
+}
+
 export function wavePlan(wave) {
   const groups = [{ type: 'surge', count: 6 + wave * 2, gap: 0.7 }];
-  if (wave >= 3) groups.push({ type: 'spark', count: 3 + Math.floor(wave / 2), gap: 0.45 });
-  if (wave >= 5) groups.push({ type: 'load', count: 1 + Math.floor((wave - 5) / 2), gap: 1.1 });
+  if (wave >= ENEMY_UNLOCK.spark) groups.push({ type: 'spark', count: 3 + Math.floor(wave / 2), gap: 0.45 });
+  // swarms come in a tight burst — that clustering is what makes splash pay
+  if (wave >= ENEMY_UNLOCK.swarm) groups.push({ type: 'swarm', count: 6 + wave, gap: 0.16 });
+  if (wave >= ENEMY_UNLOCK.load) groups.push({ type: 'load', count: 1 + Math.floor((wave - 5) / 2), gap: 1.1 });
+  if (wave >= ENEMY_UNLOCK.shell) groups.push({ type: 'shell', count: 1 + Math.floor((wave - 7) / 3), gap: 1.3 });
+  if (wave >= ENEMY_UNLOCK.phase) groups.push({ type: 'phase', count: 2 + Math.floor((wave - 9) / 2), gap: 0.6 });
+  // one patch at a time: two would heal each other and stall the wave
+  if (wave >= ENEMY_UNLOCK.patch) groups.push({ type: 'patch', count: 1, gap: 1.5 });
   return groups;
 }
 
@@ -197,10 +282,14 @@ export function rand(w) {
 
 export function createWorld(opts = {}) {
   const L = opts.layout || LAYOUT;
-  const { path, pathLen } = buildPath(L);
+  const seed = opts.seed ?? 20260722;
+  // which circuit this run uses. Derived from the seed rather than rolled, so a
+  // seed still replays a run exactly — the route is part of what a seed means.
+  const routeIndex = opts.routeIndex ?? (Math.abs(seed) % ROUTE_COUNT);
+  const { path, pathLen } = buildPath(L, routeIndex);
   const w = {
-    L, path, pathLen,
-    blocked: pathCells(L),          // cells the route occupies
+    L, path, pathLen, routeIndex,
+    blocked: pathCells(L, routeIndex),          // cells the route occupies
     towers: [],
     enemies: [],
     spawnQueue: [],                 // pending {type, at} for the active wave
@@ -212,16 +301,20 @@ export function createWorld(opts = {}) {
     integrity: START_INTEGRITY,
     score: 0,
     over: false,
-    seed: opts.seed ?? 20260722,
+    seed,
     fx: opts.fx || { kill() {}, leak() {}, shot() {}, build() {} },
   };
   return w;
 }
 
 export function resetGame(w) {
-  const { path, pathLen } = buildPath(w.L);
+  // Play again gets the *next* circuit, not the same one. Cycling rather than
+  // rolling keeps it deterministic while making a replay a different board,
+  // which is the whole point of having more than one.
+  w.routeIndex = (w.routeIndex + 1) % ROUTE_COUNT;
+  const { path, pathLen } = buildPath(w.L, w.routeIndex);
   w.path = path; w.pathLen = pathLen;
-  w.blocked = pathCells(w.L);
+  w.blocked = pathCells(w.L, w.routeIndex);
   w.towers = []; w.enemies = []; w.spawnQueue = [];
   w.clock = 0; w.wave = 0; w.waveActive = false; w.betweenWaves = true;
   w.charge = START_CHARGE; w.integrity = START_INTEGRITY;
@@ -337,16 +430,47 @@ function fireTower(w, tower, target) {
     for (const e of w.enemies) {
       if (e === target || e.hp <= 0) continue;
       const p = enemyPos(w, e);
-      if (Math.hypot(p.x - tp.x, p.y - tp.y) <= s.splash) damageEnemy(w, e, s.dmg * 0.5, s);
+      if (Math.hypot(p.x - tp.x, p.y - tp.y) <= s.splash) damageEnemy(w, e, s.dmg * 0.5, s, true);
     }
   }
 }
 
-function damageEnemy(w, e, dmg, s) {
+/** Resolve one hit. `isSplash` marks collateral damage, which some enemies
+ *  shrug off. Order matters and is deliberate: the brittle bonus is read from
+ *  the slow that was *already* on the target, so a Coil sets a target up for
+ *  the next tower rather than for its own shot; splash resistance scales the
+ *  incoming damage; and armour is flat, so it comes off last. */
+function damageEnemy(w, e, dmg, s, isSplash = false) {
   if (e.hp <= 0) return;
+  const T = ENEMY_TYPES[e.type];
+
+  if (e.slow > 0) dmg *= SLOW_BRITTLE;
+  if (isSplash && T.splashResist) dmg *= (1 - T.splashResist);
+  if (T.armor) dmg = Math.max(MIN_DAMAGE, dmg - T.armor);
+
   e.hp -= dmg;
-  // a slowing tower stamps its strength and refreshes the timer
-  if (s.slow > 0) { e.slowStrength = s.slow; e.slow = s.slowDur; }
+
+  // a slowing tower stamps its strength and refreshes the timer — unless the
+  // target is insulated, in which case Coil is simply the wrong pick here
+  if (s.slow > 0 && !T.slowImmune) { e.slowStrength = s.slow; e.slow = s.slowDur; }
+}
+
+/** Patches repair whatever is near them. Applied to *other* enemies only, so a
+ *  lone patch cannot heal itself into invulnerability. Never past full health. */
+function stepHealers(w, dt) {
+  for (const h of w.enemies) {
+    const heals = ENEMY_TYPES[h.type].heals;
+    if (!heals || h.hp <= 0) continue;
+    const hp = enemyPos(w, h);
+    for (const e of w.enemies) {
+      if (e === h || e.hp <= 0 || e.hp >= e.maxhp) continue;
+      const p = enemyPos(w, e);
+      if (Math.hypot(p.x - hp.x, p.y - hp.y) <= HEAL_RADIUS) {
+        e.hp = Math.min(e.maxhp, e.hp + heals * dt);
+        e.healed = 0.2;            // brief flag so the shell can show the mend
+      }
+    }
+  }
 }
 
 /* ---------- simulation step ---------- */
@@ -366,8 +490,13 @@ export function step(w, dt) {
   for (const e of w.enemies) {
     let sp = e.speed;
     if (e.slow > 0) { e.slow = Math.max(0, e.slow - dt); sp *= (1 - (e.slowStrength || 0)); }
+    if (e.healed > 0) e.healed = Math.max(0, e.healed - dt);
     e.dist += sp * dt;
   }
+
+  // repairs land before the towers fire, so a patch cannot undo damage dealt
+  // this same frame — the player sees their shot land, then sees it mended
+  stepHealers(w, dt);
 
   // towers fire on cooldown. Targets are acquired every frame, not just at the
   // instant a shot is allowed: `aim` is what the shell draws the barrel from,
@@ -421,10 +550,12 @@ export function step(w, dt) {
  *  the board, which is also the least surprising thing that could happen. Same
  *  approach as Live Wire. */
 export function relayout(w, L2) {
-  const { path, pathLen } = buildPath(L2);
+  // the run's own circuit has to come across too — rebuilding at route 0 would
+  // silently swap the board mid-run and strand every tower off the new path
+  const { path, pathLen } = buildPath(L2, w.routeIndex);
   w.L = L2;
   w.path = path; w.pathLen = pathLen;
-  w.blocked = pathCells(L2);
+  w.blocked = pathCells(L2, w.routeIndex);
   for (const t of w.towers) { const c = t.c, r = t.r; t.c = r; t.r = c; }
   return w;
 }

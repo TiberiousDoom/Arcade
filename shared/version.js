@@ -16,7 +16,7 @@
    can see and a cache they can't must never disagree. `version.test.js` reads
    sw.js and fails if the two drift, so this is enforced rather than hoped for —
    bump both together. */
-export const BUILD = 'v9';
+export const BUILD = 'v11';
 
-/** Short human label, e.g. "Arcade v9". */
+/** Short human label, e.g. "Arcade v11". */
 export const BUILD_LABEL = `Arcade ${BUILD}`;

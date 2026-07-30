@@ -48,6 +48,83 @@ test('the route stays inside both grids', () => {
   for (const [c, r] of TALL.route) assert.ok(E.inGrid(TALL, c, r), `${c},${r} in portrait`);
 });
 
+/* ---------- every route, not just the default one ---------- */
+
+test('every route is legal on both layouts and transposes exactly', () => {
+  for (let i = 0; i < E.ROUTE_COUNT; i++) {
+    const land = E.routeAt(L, i), tall = E.routeAt(TALL, i);
+    assert.equal(land.length, tall.length, `route ${i} same shape both ways`);
+
+    land.forEach(([c, r], k) => {
+      assert.ok(E.inGrid(L, c, r), `route ${i} point ${k} (${c},${r}) is on the landscape grid`);
+      assert.deepEqual(tall[k], [r, c], `route ${i} point ${k} is transposed`);
+      assert.ok(E.inGrid(TALL, r, c), `route ${i} point ${k} is on the portrait grid`);
+    });
+
+    // pathCells walks a cell at a time between waypoints, so each leg must
+    // change exactly one coordinate — a diagonal would silently skip cells
+    for (let k = 1; k < land.length; k++) {
+      const [c0, r0] = land[k - 1], [c1, r1] = land[k];
+      const movedC = c0 !== c1, movedR = r0 !== r1;
+      assert.ok(movedC !== movedR, `route ${i} leg ${k} is axis-aligned`);
+    }
+  }
+});
+
+test('each route is the same length on both layouts, so rotation stays lossless', () => {
+  for (let i = 0; i < E.ROUTE_COUNT; i++) {
+    const a = E.buildPath(L, i), b = E.buildPath(TALL, i);
+    assert.ok(Math.abs(a.pathLen - b.pathLen) < 1e-9, `route ${i}: ${a.pathLen} vs ${b.pathLen}`);
+  }
+});
+
+test('the routes are genuinely different boards, each with room to build', () => {
+  const seen = new Set();
+  for (let i = 0; i < E.ROUTE_COUNT; i++) {
+    const cells = E.pathCells(L, i);
+    seen.add([...cells].sort().join('|'));
+    const buildable = L.COLS * L.ROWS - cells.size;
+    assert.ok(buildable > 40, `route ${i} leaves ${buildable} buildable cells`);
+  }
+  assert.equal(seen.size, E.ROUTE_COUNT, 'no two routes occupy the same cells');
+  assert.ok(E.ROUTE_COUNT >= 3, 'enough routes for replay to feel different');
+});
+
+test('a run picks its route from the seed, so a seed still replays exactly', () => {
+  const a = E.createWorld({ seed: 5 });
+  const b = E.createWorld({ seed: 5 });
+  assert.equal(a.routeIndex, b.routeIndex, 'same seed, same circuit');
+  assert.equal(E.createWorld({ routeIndex: 2 }).routeIndex, 2, 'and it can be forced');
+  // the world's path really is the chosen route's, not always route 0
+  const w = E.createWorld({ routeIndex: 1 });
+  assert.ok(Math.abs(w.pathLen - E.buildPath(L, 1).pathLen) < 1e-9);
+  assert.deepEqual([...w.blocked].sort(), [...E.pathCells(L, 1)].sort());
+});
+
+test('playing again moves to the next circuit', () => {
+  const w = E.createWorld({ routeIndex: 0 });
+  E.resetGame(w);
+  assert.equal(w.routeIndex, 1, 'a replay is a different board');
+  assert.deepEqual([...w.blocked].sort(), [...E.pathCells(w.L, 1)].sort(), 'and blocked cells followed');
+  // and it wraps rather than running off the end
+  const last = E.createWorld({ routeIndex: E.ROUTE_COUNT - 1 });
+  E.resetGame(last);
+  assert.equal(last.routeIndex, 0);
+});
+
+test('rotating mid-run keeps the run on its own circuit', () => {
+  // regression: relayout rebuilt at route 0, which would swap the board
+  // underneath the player and strand every tower off the path
+  const w = richWorld({ routeIndex: 2 });
+  const cell = firstBuildable(w);
+  E.buildTower(w, cell.c, cell.r, 'node');
+  E.relayout(w, TALL);
+  assert.equal(w.routeIndex, 2, 'still the same circuit');
+  assert.deepEqual([...w.blocked].sort(), [...E.pathCells(TALL, 2)].sort());
+  const t = w.towers[0];
+  assert.ok(!w.blocked.has(E.cellKey(t.c, t.r)), 'the tower did not end up on the path');
+});
+
 /* ---------- path geometry ---------- */
 
 test('atS advances monotonically and stays on the polyline', () => {
@@ -221,6 +298,150 @@ test('aim clears when the last target leaves range, even mid-cooldown', () => {
   w.enemies.length = 0;
   E.step(w, 1 / 60);
   assert.equal(w.towers[0].aim, null, 'nothing to aim at');
+});
+
+/* ---------- enemy abilities: making a favourite tower the wrong answer ---------- */
+
+/** Park an enemy of `type` inside a fresh tower's range and return both. */
+function towerVsType(towerType, enemyType, hp = 500) {
+  const w = richWorld();
+  const cell = firstBuildable(w);
+  E.buildTower(w, cell.c, cell.r, towerType);
+  const tc = E.cellCenter(w.L, cell.c, cell.r);
+  const s = stats0(towerType);
+  let d = null;
+  for (let k = 0; k < w.pathLen; k += 3) {
+    const p = E.atS(w.path, w.pathLen, k);
+    if (Math.hypot(p.x - tc.x, p.y - tc.y) <= s.range) { d = k; break; }
+  }
+  assert.ok(d !== null, 'a path point exists within range');
+  const T = E.ENEMY_TYPES[enemyType];
+  const e = { type: enemyType, dist: d, hp, maxhp: hp, speed: 0, r: T.r, slow: 0 };
+  w.enemies.push(e);
+  return { w, e };
+}
+
+test('armour blunts small hits far more than heavy ones', () => {
+  // the point of Shell: Node's many weak shots are the wrong tool for it
+  const node = towerVsType('node', 'shell');
+  const nodeHp = node.e.hp; E.step(node.w, 1 / 60);
+  const nodeDealt = nodeHp - node.e.hp;
+
+  const breaker = towerVsType('breaker', 'shell');
+  const bHp = breaker.e.hp; E.step(breaker.w, 1 / 60);
+  const breakerDealt = bHp - breaker.e.hp;
+
+  const armor = E.ENEMY_TYPES.shell.armor;
+  assert.equal(nodeDealt, stats0('node').dmg - armor, 'flat reduction off a Node shot');
+  assert.equal(breakerDealt, stats0('breaker').dmg - armor, 'and off a Breaker shot');
+  // the same flat number costs the weak shot most of its damage and the heavy
+  // one almost none — which is the whole reason a mix of towers is needed
+  const nodeLoss = 1 - nodeDealt / stats0('node').dmg;
+  const breakerLoss = 1 - breakerDealt / stats0('breaker').dmg;
+  assert.ok(nodeLoss > breakerLoss * 3, `Node lost ${(nodeLoss * 100).toFixed(0)}%, Breaker ${(breakerLoss * 100).toFixed(0)}%`);
+  // but Node is not written off — upgrading it is a real answer
+  const t2 = E.TOWER_TYPES.node.tiers[2];
+  assert.ok(t2.dmg - armor > (stats0('node').dmg - armor) * 2, 'a maxed Node gets meaningfully through');
+});
+
+test('armour never absorbs a hit completely', () => {
+  const { w, e } = towerVsType('coil', 'shell');   // coil dmg is below shell armour
+  const hp0 = e.hp;
+  E.step(w, 1 / 60);
+  assert.ok(e.hp < hp0, 'something still got through');
+  assert.equal(hp0 - e.hp, E.MIN_DAMAGE, 'floored, not zeroed');
+});
+
+test('splash resistance makes area damage the wrong tool', () => {
+  // two enemies together: the direct target takes full damage either way, but
+  // the collateral hit is what Phase shrugs off
+  const build = (type) => {
+    const w = richWorld();
+    const cell = firstBuildable(w);
+    E.buildTower(w, cell.c, cell.r, 'breaker');
+    const tc = E.cellCenter(w.L, cell.c, cell.r);
+    const s = stats0('breaker');
+    let d = null;
+    for (let k = 0; k < w.pathLen; k += 3) {
+      const p = E.atS(w.path, w.pathLen, k);
+      if (Math.hypot(p.x - tc.x, p.y - tc.y) <= s.range) { d = k; break; }
+    }
+    // leader is the direct target; the follower only ever takes splash
+    w.enemies.push({ type: 'surge', dist: d + 16, hp: 900, maxhp: 900, speed: 0, r: 12, slow: 0 });
+    const follower = { type, dist: d + 4, hp: 900, maxhp: 900, speed: 0, r: 11, slow: 0 };
+    w.enemies.push(follower);
+    return { w, follower };
+  };
+  const plain = build('surge'); E.step(plain.w, 1 / 60);
+  const tough = build('phase'); E.step(tough.w, 1 / 60);
+  const plainTook = 900 - plain.follower.hp;
+  const toughTook = 900 - tough.follower.hp;
+  assert.ok(plainTook > 0, 'the plain follower was splashed');
+  assert.ok(toughTook < plainTook, `phase took ${toughTook} vs ${plainTook}`);
+});
+
+test('a slow-immune enemy cannot be slowed, so Coil is wasted on it', () => {
+  const normal = towerVsType('coil', 'surge');
+  E.step(normal.w, 1 / 60);
+  assert.ok(normal.e.slow > 0, 'an ordinary surge is slowed');
+
+  const immune = towerVsType('coil', 'phase');
+  E.step(immune.w, 1 / 60);
+  assert.equal(immune.e.slow, 0, 'phase shrugs it off');
+  assert.ok(immune.e.hp < 500, 'though the shot still hurt a little');
+});
+
+test('a patch repairs its neighbours but not itself', () => {
+  const w = richWorld();
+  const heals = E.ENEMY_TYPES.patch.heals;
+  const patch = { type: 'patch', dist: 100, hp: 20, maxhp: 44, speed: 0, r: 13, slow: 0 };
+  const hurt  = { type: 'surge', dist: 120, hp: 10, maxhp: 20, speed: 0, r: 12, slow: 0 };
+  w.enemies.push(patch, hurt);
+  E.step(w, 0.5);
+  assert.ok(hurt.hp > 10, 'the wounded surge was mended');
+  assert.equal(patch.hp, 20, 'the patch did not heal itself');
+  assert.ok(hurt.healed > 0, 'and the shell can see it happen');
+});
+
+test('a patch never heals past full, and only reaches so far', () => {
+  const w = richWorld();
+  const patch = { type: 'patch', dist: 0, hp: 44, maxhp: 44, speed: 0, r: 13, slow: 0 };
+  const full  = { type: 'surge', dist: 10, hp: 20, maxhp: 20, speed: 0, r: 12, slow: 0 };
+  // far enough along the path to be outside HEAL_RADIUS in pixels
+  const far   = { type: 'surge', dist: w.pathLen * 0.5, hp: 5, maxhp: 20, speed: 0, r: 12, slow: 0 };
+  w.enemies.push(patch, full, far);
+  const pp = E.enemyPos(w, patch), fp = E.enemyPos(w, far);
+  assert.ok(Math.hypot(pp.x - fp.x, pp.y - fp.y) > E.HEAL_RADIUS, 'setup: out of reach');
+  E.step(w, 2);
+  assert.equal(full.hp, 20, 'a healthy enemy is left alone');
+  assert.equal(far.hp, 5, 'and one out of range gets nothing');
+});
+
+/* ---------- tower synergy: Coil sets targets up ---------- */
+
+test('a slowed enemy takes bonus damage, which is what Coil is for', () => {
+  const clean = towerVsType('node', 'surge');
+  const h0 = clean.e.hp; E.step(clean.w, 1 / 60);
+  const normal = h0 - clean.e.hp;
+
+  const brittle = towerVsType('node', 'surge');
+  brittle.e.slow = 1; brittle.e.slowStrength = 0.5;   // as a Coil would leave it
+  const b0 = brittle.e.hp; E.step(brittle.w, 1 / 60);
+  const boosted = b0 - brittle.e.hp;
+
+  assert.ok(boosted > normal, `slowed took ${boosted}, clean took ${normal}`);
+  assert.ok(Math.abs(boosted - normal * E.SLOW_BRITTLE) < 1e-6, 'by exactly the brittle factor');
+});
+
+test('a Coil sets up the next tower rather than its own shot', () => {
+  // the ordering that makes Coil support rather than a weak gun: its own hit is
+  // resolved against the slow that was already there, not the one it applies
+  const { w, e } = towerVsType('coil', 'surge');
+  const s = stats0('coil');
+  const hp0 = e.hp;
+  E.step(w, 1 / 60);
+  assert.equal(hp0 - e.hp, s.dmg, 'its own shot got no brittle bonus');
+  assert.ok(e.slow > 0, 'but the target is now set up');
 });
 
 /* ---------- enemies: movement, kills, leaks ---------- */

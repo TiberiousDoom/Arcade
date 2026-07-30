@@ -18,7 +18,7 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Live Wire** ([games/live-wire/live-wire.html](games/live-wire/live-wire.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe. Engine has 34 passing tests. Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
 - **Circuit Breaker** ([games/circuit-breaker/circuit-breaker.html](games/circuit-breaker/circuit-breaker.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build. Engine has 25 passing tests. Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**302 tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) across all four games (`node --test games/*/engine.test.js`), plus 2 render smoke tests (`node --test games/serpent-battery/render-test.mjs`, after `npm install --no-save jsdom canvas`).
+**316 tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) across all four games (`node --test games/*/engine.test.js`), plus 2 render smoke tests (`node --test games/serpent-battery/render-test.mjs`, after `npm install --no-save jsdom canvas`).
 
 ## In progress / just decided
 
@@ -133,6 +133,20 @@ Measured curve: wave 1 is 18 segments / 65 total hp, wave 10 is 54 / ~640, wave 
 **GUI polish** in the same pass: the `.meta` HUD now gives the value weight and the label none (shared, so all four games benefit) at a 4px header cost; shop tap targets went from ~28px to 42px (`.buy`) and 26px to 34px (`.chip`); and "can't afford" is now visually distinct from "maxed" and states the shortfall ("40 · need 15 more") instead of leaving you to subtract.
 
 **Build version:** `shared/version.js` holds one app-wide `BUILD`, shown in every help panel and the cabinet footer. This exists because cache-first serving means a phone can silently keep an old build — now it's answerable in two taps. `shared/version.test.js` fails if it drifts from `sw.js`'s `CACHE_VERSION`.
+
+## Circuit Breaker depth (2026-07-27)
+
+Three of the five ideas from the depth discussion, chosen as the ones that add decisions rather than content.
+
+- **Three circuits, not one.** `ROUTES` holds three routes; a run picks one from its seed, and `resetGame` advances to the next so **Play again is a different board**. Per run, not per wave — swapping the path mid-run would strand towers. Each route is validated by test: axis-aligned legs (`pathCells` walks a cell at a time and relies on it), inside both grids, transposing cell-for-cell, identical length landscape vs portrait, and leaving 60+ buildable cells. `relayout` now carries `routeIndex`, which it previously would have silently reset to route 0 — that regression is tested. The HUD names the circuit (A/B/C), because otherwise a changed board on replay reads as a glitch.
+- **Enemies have abilities, not just bigger numbers.** Previously they differed only in hp/speed/bounty, so more of whichever tower was strongest was always right. Four traits — `armor` (flat reduction, punishes Node's many weak shots), `splashResist` (punishes Breaker's area damage), `slowImmune` (Coil can't set it up), `heals` (target priority starts to matter) — and four new types carrying them: Swarm (many/tiny, what splash is *for*), Shell (plated), Phase (insulated + unslowable), Patch (repairs neighbours). `ENEMY_UNLOCK` introduces one per threshold: swarm 4, shell 7, phase 9, patch 11.
+- **Coil is now a setup piece.** Anything slowed takes `SLOW_BRITTLE` (×1.4) extra damage from everything. The ordering is deliberate and tested: the bonus reads the slow *already* on the target, so a Coil's own shot gets nothing and it functions as support rather than a weak gun.
+
+Curve after the change: wave 1 is 8 enemies / 160 hp, wave 7 is 42 / ~1400, wave 14 is 77 / ~4580.
+
+Readability had to keep up, since "my towers aren't working" must read as *wrong tool* rather than *bug*: each trait gets a silhouette cue (heavy ring, dashed shell, chevron, cross), a patch draws its heal radius, and a mend flashes green. One collision was caught only by screenshot — the old slow tint repainted enemies in almost exactly Shell's blue, so `slow` is now a translucent frost *over* the type colour rather than a replacement.
+
+**Not done, deliberately:** projectiles (worth more once the above is played — travel time makes leading targets and placement angles matter, multiplying these changes rather than standing alone) and the between-waves choice. Difficulty numbers are still untuned by play.
 
 ## Open decisions (not yet settled)
 

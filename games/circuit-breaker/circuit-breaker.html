@@ -64,6 +64,7 @@
       <div>Charge <b id="uiCharge">0</b></div>
       <div>Core <b id="uiIntegrity">20</b></div>
       <div>Best <b id="uiBest">—</b></div>
+      <div>Circuit <b id="uiCircuit">A</b></div>
     </div>
   </header>
 
@@ -285,8 +286,10 @@ makeHelp({
     ['Adjust', 'Tap one of your towers to upgrade or sell it.'],
   ],
   notes: [
-    'Node is cheap and fast; Breaker hits hard and splashes; Coil slows.',
+    'Node is cheap and fast; Breaker hits hard and splashes; Coil slows — and anything slowed takes extra damage from everything else, so Coil sets targets up.',
+    'Later surges fight back: plated ones shrug off small hits, dashed ones shrug off splash, chevrons can\'t be slowed, and a cross repairs everything near it.',
     'Every surge that reaches the core costs an integrity point — lose them all and it\'s over.',
+    'Playing again puts you on a different circuit.',
     'Keyboard: 1/2/3 pick a tower, Enter starts a wave.',
   ],
 });
@@ -344,6 +347,9 @@ function sync() {
   $('uiScore').textContent = world.score;
   $('uiCharge').textContent = world.charge;
   $('uiIntegrity').textContent = world.integrity;
+  // naming the circuit matters on a replay: the board genuinely changed, and
+  // without a label that reads as a glitch rather than as a new map
+  $('uiCircuit').textContent = String.fromCharCode(65 + world.routeIndex);
   syncPalette();
   syncPopup();
 }
@@ -435,9 +441,67 @@ function drawTower(t) {
 
 function drawEnemy(e) {
   const p = E.enemyPos(world, e);
-  const col = E.ENEMY_TYPES[e.type].col;
-  ctx.fillStyle = e.slow > 0 ? '#6fb7e8' : col;
+  const T = E.ENEMY_TYPES[e.type];
+  const col = T.col;
+
+  // A patch's reach, so "why is that one healing?" is answerable by looking.
+  if (T.heals) {
+    ctx.strokeStyle = 'rgba(95,201,164,.16)'; ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.arc(p.x, p.y, E.HEAL_RADIUS, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /* Type colour always wins, with `slow` laid over it as a translucent frost
+     rather than replacing the fill. Replacing it used to repaint a slowed enemy
+     in a flat blue that is almost exactly Shell's own colour, so "held up" and
+     "plated" were indistinguishable — and which of the two you're looking at
+     changes what you should build. */
+  ctx.fillStyle = col;
   ctx.beginPath(); ctx.arc(p.x, p.y, e.r, 0, TAU); ctx.fill();
+  if (e.slow > 0) {
+    ctx.fillStyle = 'rgba(150,220,255,.5)';
+    ctx.beginPath(); ctx.arc(p.x, p.y, e.r, 0, TAU); ctx.fill();
+  }
+
+  /* Traits have to be legible at a glance or "my towers aren't working" reads
+     as a bug rather than as the wrong tool for this enemy. Each gets a distinct
+     silhouette cue rather than only a colour, since colour alone is already
+     doing the job of naming the type. */
+  if (T.armor) {
+    // plating: a heavy ring, suggesting something to punch through
+    ctx.strokeStyle = '#bcd8f0'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(p.x, p.y, e.r - 1.5, 0, TAU); ctx.stroke();
+  }
+  if (T.splashResist) {
+    // insulated: a dashed shell, suggesting damage sliding off
+    ctx.strokeStyle = '#e6d5f5'; ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 2.5, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (T.slowImmune) {
+    // a small chevron: this one will not be held up
+    ctx.strokeStyle = '#e6d5f5'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(p.x - 3, p.y - 4); ctx.lineTo(p.x + 3, p.y); ctx.lineTo(p.x - 3, p.y + 4);
+    ctx.stroke();
+  }
+  if (T.heals) {
+    // a cross, the universal "this is repairing things"
+    ctx.strokeStyle = '#0b1418'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y);
+    ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x, p.y + 4);
+    ctx.stroke();
+  }
+  // being mended, so damage visibly coming back is explained
+  if (e.healed > 0) {
+    ctx.strokeStyle = `rgba(95,201,164,${Math.min(1, e.healed * 5)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 5, 0, TAU); ctx.stroke();
+  }
+
   // hp bar
   const w = e.r * 2, frac = Math.max(0, e.hp / e.maxhp);
   ctx.fillStyle = 'rgba(11,20,24,.7)'; ctx.fillRect(p.x - w / 2, p.y - e.r - 7, w, 3);

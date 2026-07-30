@@ -335,3 +335,43 @@ Per-game semver would mean four numbers maintained by hand with no release proce
 So `shared/version.js` exports one `BUILD`, surfaced in every help panel and the cabinet footer — quiet, diagnostic, and enough to answer "did my phone pick up the deploy?" in two taps. It is placed away from the game titles on purpose: it's a diagnostic, not decoration.
 
 The one hazard is a displayed version that disagrees with the cache actually being served, which would be worse than showing nothing — a build string that confidently lies. `shared/version.test.js` reads `sw.js` and fails if `BUILD` and `CACHE_VERSION` drift, which turns a convention into a guarantee. This also adds a second test location, so the documented command is now `node --test games/*/engine.test.js shared/*.test.js`.
+
+## 2026-07-27 — Circuit Breaker depth: routes, enemy traits, and Coil as support
+
+Took three of the five depth ideas — the ones that add *decisions* rather than content.
+
+**Three circuits instead of one.** A single fixed route meant every run was the same board: the game was one puzzle, solved once, and replaying only repeated it faster. `ROUTES` now holds three, and a run picks one from its seed so a seed still replays exactly (the route is part of what a seed means). `resetGame` advances to the next, so Play again is genuinely a different defence problem.
+
+Per *run*, not per wave. Swapping the path mid-run would strand every tower off the route and invalidate the whole board a player had just built — variety is not worth that.
+
+The invariants are more delicate than they look, so they are all pinned by test: legs must be axis-aligned because `pathCells` walks a cell at a time between waypoints and a diagonal would silently skip cells; each route must fit both grids; each must transpose cell-for-cell and come out the *same length* in portrait, which is what keeps rotation lossless; and each must leave enough buildable cells to be playable. `relayout` was rebuilding at route 0, which would have swapped the board underneath a rotating player — caught while threading the index through, and now a regression test.
+
+The HUD names the circuit (A/B/C). Without a label, a changed board on replay reads as a bug rather than as a feature.
+
+**Enemy traits, because "more of the best tower" was always the right answer.** Enemies differed only in hp, speed and bounty, which is a difficulty dial, not a decision. Four traits now make specific towers the *wrong* tool:
+
+- `armor` — flat reduction per hit, so many weak shots (Node) are wasted and few heavy ones (Breaker) are right.
+- `splashResist` — the mirror case, where Breaker's area damage is the wrong pick.
+- `slowImmune` — Coil cannot set it up, so the synergy below is unavailable.
+- `heals` — repairs neighbours, so *which* enemy you shoot starts to matter, not just total damage.
+
+Shell's armour is 3 and not higher on purpose. At 6 it exceeded Node's base damage outright, which made Node permanently useless against Shell rather than something worth *upgrading* to make viable — the difference between "wrong tool" and "dead option". A test now pins that a maxed Node gets meaningfully through.
+
+Patches heal other enemies only, never themselves, and one per wave — two would mend each other and stall a wave indefinitely. Healing is applied before towers fire, so a player sees their shot land and *then* sees it undone, which is legible; the reverse order would look like the shot never registered.
+
+**Coil is now support rather than a weak gun.** Anything slowed takes ×1.4 damage from everything. The ordering carries the whole design: the bonus is read from the slow *already* on the target, so a Coil's own shot never benefits from the slow it is applying. That makes Coil a setup piece whose value is what it enables, which is a role it did not previously have — it was simply the worst damage-per-charge option.
+
+**Deliberately not done:** projectiles and the between-waves choice. Projectiles are worth more *after* this is played, because travel time makes leading targets and placement angles matter — it multiplies traits and routes rather than standing on its own.
+
+Readability was not optional here. When a tower stops working the player must read "wrong tool", not "broken game", so each trait gets a silhouette cue (heavy ring, dashed shell, chevron, cross) rather than colour alone, since colour is already busy naming the type. One collision was caught only by taking a screenshot: the old `slow` rendering *replaced* the fill with a blue almost identical to Shell's own colour, making "held up" and "plated" indistinguishable when the two call for opposite responses. `slow` is now a translucent frost laid over the type colour.
+
+## 2026-07-27 — The service worker ignores query strings, which defeats cache-busting
+
+Recorded because it cost real time and will again. `sw.js`'s fetch handler uses `caches.match(req, { ignoreSearch: true })`, so a precached path matches *regardless of query string*. Every `?v=`/`?bust=` cache-buster — on a page URL or on a module import — is silently answered from the old cache.
+
+That is defensible for this app (nothing uses query-versioned assets, and ignoring search means a stray `?utm_source=` still hits the cache offline) but it has two consequences worth knowing:
+
+- **Query-string versioning can never work here.** The only lever that refreshes anything is bumping `CACHE_VERSION`, which is exactly what `install` is built around with its `cache: 'reload'` fetches.
+- **Local iteration needs the version bump too**, or two reloads with the worker unregistered. Unregistering alone is not enough, because `shared/pwa.js` re-registers on the next load and `activate` calls `clients.claim()`, so the fresh worker takes over and serves its cache to the page that just loaded.
+
+Practical loop when changing a file and verifying in a browser: bump `CACHE_VERSION` and `BUILD`, then reload twice — once to install the new worker, once for the page to read from the new cache.
