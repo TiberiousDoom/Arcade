@@ -55,14 +55,29 @@ export function glowStroke(ctx, path, col, width = 2, passes = GLOW_PASSES, inte
   ctx.restore();
 }
 
-/** A soft emissive blob — for sparks, food, impact flashes.
+/** A solid emissive dot of radius `r`, with the glow spreading *outside* it —
+ *  for sparks, food, impact flashes.
  *
- *  Drawn as a zero-length round-capped stroke rather than a stroked circle: a
- *  stroked circle is an annulus, so anything smaller than about twice the line
- *  width comes out as a visible donut instead of a dot. */
+ *  `r` is the size of the opaque core, not the outer extent of the haze, and
+ *  that matters: an earlier version put the only full-alpha pass at r * 0.5, so
+ *  a caller asking for a 7px pellet got a 3px core wrapped in a soft smudge.
+ *  It rendered — it just read as a faint blur rather than an object, and Live
+ *  Wire's food became genuinely hard to spot on a phone. A dot should be as
+ *  solid as the flat art it replaces, and merely gain a halo.
+ *
+ *  Stacked filled discs rather than a stroked circle, because a stroked circle
+ *  is an annulus and comes out as a donut at small radii. */
 export function glowDot(ctx, x, y, r, col, intensity = 1) {
-  glowStroke(ctx, c => { c.moveTo(x, y); c.lineTo(x, y); }, col, r * 2,
-    [[1.7, 0.10], [1.25, 0.22], [0.85, 0.45], [0.45, 1]], intensity);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = col;
+  for (const [mult, alpha] of [[2.2, 0.08], [1.6, 0.16], [1.2, 0.30], [1, 1]]) {
+    ctx.globalAlpha = alpha * intensity;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(0.4, r * mult), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 /** Paint over an emissive shape in a dark colour — pupils, vents, panel lines.

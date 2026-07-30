@@ -348,10 +348,16 @@ function drawWire() {
   inkDot(ctx, ex + ox, ey + oy, 1.9);
 }
 
+/* The food has to hold its own against a very bright wire. It gets a warm halo,
+   a solid gold body, and a near-white centre — the hot core is what makes a
+   small object read as "there" rather than as a smudge, and this is the one
+   thing on the board you are actually looking for. */
 function drawFood(f) {
   const t = performance.now() / 400;
-  const r = C * .26 + (reduce ? 0 : Math.sin(t) * 1.2);
-  glowDot(ctx, cx(f.x) + C / 2, cy(f.y) + C / 2, r, '#c9a227');
+  const px = cx(f.x) + C / 2, py = cy(f.y) + C / 2;
+  const r = C * .30 + (reduce ? 0 : Math.sin(t) * 1.2);
+  glowDot(ctx, px, py, r, '#c9a227');
+  glowDot(ctx, px, py, r * .42, '#fff3c4');
 }
 
 function drawBonus(b) {

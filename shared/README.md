@@ -34,7 +34,7 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
 - **[glow.js](glow.js)** — the vector/CRT art primitives: `glowStroke` (the
   multi-pass emissive stroke everything else is built on), `glowDot`, `inkDot`,
   `extrude`/`extrudeDisc`/`extrudeRect`, `fadeFrame` and `scanlines`. Piloted on
-  Live Wire. Two things to know before using it:
+  Live Wire. Three things to know before using it:
   - **Static content accumulates** under `fadeFrame`, settling at roughly
     `1/fade` times the alpha you wrote — a grid drawn at 0.5 ends up looking
     like 1.5. Write static alphas about a third of what you want.
@@ -42,6 +42,12 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
     already-glowing form: it fills a dark body before rimming it, which on the
     end of a glowing tube punches a visible hole. Live Wire's head is a bright
     `glowDot` for exactly this reason.
+  - **`glowDot`'s `r` is the solid core**, with the halo spreading outside it.
+    An earlier version put the only full-alpha pass at `r * 0.5`, so callers got
+    a dot half the size they asked for wrapped in haze — legible on a desktop,
+    genuinely hard to spot on a phone. If a glowing object needs to be *found*
+    rather than just seen, give it a near-white inner dot as well; Live Wire's
+    food does.
 
 Deliberately *not* shared: the banner show/hide logic. It looked like a
 duplicate, but Serpent Battery's variant hides a legend and two hint

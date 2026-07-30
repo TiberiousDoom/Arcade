@@ -440,3 +440,15 @@ Three things only became apparent once frames were actually rendered:
 - **Extrusion is wrong on the tip of a glowing form.** It fills a dark body before rimming, which on the end of Live Wire's tube punched a hole where the head should be brightest. Extrusion is for discrete objects sitting on a dark board; the head is now a bright `glowDot`. Similarly, detail *inside* an emissive shape (the head's pupils) cannot be additive, since additive cannot darken — hence `inkDot`.
 
 Added `tools/screenshot.mjs` alongside, which renders a real frame to a PNG via the render harness. Art work is impossible to judge otherwise from a headless environment: a background browser throttles `requestAnimationFrame` until it stops compositing entirely, so screenshots come back blank and every one of the findings above would have been invisible.
+
+## 2026-07-30 — Glow made Live Wire's food hard to find
+
+Device feedback on the art pilot: the wire looked right, but the food was effectively invisible — collected only by accident.
+
+The first diagnosis was wrong and worth recording as a wrong turn. `glowDot` drew a zero-length round-capped segment, which is a known-dodgy primitive (some renderers discard degenerate segments), and Cairo — what the render tests use — draws it happily. That looked like a clean explanation for "passes every test, invisible on device". Measuring it in an actual browser disproved it: Chrome renders the degenerate segment identically to a filled arc. The primitive was swapped for stacked filled discs anyway, since that behaves the same everywhere and costs nothing, but it was not the bug.
+
+The real cause was the falloff table. `glowDot`'s passes ran `[1.9, 1.35, 0.9, 0.5]` — the only full-alpha pass was at **half** the requested radius. A caller asking for a 7px pellet got a 3px opaque core inside a soft smudge, where the flat art it replaced had been a solid 7.5px disc. It rendered correctly and simply read as haze rather than as an object, which on a phone, next to a very bright wire, meant it disappeared.
+
+`r` now means the solid core, with the glow spreading outside it, so a dot is at least as substantial as the flat shape it replaces and merely gains a halo. Live Wire's food additionally gets a near-white inner dot: a hot centre is what makes a small emissive object read as *present*, and it is the one thing on that board a player is actively hunting for.
+
+The general lesson for the rest of the art pass: **glow is a poor substitute for mass.** Adding a halo while shrinking the solid core makes something prettier and harder to see, and readability regressions of this kind survive every automated check — the pixels are all there, correctly, in the wrong proportions.
