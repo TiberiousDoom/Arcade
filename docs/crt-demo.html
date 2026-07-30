@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<!--
+  A design spike, not part of the app: four ways to get a vector/CRT look out of
+  Canvas 2D, side by side, so the art direction could be judged by looking
+  rather than by description. Written 2026-07-29 while deciding whether the
+  games should move to an emissive vector style, and specifically whether that
+  style can give objects a sense of volume (panel 3) or literal 3D (panel 4).
+
+  Deliberately NOT in sw.js's precache list — it is documentation, not app, and
+  nothing links to it from the games. Standalone: no imports, no shared CSS.
+-->
+<meta charset="utf-8">
+<title>CRT / vector look — technique comparison</title>
+<style>
+  :root{ --bg:#0b1418; --bone:#e6e9e2; --dim:#63797f; --line:#23383f; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--bone);
+    font:400 13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;padding:18px}
+  h1{font-size:15px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 4px}
+  p.sub{color:var(--dim);margin:0 0 18px;max-width:70ch}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+  .cell{border:1px solid var(--line);border-radius:6px;padding:10px;background:#081013}
+  .cell h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;margin:0 0 2px;color:#c9a227}
+  .cell p{margin:0 0 8px;color:var(--dim);font-size:11px;min-height:3.6em}
+  canvas{width:100%;height:auto;display:block;border-radius:4px;background:#050b0d}
+  .controls{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0 0;padding-top:12px;border-top:1px solid var(--line)}
+  label{display:flex;gap:6px;align-items:center;color:var(--dim);font-size:11px;
+    letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+</style>
+
+<h1>Vector / CRT look — four techniques</h1>
+<p class="sub">All Canvas 2D, no libraries, no WebGL. Panels 3 and 4 are the two different
+answers to "can it look 3D".</p>
+
+<div class="grid">
+  <div class="cell">
+    <h2>1 · Current style</h2>
+    <p>Flat fills with a gradient and a drop shadow. Reads as painted plastic — solid, but inert.</p>
+    <canvas id="c1" width="640" height="360"></canvas>
+  </div>
+  <div class="cell">
+    <h2>2 · Emissive vector</h2>
+    <p>Same shapes as line art: each stroke drawn four times, wide+dim to narrow+white, composited additively. Now it emits.</p>
+    <canvas id="c2" width="640" height="360"></canvas>
+  </div>
+  <div class="cell">
+    <h2>3 · Volume: dark fill + glowing rim + extrusion</h2>
+    <p>The middle path. A dark body, an emissive edge, and an offset side face. Objects read as solid and dimensional without being shaded models.</p>
+    <canvas id="c3" width="640" height="360"></canvas>
+  </div>
+  <div class="cell">
+    <h2>4 · True wireframe 3D</h2>
+    <p>Real perspective projection — rotating solids drawn as edges. Authentic Battlezone. Pure arithmetic, no renderer.</p>
+    <canvas id="c4" width="640" height="360"></canvas>
+  </div>
+</div>
+
+<div class="controls">
+  <label><input type="checkbox" id="trails" checked> Phosphor trails</label>
+  <label><input type="checkbox" id="scan" checked> Scanlines</label>
+  <label><input type="checkbox" id="flick"> Beam flicker</label>
+</div>
+
+<script>
+const TAU = Math.PI * 2;
+const opt = { trails: true, scan: true, flick: false };
+for (const id of ['trails','scan','flick']) {
+  document.getElementById(id).addEventListener('change', e => opt[id] = e.target.checked);
+}
+
+/* ---------- the core primitive ----------
+   A glowing stroke: the same path laid down several times, widest and dimmest
+   first, narrowest and brightest last, all in 'lighter' so they accumulate.
+   This is the whole trick — everything else is dressing. */
+function glowPath(ctx, draw, col, width = 2, passes = [[6,.10],[3.5,.20],[2,.45],[1,1]]) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const [mult, alpha] of passes) {
+    ctx.strokeStyle = col;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = width * mult;
+    ctx.beginPath();
+    draw(ctx);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* A faded-not-cleared frame is what gives phosphor persistence. */
+function fade(ctx, w, h, amount) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = `rgba(5,11,13,${amount})`;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
+function scanlines(ctx, w, h) {
+  if (!opt.scan) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = 'rgba(0,0,0,.30)';
+  for (let y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1);
+  ctx.restore();
+}
+
+const flicker = () => opt.flick ? 0.88 + Math.random() * 0.12 : 1;
+
+/* ---------- shared motion ---------- */
+// a serpent-ish chain of segments following a sine path
+function chainPoints(t, w, h, n = 9) {
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const p = (t * 0.35 - i * 0.055) % 1;
+    const x = p * (w + 160) - 80;
+    const y = h * 0.52 + Math.sin(p * 5.2) * h * 0.22;
+    pts.push({ x, y });
+  }
+  return pts;
+}
+
+/* ---------- 1. current style: flat fill ---------- */
+function panel1(ctx, t, w, h) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#050b0d'; ctx.fillRect(0, 0, w, h);
+  for (const [i, p] of chainPoints(t, w, h).entries()) {
+    const r = i === 0 ? 20 : 15;
+    const g = ctx.createLinearGradient(p.x, p.y - r, p.x, p.y + r);
+    g.addColorStop(0, i === 0 ? '#e0c060' : '#5fd8b4');
+    g.addColorStop(1, i === 0 ? '#8a6f19' : '#1d6f5b');
+    ctx.save();
+    ctx.translate(1.5, 2.5);
+    ctx.fillStyle = 'rgba(0,0,0,.5)';
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
+  }
+  // a tower, flat
+  ctx.fillStyle = '#0f2027'; ctx.strokeStyle = '#6fb7e8'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(w * 0.16, h * 0.24, 22, 0, TAU); ctx.fill(); ctx.stroke();
+}
+
+/* ---------- 2. emissive vector ---------- */
+function panel2(ctx, t, w, h) {
+  fade(ctx, w, h, opt.trails ? 0.22 : 1);
+  const f = flicker();
+  const pts = chainPoints(t, w, h);
+  // the body as one continuous glowing polyline — the beam tracing the shape
+  glowPath(ctx, c => {
+    c.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts.slice(1)) c.lineTo(p.x, p.y);
+  }, `rgba(95,216,180,${f})`, 2.2);
+  // each segment as a ring
+  pts.forEach((p, i) => {
+    const r = i === 0 ? 18 : 12;
+    glowPath(ctx, c => c.arc(p.x, p.y, r, 0, TAU),
+      i === 0 ? `rgba(224,192,96,${f})` : `rgba(95,216,180,${f})`, 1.6);
+  });
+  glowPath(ctx, c => c.arc(w * 0.16, h * 0.24, 22, 0, TAU), '#6fb7e8', 1.8);
+  scanlines(ctx, w, h);
+}
+
+/* ---------- 3. volume: dark fill + rim + extrusion ---------- */
+function extrudedDisc(ctx, x, y, r, col, depth = 7) {
+  // side face: the same disc offset, filled dark, with a dim rim
+  ctx.save();
+  ctx.fillStyle = 'rgba(6,14,17,.95)';
+  ctx.beginPath(); ctx.arc(x + depth * 0.55, y + depth, r, 0, TAU); ctx.fill();
+  ctx.restore();
+  glowPath(ctx, c => c.arc(x + depth * 0.55, y + depth, r, 0, TAU), col, 1,
+    [[4,.05],[2,.10]]);
+  // top face: opaque dark body so the shape occludes, then a bright rim
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,18,22,.97)';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  ctx.restore();
+  glowPath(ctx, c => c.arc(x, y, r, 0, TAU), col, 1.8);
+  // specular arc on the lit side — the cue that reads as curvature
+  glowPath(ctx, c => c.arc(x, y, r * 0.62, Math.PI * 1.15, Math.PI * 1.75), '#ffffff', 1,
+    [[3,.08],[1.4,.22]]);
+}
+
+function panel3(ctx, t, w, h) {
+  fade(ctx, w, h, opt.trails ? 0.30 : 1);
+  const f = flicker();
+  for (const [i, p] of chainPoints(t, w, h).entries()) {
+    extrudedDisc(ctx, p.x, p.y, i === 0 ? 19 : 14,
+      i === 0 ? `rgba(224,192,96,${f})` : `rgba(95,216,180,${f})`);
+  }
+  // an extruded hex tower — flat-topped prism
+  const hx = w * 0.16, hy = h * 0.24, R = 24, D = 10;
+  const hex = (c, ox, oy) => {
+    for (let i = 0; i <= 6; i++) {
+      const a = i / 6 * TAU;
+      const X = hx + ox + Math.cos(a) * R, Y = hy + oy + Math.sin(a) * R;
+      i ? c.lineTo(X, Y) : c.moveTo(X, Y);
+    }
+  };
+  ctx.save(); ctx.fillStyle = 'rgba(6,14,17,.95)';
+  ctx.beginPath(); hex(ctx, D * 0.55, D); ctx.fill(); ctx.restore();
+  // vertical edges connecting the two faces — what makes it read as extruded
+  glowPath(ctx, c => {
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * TAU;
+      c.moveTo(hx + Math.cos(a) * R, hy + Math.sin(a) * R);
+      c.lineTo(hx + D * 0.55 + Math.cos(a) * R, hy + D + Math.sin(a) * R);
+    }
+  }, '#4d7fb3', 1, [[3,.07],[1.2,.18]]);
+  ctx.save(); ctx.fillStyle = 'rgba(8,18,22,.97)';
+  ctx.beginPath(); hex(ctx, 0, 0); ctx.fill(); ctx.restore();
+  glowPath(ctx, c => hex(c, 0, 0), '#6fb7e8', 1.8);
+  scanlines(ctx, w, h);
+}
+
+/* ---------- 4. true wireframe 3D ---------- */
+const CUBE_V = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+const CUBE_E = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+// a square pyramid, so there are two solids rather than one
+const PYR_V = [[-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1],[0,-1.3,0]];
+const PYR_E = [[0,1],[1,2],[2,3],[3,0],[0,4],[1,4],[2,4],[3,4]];
+
+function project(p, rx, ry, scale, cx, cy, dist = 4.2) {
+  let [x, y, z] = p;
+  // rotate Y then X
+  let c = Math.cos(ry), s = Math.sin(ry);
+  [x, z] = [x * c - z * s, x * s + z * c];
+  c = Math.cos(rx); s = Math.sin(rx);
+  [y, z] = [y * c - z * s, y * s + z * c];
+  const k = scale / (dist + z);          // perspective divide
+  return { x: cx + x * k, y: cy + y * k, k };
+}
+
+function wireframe(ctx, verts, edges, rx, ry, scale, cx, cy, col) {
+  const P = verts.map(v => project(v, rx, ry, scale, cx, cy));
+  // brightness by depth: nearer edges burn hotter, which is most of the
+  // depth cue you get without any surfaces to shade
+  for (const [a, b] of edges) {
+    const depth = (P[a].k + P[b].k) / 2;
+    const lit = Math.max(0.12, Math.min(1, (depth - 0.55) * 1.9));
+    glowPath(ctx, c => { c.moveTo(P[a].x, P[a].y); c.lineTo(P[b].x, P[b].y); },
+      col, 1.6, [[5, .05 * lit], [2.6, .14 * lit], [1.4, .4 * lit], [0.8, lit]]);
+  }
+  // vertices as sparks
+  for (const p of P) {
+    glowPath(ctx, c => c.arc(p.x, p.y, 1.2, 0, TAU), '#ffffff', 1, [[3,.10],[1,.5]]);
+  }
+}
+
+function panel4(ctx, t, w, h) {
+  fade(ctx, w, h, opt.trails ? 0.26 : 1);
+  wireframe(ctx, CUBE_V, CUBE_E, t * 0.6, t * 0.9, 150, w * 0.32, h * 0.5, '#6fb7e8');
+  wireframe(ctx, PYR_V, PYR_E, -t * 0.5, t * 1.15, 140, w * 0.72, h * 0.5, '#c9a227');
+  // a horizon grid, receding — the other classic depth cue
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 1; i <= 7; i++) {
+    const y = h * 0.86 + i * i * 1.6;
+    if (y > h) break;
+    ctx.strokeStyle = `rgba(77,127,179,${0.30 / i})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+  ctx.restore();
+  scanlines(ctx, w, h);
+}
+
+/* ---------- drive ---------- */
+const panels = [
+  [document.getElementById('c1').getContext('2d'), panel1],
+  [document.getElementById('c2').getContext('2d'), panel2],
+  [document.getElementById('c3').getContext('2d'), panel3],
+  [document.getElementById('c4').getContext('2d'), panel4],
+];
+// prime the trail buffers so the first frames aren't transparent
+for (const [ctx] of panels) { ctx.fillStyle = '#050b0d'; ctx.fillRect(0, 0, 640, 360); }
+
+let t0 = performance.now();
+function loop(now) {
+  const t = (now - t0) / 1000;
+  for (const [ctx, fn] of panels) fn(ctx, t, 640, 360);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
