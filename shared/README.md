@@ -24,6 +24,24 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
   screen-flash value. Used by Angle Iron and Live Wire. **Serpent Battery does not
   use it**: its bits and floaters live on the world object and are stepped
   inside its engine, which predates this module and wasn't worth churning.
+- **[version.js](version.js)** — one app-wide `BUILD` string, shown in every
+  help panel and on the cabinet. Kept in lockstep with `sw.js`'s
+  `CACHE_VERSION` by [version.test.js](version.test.js).
+- **[resume.js](resume.js)** — storage for mid-run saves. The *engines* own what
+  a snapshot is (`snapshot`/`hydrate`); this only handles keys, build-stamping
+  and the fact that localStorage may throw. Used by Circuit Breaker, Serpent
+  Battery and Angle Iron; **not** Live Wire, which is one-life score-attack.
+- **[glow.js](glow.js)** — the vector/CRT art primitives: `glowStroke` (the
+  multi-pass emissive stroke everything else is built on), `glowDot`, `inkDot`,
+  `extrude`/`extrudeDisc`/`extrudeRect`, `fadeFrame` and `scanlines`. Piloted on
+  Live Wire. Two things to know before using it:
+  - **Static content accumulates** under `fadeFrame`, settling at roughly
+    `1/fade` times the alpha you wrote — a grid drawn at 0.5 ends up looking
+    like 1.5. Write static alphas about a third of what you want.
+  - **Extrusion suits discrete objects on a dark board**, not the tip of an
+    already-glowing form: it fills a dark body before rimming it, which on the
+    end of a glowing tube punches a visible hole. Live Wire's head is a bright
+    `glowDot` for exactly this reason.
 
 Deliberately *not* shared: the banner show/hide logic. It looked like a
 duplicate, but Serpent Battery's variant hides a legend and two hint

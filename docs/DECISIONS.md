@@ -418,3 +418,25 @@ Also dropped: in-flight shots and decorative particles. A shot resumed mid-traje
 **Angle Iron: saves are layout-agnostic.** Bricks are stored as damage keyed by `(row, col)` and the paddle as a fraction of board width, rather than as rectangles and pixels — the same trick `relayout` uses. A run saved on one board shape therefore restores correctly onto the other, which matters because the layout is picked at load from the device.
 
 Live Wire remains deliberately excluded. It is one-life score-attack; a resumable run makes its ladder meaningless.
+
+## 2026-07-29 — The vector/CRT art direction, and piloting it on Live Wire
+
+Decided the games move to an emissive vector look — the Asteroids/Tempest idiom — rather than to hand-drawn sprites. Sprites would need an artist, an asset pipeline and a lot of files, all of which fight a project whose architecture is "no build step, works offline, self-contained". The games already have an identity (electrical theming, mono type, a distinct accent each); this cashes it in as code, adds zero asset bytes, and unifies all four at once.
+
+`docs/crt-demo.html` (viewable on Pages) compares four techniques side by side and is what the choice was made against.
+
+**The 3D question resolved into two answers.** A true vector display can only do wireframe — perspective projection with no surfaces to shade — which Canvas 2D does perfectly well but which is a different *game*, not a skin. What was actually wanted was volume: `extrude` draws a dark opaque body, a glowing rim, and a second face offset behind with the silhouette edges connecting them. Objects read as solid and dimensional without pretending to be rendered models.
+
+**Canvas 2D, not WebGL**, and not for nostalgia. WebGL would make real bloom cheap, but the render tests boot every shell against node-canvas, which is 2D only — moving to WebGL would throw away the draw-path safety net across all four games, immediately after building it. Multi-pass strokes get the look anyway.
+
+**Not `shadowBlur`**, which is the obvious API for glow and is brutally slow on a phone. Drawing the same path four times at decreasing width and increasing alpha under `globalCompositeOperation = 'lighter'` is faster and gives control over the falloff.
+
+Piloted on **Live Wire** rather than everywhere: smallest shell, best genre fit, lowest readability risk — and, practically, the one game not on the device-test checklist, so changing it could not disturb a playtest in progress. Circuit Breaker will get the most conservative treatment when its turn comes, because its enemy trait cues depend on crisp silhouettes and bloom actively fights them.
+
+Three things only became apparent once frames were actually rendered:
+
+- **Static content accumulates under a phosphor fade.** Anything redrawn every frame onto a surface that is faded rather than cleared settles at about `1/fade` times its written alpha — the grid at 0.55 was arriving on screen at roughly full strength. Static alphas now compensate; the alternative (a separate un-faded layer) needs a second canvas and would have collided with the render harness, which hands every canvas element the same context.
+- **A stroked circle is an annulus.** `glowDot` originally stroked a circle, so anything smaller than about twice the line width rendered as a visible donut — the food pellet had a hole in it. It now strokes a zero-length round-capped segment.
+- **Extrusion is wrong on the tip of a glowing form.** It fills a dark body before rimming, which on the end of Live Wire's tube punched a hole where the head should be brightest. Extrusion is for discrete objects sitting on a dark board; the head is now a bright `glowDot`. Similarly, detail *inside* an emissive shape (the head's pupils) cannot be additive, since additive cannot darken — hence `inkDot`.
+
+Added `tools/screenshot.mjs` alongside, which renders a real frame to a PNG via the render harness. Art work is impossible to judge otherwise from a headless environment: a background browser throttles `requestAnimationFrame` until it stops compositing entirely, so screenshots come back blank and every one of the findings above would have been invisible.

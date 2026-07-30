@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 ## Read this first
 
@@ -147,6 +147,18 @@ Curve after the change: wave 1 is 8 enemies / 160 hp, wave 7 is 42 / ~1400, wave
 Readability had to keep up, since "my towers aren't working" must read as *wrong tool* rather than *bug*: each trait gets a silhouette cue (heavy ring, dashed shell, chevron, cross), a patch draws its heal radius, and a mend flashes green. One collision was caught only by screenshot — the old slow tint repainted enemies in almost exactly Shell's blue, so `slow` is now a translucent frost *over* the type colour rather than a replacement.
 
 **Not done, deliberately:** projectiles (worth more once the above is played — travel time makes leading targets and placement angles matter, multiplying these changes rather than standing alone) and the between-waves choice. Difficulty numbers are still untuned by play.
+
+## Art direction: vector/CRT, piloted on Live Wire (2026-07-30)
+
+Decided against sprites and for an emissive vector look built in Canvas 2D — see `docs/crt-demo.html` (live at `/Arcade/docs/crt-demo.html`) for the four techniques compared, and DECISIONS.md for why.
+
+`shared/glow.js` holds the primitives: `glowStroke` (multi-pass emissive stroke — everything else builds on it), `glowDot`, `inkDot`, `extrude`/`extrudeDisc`/`extrudeRect`, `fadeFrame`, `scanlines`. All reduced-motion aware.
+
+**Live Wire is the pilot.** Its wire is now one continuous glowing polyline rather than per-cell shapes — truer to the name, and four stroke passes for the whole body instead of eight per cell, which on a long wire is the difference between a handful of draws a frame and several hundred.
+
+`tools/screenshot.mjs` renders a real frame to a PNG through the render harness. Art cannot be judged from a headless browser at all — rAF is throttled until the page stops compositing, so screenshots come back blank.
+
+**Remaining:** Serpent Battery, Angle Iron, then Circuit Breaker — CB last and most conservatively, because bloom fights the enemy trait cues that depend on crisp silhouettes. Not yet seen on a real device.
 
 ## Open decisions (not yet settled)
 

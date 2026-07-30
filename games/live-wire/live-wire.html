@@ -54,6 +54,7 @@
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
+import { glowStroke, glowDot, inkDot, fadeFrame, scanlines, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
@@ -243,8 +244,11 @@ function sync() {
 const C = L.CELL;
 const cx = c => c * C, cy = c => c * C;
 
+/* The board is faded rather than cleared, so everything leaves a phosphor
+   trail. `reduce` turns that into a hard clear — trails are exactly the kind of
+   motion prefers-reduced-motion exists to suppress. */
 function draw() {
-  ctx.clearRect(0, 0, L.W, L.H);
+  fadeFrame(ctx, L.W, L.H, { amount: .34, bg: '#050b0d', reduce });
   drawGrid();
 
   if (world.food) drawFood(world.food);
@@ -257,88 +261,119 @@ function draw() {
     ctx.fillStyle = `rgba(224,80,60,${gfx.flash * .28})`;
     ctx.fillRect(0, 0, L.W, L.H);
   }
+
+  // also accumulating (multiply, so it settles darker than written) — hence low
+  scanlines(ctx, L.W, L.H, { gap: 3, strength: .10 });
 }
 
+/* Anything static is drawn every frame onto a surface that is only faded, not
+   cleared, so it accumulates: each frame keeps (1 - fade) of the last and adds
+   a full-strength copy, settling at roughly 1/fade times the alpha written
+   here. At a 0.34 fade that is about 3x. These alphas are therefore a third of
+   what they look like they should be — the grid reads correctly on screen. */
 function drawGrid() {
-  ctx.strokeStyle = 'rgba(35,56,63,.55)';
+  ctx.strokeStyle = 'rgba(35,56,63,.18)';
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let x = 1; x < L.COLS; x++) { ctx.moveTo(cx(x) + .5, 0); ctx.lineTo(cx(x) + .5, L.H); }
   for (let y = 1; y < L.ROWS; y++) { ctx.moveTo(0, cy(y) + .5); ctx.lineTo(L.W, cy(y) + .5); }
   ctx.stroke();
-  ctx.strokeStyle = 'rgba(99,121,127,.4)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, L.W - 2, L.H - 2);
+  // the border is the one piece of chrome worth lighting up
+  glowStroke(ctx, c => c.rect(1.5, 1.5, L.W - 3, L.H - 3), '#2b5f52', 1, GLOW_PASSES_CHEAP, .35);
 }
 
 /** Body cells sit on the grid, but the head slides out of the cell it came
  *  from and the tail retracts into the next one, so motion reads as continuous
  *  rather than a row of jumps. Both come from the engine's tick progress, so
  *  the animation can't drift out of sync with the simulation. */
-function drawWire() {
+/* The wire is drawn as ONE continuous glowing polyline rather than a row of
+   per-cell shapes. Two reasons: it is what the game is actually called and it
+   looks the part, and it costs four stroke passes for the whole body instead of
+   eight per cell — which on a 60-cell wire is the difference between a handful
+   of draws and several hundred, every frame, on a phone. */
+function wirePoints() {
   const s = world.wire, n = s.length;
   const p = world.running && !world.over ? E.tickProgress(world) : 1;
-  const pad = 2;
+  const mid = (cell) => ({ x: cx(cell.x) + C / 2, y: cy(cell.y) + C / 2 });
+  const base = s.map(mid);
+  if (n < 2) return base;
 
-  for (let i = n - 1; i >= 0; i--) {
-    let px = cx(s[i].x), py = cy(s[i].y), size = C - pad * 2;
-
-    if (i === 0 && n > 1) {
-      // lerp the head out of the cell it just left
-      px = cx(s[1].x) + (cx(s[0].x) - cx(s[1].x)) * p;
-      py = cy(s[1].y) + (cy(s[0].y) - cy(s[1].y)) * p;
-    } else if (i === n - 1 && n > 1 && world.grow === 0) {
-      // the tail is vacating: shrink it as it goes
-      const k = 1 - p * .8;
-      size = (C - pad * 2) * k;
-    }
-
-    const head = i === 0;
-    ctx.fillStyle = head ? '#5fc9a4' : '#3fae8f';
-    ctx.globalAlpha = head ? 1 : Math.max(.45, 1 - i / (n * 1.6));
-    const off = (C - size) / 2;
-    ctx.fillRect(px + off, py + off, size, size);
-    ctx.globalAlpha = 1;
-
-    if (head) {
-      // eyes, so the direction of travel is readable at a glance
-      ctx.fillStyle = '#06201a';
-      const d = world.dir;
-      const ex = px + C / 2 + d.x * 4, ey = py + C / 2 + d.y * 4;
-      const ox = d.x === 0 ? 4 : 0, oy = d.y === 0 ? 4 : 0;
-      ctx.fillRect(ex - ox - 1.5, ey - oy - 1.5, 3, 3);
-      ctx.fillRect(ex + ox - 1.5, ey + oy - 1.5, 3, 3);
-    }
+  const pts = base.slice();
+  // the head slides out of the cell it came from, so motion reads as
+  // continuous rather than as a row of jumps
+  pts[0] = {
+    x: base[1].x + (base[0].x - base[1].x) * p,
+    y: base[1].y + (base[0].y - base[1].y) * p,
+  };
+  // the tail retracts into the next cell — but only when it is actually
+  // vacating. Mid-growth the tail stays put, and that cell is still solid.
+  if (world.grow === 0) {
+    const t = n - 1;
+    pts[t] = {
+      x: base[t].x + (base[t - 1].x - base[t].x) * p,
+      y: base[t].y + (base[t - 1].y - base[t].y) * p,
+    };
   }
+  return pts;
+}
+
+function drawWire() {
+  const pts = wirePoints();
+  if (!pts.length) return;
+
+  if (pts.length > 1) {
+    glowStroke(ctx, c => {
+      c.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
+    }, '#3fae8f', C * 0.30);
+  }
+
+  /* The head is drawn as the brightest point rather than as an extruded solid.
+     `extrudeDisc` fills a dark body before rimming it, which is right for a
+     discrete object sitting on a dark board — a tower, a brick — but on the tip
+     of an already-glowing tube it punches a hole in the end. Volume here comes
+     from the tube itself; the head just needs to be hotter than the body. */
+  const h = pts[0];
+  glowDot(ctx, h.x, h.y, C * 0.30, '#9fffe0');
+  glowStroke(ctx, c => c.arc(h.x, h.y, C * 0.34, 0, Math.PI * 2), '#5fc9a4', 1.4,
+    GLOW_PASSES_CHEAP);
+
+  // eyes, so the direction of travel is readable even standing still. Drawn
+  // dark and normally composited: the head is a bright emissive disc, so a
+  // light pupil would be invisible against it and additive cannot darken.
+  const d = world.dir;
+  const ex = h.x + d.x * 4, ey = h.y + d.y * 4;
+  const ox = d.x === 0 ? 4 : 0, oy = d.y === 0 ? 4 : 0;
+  inkDot(ctx, ex - ox, ey - oy, 1.9);
+  inkDot(ctx, ex + ox, ey + oy, 1.9);
 }
 
 function drawFood(f) {
   const t = performance.now() / 400;
-  const r = C * .3 + Math.sin(t) * 1.2;
-  ctx.fillStyle = '#c9a227';
-  ctx.beginPath();
-  ctx.arc(cx(f.x) + C / 2, cy(f.y) + C / 2, r, 0, Math.PI * 2);
-  ctx.fill();
+  const r = C * .26 + (reduce ? 0 : Math.sin(t) * 1.2);
+  glowDot(ctx, cx(f.x) + C / 2, cy(f.y) + C / 2, r, '#c9a227');
 }
 
 function drawBonus(b) {
   const t = performance.now() / 200;
   // fades as it runs out of time, so urgency is visible without a timer bar
   const life = b.ttl / E.BONUS_TTL;
-  ctx.globalAlpha = .45 + .55 * Math.abs(Math.sin(t));
-  ctx.fillStyle = life < .3 ? '#e0503c' : '#e6e9e2';
+  const col = life < .3 ? '#e0503c' : '#e6e9e2';
   const r = C * .34;
   const px = cx(b.x) + C / 2, py = cy(b.y) + C / 2;
-  ctx.beginPath();
-  for (let i = 0; i < 5; i++) {
-    const a = -Math.PI / 2 + i * Math.PI * 2 / 5;
-    const a2 = a + Math.PI / 5;
-    ctx.lineTo(px + Math.cos(a) * r, py + Math.sin(a) * r);
-    ctx.lineTo(px + Math.cos(a2) * r * .45, py + Math.sin(a2) * r * .45);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  const star = (c) => {
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI / 2 + i * Math.PI * 2 / 5;
+      const a2 = a + Math.PI / 5;
+      c.lineTo(px + Math.cos(a) * r, py + Math.sin(a) * r);
+      c.lineTo(px + Math.cos(a2) * r * .45, py + Math.sin(a2) * r * .45);
+    }
+    c.closePath();
+  };
+  // pulsing brightness rather than pulsing alpha: on an additive layer alpha
+  // reads as the shape thinning out, where brightness reads as it flaring
+  const pulse = reduce ? 1 : .55 + .45 * Math.abs(Math.sin(t));
+  glowStroke(ctx, star, col, 1.8, undefined, pulse);
 }
 
 syncBest();

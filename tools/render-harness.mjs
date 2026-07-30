@@ -85,6 +85,11 @@ export function bootGame(htmlPath, { width = 900, height = 1300, storage = null 
   const w = dom.window;
   return {
     window: w, errors,
+    // the node-canvas the shell actually drew on. Exposed so a caller can save
+    // a real frame to a PNG — the only reliable way to *look* at the games from
+    // here, since a headless browser throttles rAF to the point of not
+    // compositing at all. `surface.toBuffer('image/png')`.
+    surface,
     get world() { return w.__world; },
     get E() { return w.__E; },
     frame: (t) => w.__frame(t),
