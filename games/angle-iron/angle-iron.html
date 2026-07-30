@@ -53,6 +53,7 @@ import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
+import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
@@ -220,10 +221,15 @@ function hideBanner() { $('banner').classList.add('hide'); }
 /* One handler for every banner state — a game over restarts, a cleared level
    advances, and the opening banner just starts. Rewiring onclick per state
    left the original listener attached too, so both fired on the same click. */
+/* Set once the player has actually begun; `saveNow` uses it rather than
+   `world.running`, which goes false whenever a banner is up. */
+let started = false;
+
 $('go').addEventListener('click', () => {
   if (world.over) E.resetGame(world);
   else if (world.levelClear) E.nextLevel(world);
   world.running = true;
+  started = true;
   gfx.clear();               // don't let a death flash bleed into the next run
   hideBanner();
 });
@@ -243,6 +249,7 @@ function frame(now) {
     E.step(world, dt);
 
     if (world.over) {
+      clearRun(GAME_ID);          // a finished run is not one to come back to
       const r = submit(GAME_ID, world.score, `Level ${world.level}`);
       syncBest();
       showBanner('Game Over',
@@ -253,6 +260,7 @@ function frame(now) {
     }
     else if (world.levelClear) {
       world.running = false;
+      saveNow();                  // a cleared board is the natural place to keep
       showBanner('Level Cleared', `Level ${world.level} down. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Next level');
     }
     sync();
@@ -401,6 +409,57 @@ function drawEffects() {
     y += 12;
   }
 }
+
+/* ---------- resuming an interrupted run ----------
+
+   Saved on the quiet beats: when a level is cleared (the game is already
+   paused behind a banner) and when the page is hidden. Placed down here
+   because GAME_ID is a const declared above the loop, not hoisted. */
+
+let resumeOffered = false;
+
+/* Guarded on `started` rather than on `world.running`, because the states most
+   worth saving are exactly the ones where the game is paused behind a banner —
+   a cleared level sets running=false before this is called, and checking
+   `running` there would delete the save instead of writing it. */
+function saveNow() {
+  if (!started || world.over) { clearRun(GAME_ID); return; }
+  saveRun(GAME_ID, E.snapshot(world), `Level ${world.level} · ${world.score}`);
+}
+
+// visibilitychange is what actually fires when a phone backgrounds an app
+addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+addEventListener('pagehide', saveNow);
+
+(function offerResume() {
+  const stored = loadRun(GAME_ID);
+  if (!stored) return;
+  resumeOffered = true;
+  showBanner('Resume run?', `You left off at <b style="color:var(--brass)">${stored.label}</b>.`, 'Continue');
+
+  const fresh = document.createElement('button');
+  fresh.type = 'button';
+  fresh.textContent = 'New run';
+  fresh.style.cssText = 'margin-left:8px;background:#1b3038;color:var(--bone)';
+  fresh.addEventListener('click', () => {
+    clearRun(GAME_ID);
+    fresh.remove();
+    resumeOffered = false;
+    showBanner('Angle Iron', 'Slide to steer, tap to serve.', 'Begin');
+  });
+  $('go').after(fresh);
+
+  // capture, so this runs before the main handler decides to reset or advance
+  $('go').addEventListener('click', function once() {
+    $('go').removeEventListener('click', once, { capture: true });
+    if (!resumeOffered) return;
+    resumeOffered = false;
+    fresh.remove();
+    if (!E.hydrate(world, stored.snap)) E.resetGame(world);
+    clearRun(GAME_ID);
+    sync();
+  }, { capture: true });
+})();
 
 syncBest();
 sync();                      // makeFit already performed the first fit

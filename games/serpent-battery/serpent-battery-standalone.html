@@ -516,6 +516,15 @@ function makeChain(count, speed, startS, spacing = 30, wave = 1) {
 let _segId = 1;
 function nextSegId() { return _segId++; }
 
+/** Push the id counter past `id`. Restoring a saved run brings back segments
+ *  carrying ids minted in a previous session, and the counter has restarted at
+ *  1 — without this, a freshly spawned segment could reuse a restored id, and
+ *  `battery.lastHitAt` is keyed by exactly that, so the new segment would
+ *  inherit a stranger's convergence timing. */
+function reserveSegIds(id) {
+  if (Number.isFinite(id) && id >= _segId) _segId = Math.floor(id) + 1;
+}
+
 /** Segments in a wave. Growth was +3/wave capped at 40, which flatlined around
  *  wave 9 and left length doing no work after that; +4 to a 56 cap keeps it
  *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
@@ -848,6 +857,97 @@ function spawnWave(w) {
   w.shots = []; w.bits = []; w.floaters = [];
   w.pickups = [];
   w.waveClear = false;
+}
+
+/* ---------- saving a run in progress ---------- */
+
+/** A JSON-safe picture of a run. `L`, `path`, `pathLen` and `fx` are injected
+ *  or derived and so are rebuilt on the way back in; `assistR` is deliberately
+ *  left out because it describes the *device* (touch vs mouse), not the run —
+ *  restoring a phone save on a desktop must not carry the touch aim assist over.
+ *
+ *  `bits` and `floaters` are dropped too: they are decorative particles with a
+ *  lifetime measured in tenths of a second, and nobody resumes a game to find
+ *  their sparks intact. */
+function snapshot(w) {
+  const b = w.battery;
+  return {
+    wave: w.wave, score: w.score, scrap: w.scrap, lives: w.lives,
+    breaches: w.breaches,
+    over: w.over, waveClear: w.waveClear, clearTimer: w.clearTimer,
+    shopOpen: w.shopOpen,
+    upgrades: { ...w.upgrades },
+    gunUnlocks: { ...w.gunUnlocks },
+    effects: { ...w.effects },
+    shieldCharges: w.shieldCharges,
+    dropSeed: w.dropSeed,
+    chains: w.chains.map(ch => ({
+      s: ch.s, speed: ch.speed, spacing: ch.spacing, recoil: ch.recoil, split: ch.split,
+      segs: ch.segs.map(s => ({ id: s.id, kind: s.kind, hp: s.hp, maxhp: s.maxhp, r: s.r })),
+    })),
+    pickups: w.pickups.map(p => ({ ...p })),
+    battery: {
+      ang: b.ang, streak: b.streak, od: b.od, clock: b.clock,
+      lastHitAt: { ...b.lastHitAt },
+      guns: b.guns.map(g => ({ x: g.x, type: g.type, heat: g.heat, cool: g.cool, locked: g.locked })),
+    },
+  };
+}
+
+/** Restore a snapshot onto an existing world, in place. Returns false and
+ *  changes nothing if the snapshot is unusable, so a corrupt save degrades to
+ *  "start a new run" rather than to a broken one. */
+function hydrate(w, snap) {
+  if (!snap || typeof snap !== 'object') return false;
+  if (!Array.isArray(snap.chains) || !snap.battery || !Array.isArray(snap.battery.guns)) return false;
+  if (typeof snap.wave !== 'number') return false;
+  // a kind or gun type this build no longer has would break every lookup
+  if (snap.chains.some(ch => !Array.isArray(ch.segs) || ch.segs.some(s => !KIND[s.kind]))) return false;
+  if (snap.battery.guns.some(g => !GUN_TYPES[g.type])) return false;
+  if (snap.chains.length > MAX_CHAINS) return false;
+
+  w.wave = snap.wave; w.score = snap.score ?? 0; w.scrap = snap.scrap ?? 0;
+  w.lives = snap.lives ?? 3;
+  w.breaches = snap.breaches ?? 0;
+  w.over = !!snap.over;
+  w.waveClear = !!snap.waveClear; w.clearTimer = snap.clearTimer ?? 0;
+  w.shopOpen = !!snap.shopOpen;
+  w.upgrades = { ...newUpgrades(), ...(snap.upgrades || {}) };
+  w.gunUnlocks = { auto: false, rail: false, mortar: false, ...(snap.gunUnlocks || {}) };
+  w.effects = { ...(snap.effects || {}) };
+  w.shieldCharges = snap.shieldCharges ?? 0;
+  w.dropSeed = snap.dropSeed ?? 987654321;
+
+  w.chains = snap.chains.map(ch => ({
+    s: ch.s, speed: ch.speed, spacing: ch.spacing ?? 30,
+    recoil: ch.recoil ?? 0, split: !!ch.split,
+    segs: ch.segs.map(s => ({ ...s, flash: 0, deflect: 0 })),
+  }));
+  // ids came from a previous session where the counter has since restarted
+  for (const ch of w.chains) for (const s of ch.segs) reserveSegIds(s.id);
+
+  w.pickups = (snap.pickups || []).map(p => ({ ...p }));
+  // in-flight shots and decorative particles do not survive; they mean nothing
+  // once the run has been away, and shots would resume mid-trajectory
+  w.shots = []; w.bits = []; w.floaters = [];
+  w.shake = 0; w.hitStop = 0;
+
+  const sb = snap.battery;
+  const b = makeBattery(w.L, 1);
+  b.ang = clampAim(sb.ang ?? b.ang);
+  b.streak = sb.streak ?? 0;
+  b.od = sb.od ?? 0;
+  b.clock = sb.clock ?? 0;
+  b.lastHitAt = { ...(sb.lastHitAt || {}) };
+  // mounts are positioned from the *current* layout, not the saved one, so a
+  // run saved in one orientation restores correctly in another
+  b.guns = sb.guns.slice(0, MAX_MOUNTS).map((g, i) => ({
+    x: w.L.W * MOUNT_X[i], type: g.type, heat: g.heat ?? 0, cool: g.cool ?? 0, locked: g.locked ?? 0,
+  }));
+  w.battery = b;
+  w.cannon = b;              // the alias every call site uses
+  w.cannon.x = w.L.W / 2;
+  return true;
 }
 
 function resetRun(w) {
@@ -1510,7 +1610,7 @@ function nextWave(w) {
   w.running = true;
 }
 
-return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, KIND_UNLOCK, kindsForWave, kindForIndex, HP_PER_WAVE, HP_SCALE_MAX, hpScale, makeChain, _segId, nextSegId, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, AIM_ASSIST_R, TRAVERSE_MAX, slewAim, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, headDamageFactor, decapitate, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
+return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, KIND_UNLOCK, kindsForWave, kindForIndex, HP_PER_WAVE, HP_SCALE_MAX, hpScale, makeChain, _segId, nextSegId, reserveSegIds, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, AIM_ASSIST_R, TRAVERSE_MAX, slewAim, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, snapshot, hydrate, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, headDamageFactor, decapitate, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
 })();
 const __mod_1 = (() => {
 /* Fit a fixed-size game board into whatever space is left on screen.
@@ -1583,9 +1683,9 @@ const __mod_3 = (() => {
    can see and a cache they can't must never disagree. `version.test.js` reads
    sw.js and fails if the two drift, so this is enforced rather than hoped for —
    bump both together. */
-const BUILD = 'v11';
+const BUILD = 'v13';
 
-/** Short human label, e.g. "Arcade v11". */
+/** Short human label, e.g. "Arcade v13". */
 const BUILD_LABEL = `Arcade ${BUILD}`;
 
 return { BUILD, BUILD_LABEL };
@@ -1718,6 +1818,85 @@ function clear(game) {
 return { KEY, memory, warned, readRaw, writeRaw, best, submit, clear };
 })();
 const __mod_5 = (() => {
+/* Mid-run saves — "continue where you left off".
+
+   Scores were easy: one number, write it when a run ends. A run in progress is
+   the whole world, and it has to survive the app being closed on a phone, which
+   happens constantly and without warning.
+
+   Deliberately NOT in every game. Live Wire is one-life score-attack: being able
+   to resume a run is contrary to the genre, and a save would make its ladder
+   meaningless. Circuit Breaker and Serpent Battery have long runs where losing
+   progress genuinely stings, and Angle Iron is level-based, so those three get
+   it.
+
+   The engines own what a snapshot *is* (`snapshot(w)` / `hydrate(w, snap)`),
+   because that is game rules and belongs where it can be unit-tested without a
+   DOM. This module owns only storage: keys, versioning, and the fact that
+   localStorage is allowed to fail. Same split, and the same defensive posture,
+   as shared/scores.js. */
+
+const { BUILD } = __mod_3;
+
+const KEY = (gameId) => `arcade:run:${gameId}`;
+
+/* Every access is wrapped. localStorage genuinely throws in Safari private
+   browsing and under some storage policies, and a saved game is never worth
+   crashing a running one over. Unlike scores there is no in-memory fallback:
+   a save that cannot outlive the tab has no purpose. */
+function read(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function write(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch { return false; }
+}
+function remove(key) {
+  try { localStorage.removeItem(key); } catch { /* nothing useful to do */ }
+}
+
+/**
+ * Store a snapshot of a run in progress.
+ * @param gameId  the game's id, same one scores.js uses
+ * @param snap    a plain, JSON-safe object from the engine's `snapshot()`
+ * @param label   short human summary for the resume prompt ("Wave 7 · 3,400")
+ */
+function saveRun(gameId, snap, label = '') {
+  if (!snap) return false;
+  return write(KEY(gameId), JSON.stringify({
+    // Stamped with the build that wrote it. A snapshot is a picture of engine
+    // internals, so a later build can easily have changed what those mean —
+    // restoring across that boundary would produce a subtly corrupt run, which
+    // is far worse than losing the save. See `loadRun`.
+    build: BUILD,
+    at: Date.now(),
+    label,
+    snap,
+  }));
+}
+
+/**
+ * The stored run for this game, or null if there isn't a usable one.
+ * Returns `{ snap, label, at }`.
+ */
+function loadRun(gameId) {
+  const raw = read(KEY(gameId));
+  if (!raw) return null;
+  let parsed;
+  // Anything could be under that key — another tab, an older build, someone
+  // poking at devtools. Validate rather than trust, exactly like scores.best().
+  try { parsed = JSON.parse(raw); } catch { clearRun(gameId); return null; }
+  if (!parsed || typeof parsed !== 'object' || !parsed.snap) { clearRun(gameId); return null; }
+  if (parsed.build !== BUILD) { clearRun(gameId); return null; }
+  return { snap: parsed.snap, label: typeof parsed.label === 'string' ? parsed.label : '', at: parsed.at };
+}
+
+function clearRun(gameId) { remove(KEY(gameId)); }
+
+function hasRun(gameId) { return loadRun(gameId) !== null; }
+
+return { KEY, read, write, remove, saveRun, loadRun, clearRun, hasRun };
+})();
+const __mod_6 = (() => {
 /* Sound effects, synthesized on the fly with WebAudio.
 
    No audio files ship. Every blip is a few oscillators and an envelope, which
@@ -1865,7 +2044,9 @@ const { makeHelp } = __mod_2;
 
 const { best, submit } = __mod_4;
 
-const { makeAudio, mountAudioToggle } = __mod_5;
+const { saveRun, loadRun, clearRun } = __mod_5;
+
+const { makeAudio, mountAudioToggle } = __mod_6;
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -2065,6 +2246,7 @@ function frame(now) {
     if (world.lives < livesBefore) audio[world.over ? 'lose' : 'breach']();
 
     if (world.over) {
+      clearRun(GAME_ID);          // a finished run is not one to come back to
       const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
       syncBest();
       showBanner('Battery Down',
@@ -2072,7 +2254,7 @@ function frame(now) {
                  : `Score ${world.score} · Wave ${world.wave} · best ${r.best}`,
         'Try again');
     }
-    else if (world.shopOpen && !$('shop').classList.contains('on')) openShop();
+    else if (world.shopOpen && !$('shop').classList.contains('on')) { saveNow(); openShop(); }
     sync();
   }
   draw();
@@ -2750,10 +2932,70 @@ $('go').addEventListener('click', () => {
   if (paused) paused = false;
   else if (world.over || !world.running) E.resetRun(world);
   world.running = true;
+  started = true;
   $('banner').classList.add('hide');
   firing = false; drag = null;
   fitStage(); sync();
 });
+
+/* ---------- resuming an interrupted run ----------
+
+   A serpent run is long, and a phone closes the app without warning. Saves are
+   written on the quiet beats — when the shop opens between waves, and when the
+   page is hidden — rather than every frame. */
+
+let resumeOffered = false;
+/* Set once the player has actually begun. Used instead of `world.running`,
+   which goes false whenever a banner or the shop is up — and those paused
+   states are exactly the ones most worth saving. */
+let started = false;
+
+function saveNow() {
+  if (!started || world.over) { clearRun(GAME_ID); return; }
+  saveRun(GAME_ID, E.snapshot(world), `Wave ${world.wave} · ${world.score}`);
+}
+
+// visibilitychange is what actually fires when a phone backgrounds an app;
+// beforeunload is unreliable there.
+addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+addEventListener('pagehide', saveNow);
+
+(function offerResume() {
+  const stored = loadRun(GAME_ID);
+  if (!stored) return;
+  resumeOffered = true;
+  showBanner('Resume run?', `You left off at ${stored.label}.`, 'Continue');
+
+  const fresh = document.createElement('button');
+  fresh.type = 'button';
+  fresh.textContent = 'New run';
+  fresh.style.cssText = 'margin-left:8px;background:#1b3038;color:var(--bone)';
+  fresh.addEventListener('click', () => {
+    clearRun(GAME_ID);
+    fresh.remove();
+    resumeOffered = false;
+    showBanner('Serpent Battery', 'Hold to fire. Drag to aim.', 'Begin');
+  });
+  $('go').after(fresh);
+
+  // capture, so this runs before the main handler decides to resetRun
+  $('go').addEventListener('click', function once() {
+    $('go').removeEventListener('click', once, { capture: true });
+    if (!resumeOffered) return;
+    resumeOffered = false;
+    fresh.remove();
+    if (E.hydrate(world, stored.snap)) {
+      // the run is mid-flight, not unstarted: mark it running so the main
+      // handler's "reset an unstarted run" branch does not wipe it
+      world.running = true;
+    } else {
+      clearRun(GAME_ID);
+      E.resetRun(world);
+    }
+    clearRun(GAME_ID);
+    sync();
+  }, { capture: true });
+})();
 
 fitStage(); syncBest(); sync();
 requestAnimationFrame(frame);

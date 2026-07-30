@@ -529,6 +529,86 @@ test('the fx.power hook fires on a pickup, and its absence is safe', () => {
   assert.doesNotThrow(() => E.applyPowerup(bare, 'life'));
 });
 
+/* ---------- saving a run in progress ---------- */
+
+test('a snapshot round-trips a run exactly', () => {
+  const w = E.createWorld();
+  w.running = true;
+  E.nextLevel(w); E.nextLevel(w);        // reach level 3 properly
+  w.score = 4200; w.lives = 2;
+  E.launch(w);
+  E.applyPowerup(w, 'wide');
+  E.applyPowerup(w, 'multi');
+  w.drops = [{ kind: 'slow', x: 120, y: 400, vy: E.DROP_SPEED }];
+  w.bricks[0].alive = false;
+  w.bricks[1].hp = 1;
+  w.bricks[9].alive = false;
+
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  const fresh = E.createWorld();
+  assert.equal(E.hydrate(fresh, snap), true);
+
+  assert.equal(fresh.level, 3);
+  assert.equal(fresh.score, 4200);
+  assert.equal(fresh.lives, 2);
+  assert.equal(fresh.balls.length, w.balls.length, 'multiball came back');
+  assert.equal(fresh.drops.length, 1, 'the falling capsule came back');
+  assert.ok(fresh.effects.wide > 0, 'the running effect came back');
+  assert.ok(Math.abs(fresh.paddle.w - L.PADDLE_W * E.WIDE_MULT) < 1e-6, 'and widened the paddle');
+  assert.deepEqual(fresh.bricks.map(b => `${b.row},${b.col}:${b.hp}:${b.alive}`),
+                   w.bricks.map(b => `${b.row},${b.col}:${b.hp}:${b.alive}`),
+                   'every brick kept its damage');
+});
+
+test('a restored run keeps playing identically', () => {
+  const w = E.createWorld();
+  w.running = true;
+  E.launch(w);
+  for (let i = 0; i < 120; i++) E.step(w, 1 / 60);
+
+  const resumed = E.createWorld();
+  resumed.running = true;
+  E.hydrate(resumed, JSON.parse(JSON.stringify(E.snapshot(w))));
+  for (let i = 0; i < 240; i++) { E.step(w, 1 / 60); E.step(resumed, 1 / 60); }
+  assert.equal(resumed.score, w.score, 'same score after playing on');
+  assert.equal(resumed.lives, w.lives, 'same lives');
+  assert.equal(E.aliveBricks(resumed), E.aliveBricks(w), 'same bricks standing');
+});
+
+test('a save restores onto the other board shape', () => {
+  // the reason bricks are stored by cell and the paddle as a fraction: a run
+  // saved on one layout has to come back on whatever the device is now
+  const w = E.createWorld();
+  w.running = true;
+  w.score = 900;
+  w.bricks[4].alive = false;
+  E.setPaddle(w, w.L.W * 0.25);
+
+  const tall = E.createWorld({ layout: E.LAYOUT_TALL });
+  assert.equal(E.hydrate(tall, JSON.parse(JSON.stringify(E.snapshot(w)))), true);
+  assert.equal(tall.score, 900);
+  assert.equal(tall.bricks[4].alive, false, 'damage landed on the right cell');
+  assert.ok(Math.abs(tall.paddle.x / tall.L.W - 0.25) < 0.05, 'paddle kept its position');
+  const lim = tall.L.WALL + tall.paddle.w / 2;
+  assert.ok(tall.paddle.x >= lim && tall.paddle.x <= tall.L.W - lim, 'and stayed inside the walls');
+});
+
+test('a corrupt or foreign snapshot is refused rather than half-applied', () => {
+  const good = E.snapshot(E.createWorld());
+  for (const bad of [
+    null, undefined, 7, 'no', {},
+    { ...good, level: 0 },
+    { ...good, bricks: 'not an array' },
+    { ...good, balls: null },
+    { ...good, drops: [{ kind: 'deathray', x: 0, y: 0 }] },
+  ]) {
+    const w = E.createWorld();
+    const before = JSON.stringify(E.snapshot(w));
+    assert.equal(E.hydrate(w, bad), false, `should have refused: ${String(JSON.stringify(bad)).slice(0, 50)}`);
+    assert.equal(JSON.stringify(E.snapshot(w)), before, 'and changed nothing');
+  }
+});
+
 /* ---------- lives and level flow ---------- */
 
 test('a ball lost past the floor costs a life and re-racks', () => {

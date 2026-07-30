@@ -171,6 +171,15 @@ export function makeChain(count, speed, startS, spacing = 30, wave = 1) {
 let _segId = 1;
 export function nextSegId() { return _segId++; }
 
+/** Push the id counter past `id`. Restoring a saved run brings back segments
+ *  carrying ids minted in a previous session, and the counter has restarted at
+ *  1 — without this, a freshly spawned segment could reuse a restored id, and
+ *  `battery.lastHitAt` is keyed by exactly that, so the new segment would
+ *  inherit a stranger's convergence timing. */
+export function reserveSegIds(id) {
+  if (Number.isFinite(id) && id >= _segId) _segId = Math.floor(id) + 1;
+}
+
 /** Segments in a wave. Growth was +3/wave capped at 40, which flatlined around
  *  wave 9 and left length doing no work after that; +4 to a 56 cap keeps it
  *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
@@ -503,6 +512,97 @@ export function spawnWave(w) {
   w.shots = []; w.bits = []; w.floaters = [];
   w.pickups = [];
   w.waveClear = false;
+}
+
+/* ---------- saving a run in progress ---------- */
+
+/** A JSON-safe picture of a run. `L`, `path`, `pathLen` and `fx` are injected
+ *  or derived and so are rebuilt on the way back in; `assistR` is deliberately
+ *  left out because it describes the *device* (touch vs mouse), not the run —
+ *  restoring a phone save on a desktop must not carry the touch aim assist over.
+ *
+ *  `bits` and `floaters` are dropped too: they are decorative particles with a
+ *  lifetime measured in tenths of a second, and nobody resumes a game to find
+ *  their sparks intact. */
+export function snapshot(w) {
+  const b = w.battery;
+  return {
+    wave: w.wave, score: w.score, scrap: w.scrap, lives: w.lives,
+    breaches: w.breaches,
+    over: w.over, waveClear: w.waveClear, clearTimer: w.clearTimer,
+    shopOpen: w.shopOpen,
+    upgrades: { ...w.upgrades },
+    gunUnlocks: { ...w.gunUnlocks },
+    effects: { ...w.effects },
+    shieldCharges: w.shieldCharges,
+    dropSeed: w.dropSeed,
+    chains: w.chains.map(ch => ({
+      s: ch.s, speed: ch.speed, spacing: ch.spacing, recoil: ch.recoil, split: ch.split,
+      segs: ch.segs.map(s => ({ id: s.id, kind: s.kind, hp: s.hp, maxhp: s.maxhp, r: s.r })),
+    })),
+    pickups: w.pickups.map(p => ({ ...p })),
+    battery: {
+      ang: b.ang, streak: b.streak, od: b.od, clock: b.clock,
+      lastHitAt: { ...b.lastHitAt },
+      guns: b.guns.map(g => ({ x: g.x, type: g.type, heat: g.heat, cool: g.cool, locked: g.locked })),
+    },
+  };
+}
+
+/** Restore a snapshot onto an existing world, in place. Returns false and
+ *  changes nothing if the snapshot is unusable, so a corrupt save degrades to
+ *  "start a new run" rather than to a broken one. */
+export function hydrate(w, snap) {
+  if (!snap || typeof snap !== 'object') return false;
+  if (!Array.isArray(snap.chains) || !snap.battery || !Array.isArray(snap.battery.guns)) return false;
+  if (typeof snap.wave !== 'number') return false;
+  // a kind or gun type this build no longer has would break every lookup
+  if (snap.chains.some(ch => !Array.isArray(ch.segs) || ch.segs.some(s => !KIND[s.kind]))) return false;
+  if (snap.battery.guns.some(g => !GUN_TYPES[g.type])) return false;
+  if (snap.chains.length > MAX_CHAINS) return false;
+
+  w.wave = snap.wave; w.score = snap.score ?? 0; w.scrap = snap.scrap ?? 0;
+  w.lives = snap.lives ?? 3;
+  w.breaches = snap.breaches ?? 0;
+  w.over = !!snap.over;
+  w.waveClear = !!snap.waveClear; w.clearTimer = snap.clearTimer ?? 0;
+  w.shopOpen = !!snap.shopOpen;
+  w.upgrades = { ...newUpgrades(), ...(snap.upgrades || {}) };
+  w.gunUnlocks = { auto: false, rail: false, mortar: false, ...(snap.gunUnlocks || {}) };
+  w.effects = { ...(snap.effects || {}) };
+  w.shieldCharges = snap.shieldCharges ?? 0;
+  w.dropSeed = snap.dropSeed ?? 987654321;
+
+  w.chains = snap.chains.map(ch => ({
+    s: ch.s, speed: ch.speed, spacing: ch.spacing ?? 30,
+    recoil: ch.recoil ?? 0, split: !!ch.split,
+    segs: ch.segs.map(s => ({ ...s, flash: 0, deflect: 0 })),
+  }));
+  // ids came from a previous session where the counter has since restarted
+  for (const ch of w.chains) for (const s of ch.segs) reserveSegIds(s.id);
+
+  w.pickups = (snap.pickups || []).map(p => ({ ...p }));
+  // in-flight shots and decorative particles do not survive; they mean nothing
+  // once the run has been away, and shots would resume mid-trajectory
+  w.shots = []; w.bits = []; w.floaters = [];
+  w.shake = 0; w.hitStop = 0;
+
+  const sb = snap.battery;
+  const b = makeBattery(w.L, 1);
+  b.ang = clampAim(sb.ang ?? b.ang);
+  b.streak = sb.streak ?? 0;
+  b.od = sb.od ?? 0;
+  b.clock = sb.clock ?? 0;
+  b.lastHitAt = { ...(sb.lastHitAt || {}) };
+  // mounts are positioned from the *current* layout, not the saved one, so a
+  // run saved in one orientation restores correctly in another
+  b.guns = sb.guns.slice(0, MAX_MOUNTS).map((g, i) => ({
+    x: w.L.W * MOUNT_X[i], type: g.type, heat: g.heat ?? 0, cool: g.cool ?? 0, locked: g.locked ?? 0,
+  }));
+  w.battery = b;
+  w.cannon = b;              // the alias every call site uses
+  w.cannon.x = w.L.W / 2;
+  return true;
 }
 
 export function resetRun(w) {

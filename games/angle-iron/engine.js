@@ -319,6 +319,59 @@ export function createWorld(opts = {}) {
   return w;
 }
 
+/* ---------- saving a run in progress ---------- */
+
+/** A JSON-safe picture of a run. Bricks are stored as damage keyed by cell
+ *  rather than as a list of rectangles: the field is rebuilt from `level` on
+ *  the way back in and the damage laid over it, exactly as `relayout` does, so
+ *  a save also survives being restored onto the other board shape. */
+export function snapshot(w) {
+  return {
+    level: w.level, score: w.score, lives: w.lives,
+    over: w.over, levelClear: w.levelClear, held: w.held,
+    paddleFrac: w.paddle.x / w.L.W,     // fraction, so it survives a board change
+    effects: { ...w.effects },
+    balls: w.balls.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, r: b.r })),
+    drops: w.drops.map(d => ({ kind: d.kind, x: d.x, y: d.y, vy: d.vy })),
+    bricks: w.bricks.map(b => ({ row: b.row, col: b.col, hp: b.hp, alive: b.alive })),
+  };
+}
+
+/** Restore a snapshot onto an existing world, in place. Returns false and
+ *  changes nothing if the snapshot is unusable. */
+export function hydrate(w, snap) {
+  if (!snap || typeof snap !== 'object') return false;
+  if (typeof snap.level !== 'number' || snap.level < 1) return false;
+  if (!Array.isArray(snap.bricks) || !Array.isArray(snap.balls)) return false;
+  if (!Array.isArray(snap.drops)) return false;
+  // a capsule kind this build no longer has would break the glyph and effect
+  // lookups the moment it was caught
+  if (snap.drops.some(d => !POWERUPS[d.kind])) return false;
+
+  w.level = Math.floor(snap.level);
+  w.score = snap.score ?? 0;
+  w.lives = snap.lives ?? START_LIVES;
+  w.over = !!snap.over;
+  w.levelClear = !!snap.levelClear;
+  w.held = snap.held ?? true;
+
+  // rebuild this level's field, then lay the saved damage over it by cell
+  w.bricks = buildBricks(w.level, w.L);
+  const damage = new Map(snap.bricks.map(b => [`${b.row},${b.col}`, b]));
+  for (const b of w.bricks) {
+    const was = damage.get(`${b.row},${b.col}`);
+    if (was) { b.hp = was.hp; b.alive = !!was.alive; b.flash = 0; }
+  }
+
+  w.effects = { wide: snap.effects?.wide || 0, slow: snap.effects?.slow || 0 };
+  w.paddle.w = w.effects.wide > 0 ? w.L.PADDLE_W * WIDE_MULT : w.L.PADDLE_W;
+  setPaddle(w, (snap.paddleFrac ?? 0.5) * w.L.W);
+
+  w.balls = snap.balls.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, r: w.L.BALL_R }));
+  w.drops = snap.drops.map(d => ({ kind: d.kind, x: d.x, y: d.y, vy: d.vy ?? DROP_SPEED }));
+  return true;
+}
+
 /** Reset every run-scoped value back to a fresh level 1. */
 export function resetGame(w) {
   w.level = 1; w.score = 0; w.lives = START_LIVES;

@@ -127,6 +127,7 @@ import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
+import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
@@ -327,6 +328,7 @@ function frame(now) {
     if (world.lives < livesBefore) audio[world.over ? 'lose' : 'breach']();
 
     if (world.over) {
+      clearRun(GAME_ID);          // a finished run is not one to come back to
       const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
       syncBest();
       showBanner('Battery Down',
@@ -334,7 +336,7 @@ function frame(now) {
                  : `Score ${world.score} · Wave ${world.wave} · best ${r.best}`,
         'Try again');
     }
-    else if (world.shopOpen && !$('shop').classList.contains('on')) openShop();
+    else if (world.shopOpen && !$('shop').classList.contains('on')) { saveNow(); openShop(); }
     sync();
   }
   draw();
@@ -1012,10 +1014,70 @@ $('go').addEventListener('click', () => {
   if (paused) paused = false;
   else if (world.over || !world.running) E.resetRun(world);
   world.running = true;
+  started = true;
   $('banner').classList.add('hide');
   firing = false; drag = null;
   fitStage(); sync();
 });
+
+/* ---------- resuming an interrupted run ----------
+
+   A serpent run is long, and a phone closes the app without warning. Saves are
+   written on the quiet beats — when the shop opens between waves, and when the
+   page is hidden — rather than every frame. */
+
+let resumeOffered = false;
+/* Set once the player has actually begun. Used instead of `world.running`,
+   which goes false whenever a banner or the shop is up — and those paused
+   states are exactly the ones most worth saving. */
+let started = false;
+
+function saveNow() {
+  if (!started || world.over) { clearRun(GAME_ID); return; }
+  saveRun(GAME_ID, E.snapshot(world), `Wave ${world.wave} · ${world.score}`);
+}
+
+// visibilitychange is what actually fires when a phone backgrounds an app;
+// beforeunload is unreliable there.
+addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+addEventListener('pagehide', saveNow);
+
+(function offerResume() {
+  const stored = loadRun(GAME_ID);
+  if (!stored) return;
+  resumeOffered = true;
+  showBanner('Resume run?', `You left off at ${stored.label}.`, 'Continue');
+
+  const fresh = document.createElement('button');
+  fresh.type = 'button';
+  fresh.textContent = 'New run';
+  fresh.style.cssText = 'margin-left:8px;background:#1b3038;color:var(--bone)';
+  fresh.addEventListener('click', () => {
+    clearRun(GAME_ID);
+    fresh.remove();
+    resumeOffered = false;
+    showBanner('Serpent Battery', 'Hold to fire. Drag to aim.', 'Begin');
+  });
+  $('go').after(fresh);
+
+  // capture, so this runs before the main handler decides to resetRun
+  $('go').addEventListener('click', function once() {
+    $('go').removeEventListener('click', once, { capture: true });
+    if (!resumeOffered) return;
+    resumeOffered = false;
+    fresh.remove();
+    if (E.hydrate(world, stored.snap)) {
+      // the run is mid-flight, not unstarted: mark it running so the main
+      // handler's "reset an unstarted run" branch does not wipe it
+      world.running = true;
+    } else {
+      clearRun(GAME_ID);
+      E.resetRun(world);
+    }
+    clearRun(GAME_ID);
+    sync();
+  }, { capture: true });
+})();
 
 fitStage(); syncBest(); sync();
 requestAnimationFrame(frame);

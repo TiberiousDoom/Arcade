@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-07-27
+Last updated: 2026-07-29
 
 ## Read this first
 
@@ -11,14 +11,14 @@ This is the "pick back up" file — check here before touching code. See [CLAUDE
 Serve the repo first — the shells use ES modules, so `file://` won't work:
 `python -m http.server 8123`, then open `http://localhost:8123/`.
 
-- **The cabinet** ([index.html](index.html)) — the front door, listing all three games. Each game links back to it.
+- **The cabinet** ([index.html](index.html)) — the front door, listing all four games. Each game links back to it.
 
-- **Serpent Battery** ([games/serpent-battery/serpent-battery.html](games/serpent-battery/serpent-battery.html)) — playable, backed by a tested engine ([engine.js](games/serpent-battery/engine.js) / [engine.test.js](games/serpent-battery/engine.test.js), 153 tests passing). [serpent-battery-standalone.html](games/serpent-battery/serpent-battery-standalone.html) is a *generated* single-file build — never edit it directly, run `node games/serpent-battery/build.mjs`.
-- **Angle Iron** ([games/angle-iron/angle-iron.html](games/angle-iron/angle-iron.html)) — playable and complete: paddle-angle steering, armoured back rows, four rotating level patterns, lives, level-clear bonus. Engine has 29 passing tests. Verified end to end in a browser (play, ball loss, game over, restart, level advance).
-- **Live Wire** ([games/live-wire/live-wire.html](games/live-wire/live-wire.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe. Engine has 34 passing tests. Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
-- **Circuit Breaker** ([games/circuit-breaker/circuit-breaker.html](games/circuit-breaker/circuit-breaker.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build. Engine has 25 passing tests. Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
+- **Serpent Battery** ([games/serpent-battery/serpent-battery.html](games/serpent-battery/serpent-battery.html)) — playable, backed by a tested engine ([engine.js](games/serpent-battery/engine.js) / [engine.test.js](games/serpent-battery/engine.test.js)). [serpent-battery-standalone.html](games/serpent-battery/serpent-battery-standalone.html) is a *generated* single-file build — never edit it directly, run `node games/serpent-battery/build.mjs`.
+- **Angle Iron** ([games/angle-iron/angle-iron.html](games/angle-iron/angle-iron.html)) — playable and complete: paddle-angle steering, armoured back rows, four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
+- **Live Wire** ([games/live-wire/live-wire.html](games/live-wire/live-wire.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
+- **Circuit Breaker** ([games/circuit-breaker/circuit-breaker.html](games/circuit-breaker/circuit-breaker.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**316 tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) across all four games (`node --test games/*/engine.test.js`), plus 2 render smoke tests (`node --test games/serpent-battery/render-test.mjs`, after `npm install --no-save jsdom canvas`).
+**331 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Serpent Battery 181, Angle Iron 58, Circuit Breaker 46, Live Wire 44, shared 2 — plus **33 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
 ## In progress / just decided
 
@@ -157,7 +157,10 @@ Readability had to keep up, since "my towers aren't working" must read as *wrong
 - ~~Angle Iron has no powerups~~ — **done 2026-07-27** (see below). Laser is deliberately still out.
 - Circuit Breaker towers are **hitscan** (instant zap). Projectiles (travelling shots) were deferred — a visual/feel upgrade, not a mechanics one.
 - ~~No render smoke test for Angle Iron, Live Wire, or Circuit Breaker~~ — **done 2026-07-29.** All four games now have one, sharing `tools/inline.mjs` (recursive module inlining) and `tools/render-harness.mjs` (jsdom + node-canvas boot). 19 render tests. Building this immediately found a live bug: the standalone build had been throwing at boot since v9, because the old hand-written inliner deleted `help.js`'s new nested import of `version.js`.
-- **"Continue where you left off" — Circuit Breaker only so far.** `shared/resume.js` (storage, build-stamping, defensive reads) plus engine-side `snapshot()`/`hydrate()`. Serpent Battery and Angle Iron follow the same pattern and are the remaining work. **Live Wire is deliberately excluded**: it is one-life score-attack, where resuming a run is contrary to the genre.
+- ~~"Continue where you left off"~~ — **done 2026-07-29** for Circuit Breaker, Serpent Battery and Angle Iron. `shared/resume.js` (storage, build-stamping, defensive reads) plus engine-side `snapshot()`/`hydrate()` in each. **Live Wire is deliberately excluded**: it is one-life score-attack, where resuming a run is contrary to the genre.
+  - Saves are guarded on a shell-level `started` flag, **not** `world.running` — the states most worth saving (shop open, level cleared) are exactly the ones where the game is paused, and checking `running` there deleted the save instead of writing it.
+  - Serpent Battery: `assistR` is deliberately not stored (it describes the *device*, not the run, so a phone save must not carry touch aim-assist onto a desktop), in-flight shots and particles are dropped, and `reserveSegIds` pushes the id counter past restored ids — `battery.lastHitAt` is keyed by segment id, so a reused id would hand a new segment a stranger's convergence timing.
+  - Angle Iron: bricks are stored as damage per cell and the paddle as a fraction of board width, so a save restores correctly onto the other board shape.
   - Saves are written when a wave ends and when the page is hidden — `visibilitychange` is the event that actually fires when a phone backgrounds an app; `beforeunload` is unreliable there.
   - A snapshot is stamped with `BUILD` and refused if it doesn't match. A snapshot is a picture of engine internals, so a later build can easily have changed what they mean; restoring across that boundary gives a subtly corrupt run, which is worse than losing the save.
   - `tower.aim` is deliberately *not* stored — it holds a live enemy object and JSON can't carry identity. Safe to drop only because `step` re-acquires every frame (see the barrel fix).

@@ -363,6 +363,114 @@ test('emptying a chain removes it from the world', () => {
   assert.equal(w.chains.length, 0);
 });
 
+/* ---------- saving a run in progress ---------- */
+
+test('a snapshot round-trips a run exactly', () => {
+  const w = E.createWorld();
+  w.running = true;
+  w.wave = 4; E.spawnWave(w);
+  w.score = 7700; w.scrap = 55; w.lives = 2; w.breaches = 1;
+  E.buyUpgrade(w, 'barrel');
+  E.buyMount(w);
+  w.gunUnlocks.rail = true;
+  E.setGunType(w, 1, 'rail');
+  w.cannon.streak = 6;
+  E.spawnPickup(w, 300, 400, 'spread');
+  for (let i = 0; i < 90; i++) E.step(w, 1 / 60, true);
+
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  const fresh = E.createWorld();
+  assert.equal(E.hydrate(fresh, snap), true);
+
+  assert.equal(fresh.wave, w.wave);
+  assert.equal(fresh.score, w.score);
+  assert.equal(fresh.scrap, w.scrap);
+  assert.equal(fresh.lives, w.lives);
+  assert.equal(fresh.breaches, w.breaches);
+  assert.deepEqual(fresh.upgrades, w.upgrades, 'upgrade tiers came back');
+  assert.deepEqual(fresh.gunUnlocks, w.gunUnlocks, 'gun unlocks came back');
+  assert.equal(fresh.battery.guns.length, w.battery.guns.length, 'mounts came back');
+  assert.deepEqual(fresh.battery.guns.map(g => g.type), w.battery.guns.map(g => g.type));
+  assert.equal(fresh.chains.length, w.chains.length);
+  assert.deepEqual(fresh.chains[0].segs.map(s => `${s.kind}:${s.hp}`),
+                   w.chains[0].segs.map(s => `${s.kind}:${s.hp}`), 'every segment kept its damage');
+  assert.equal(fresh.pickups.length, w.pickups.length, 'falling pickups came back');
+  assert.equal(fresh.cannon, fresh.battery, 'the cannon alias was re-established');
+});
+
+test('a restored run keeps playing identically', () => {
+  const w = E.createWorld();
+  w.running = true;
+  for (let i = 0; i < 300; i++) E.step(w, 1 / 60, true);
+
+  const resumed = E.createWorld();
+  resumed.running = true;
+  E.hydrate(resumed, JSON.parse(JSON.stringify(E.snapshot(w))));
+  for (let i = 0; i < 400; i++) { E.step(w, 1 / 60, true); E.step(resumed, 1 / 60, true); }
+  assert.equal(resumed.score, w.score, 'same score after playing on');
+  assert.equal(resumed.lives, w.lives, 'same lives');
+  assert.equal(resumed.wave, w.wave, 'same wave');
+});
+
+test('restored segment ids cannot collide with newly minted ones', () => {
+  // lastHitAt is keyed by segment id, so a reused id would hand a brand-new
+  // segment a stranger's convergence timing
+  const w = E.createWorld();
+  w.wave = 3; E.spawnWave(w);
+  const maxId = Math.max(...w.chains[0].segs.map(s => s.id));
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+
+  const fresh = E.createWorld();          // its own segs restarted the counter low
+  E.hydrate(fresh, snap);
+  const restoredIds = new Set(fresh.chains.flatMap(ch => ch.segs.map(s => s.id)));
+  // spawn more and check none of them reuse a restored id
+  fresh.wave = 5; E.spawnWave(fresh);
+  E.hydrate(fresh, snap);
+  const after = E.nextSegId();
+  assert.ok(after > maxId, `next id ${after} must clear the restored max ${maxId}`);
+  for (let i = 0; i < 20; i++) assert.ok(!restoredIds.has(E.nextSegId()), 'no reuse');
+});
+
+test('in-flight shots and particles do not survive a save', () => {
+  const w = E.createWorld();
+  w.running = true;
+  for (let i = 0; i < 60; i++) E.step(w, 1 / 60, true);
+  assert.ok(w.shots.length > 0, 'setup: shots are in the air');
+  const fresh = E.createWorld();
+  E.hydrate(fresh, JSON.parse(JSON.stringify(E.snapshot(w))));
+  assert.deepEqual(fresh.shots, [], 'shots would resume mid-trajectory, so they are dropped');
+  assert.deepEqual(fresh.bits, []);
+  assert.deepEqual(fresh.floaters, []);
+});
+
+test('aim assist is not carried across devices by a save', () => {
+  // assistR describes the input device, not the run: a phone save restored on
+  // a desktop must not bring the touch forgiveness with it
+  const touch = E.createWorld({ assist: true });
+  touch.running = true;
+  const snap = JSON.parse(JSON.stringify(E.snapshot(touch)));
+  assert.equal('assistR' in snap, false, 'not stored');
+  const mouse = E.createWorld({ assist: false });
+  E.hydrate(mouse, snap);
+  assert.equal(mouse.assistR, 0, 'the desktop world kept its own setting');
+});
+
+test('a corrupt or foreign snapshot is refused rather than half-applied', () => {
+  const good = E.snapshot(E.createWorld());
+  for (const bad of [
+    null, undefined, 3, 'nope', {},
+    { ...good, chains: 'not an array' },
+    { ...good, wave: 'five' },
+    { ...good, chains: [{ s: 0, segs: [{ id: 1, kind: 'kraken', hp: 1, maxhp: 1, r: 5 }] }] },
+    { ...good, battery: { ...good.battery, guns: [{ x: 0, type: 'deathray' }] } },
+  ]) {
+    const w = E.createWorld();
+    const before = JSON.stringify(E.snapshot(w));
+    assert.equal(E.hydrate(w, bad), false, `should have refused: ${String(JSON.stringify(bad)).slice(0, 50)}`);
+    assert.equal(JSON.stringify(E.snapshot(w)), before, 'and changed nothing');
+  }
+});
+
 /* ---------- the head: armoured by its body, lethal when it falls ---------- */
 
 test('the head takes a fraction of normal damage while a body remains', () => {

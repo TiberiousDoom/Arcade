@@ -402,3 +402,19 @@ Decisions inside that worth recording:
 - **`tower.aim` is not stored.** It holds a live enemy *object*, and JSON cannot carry identity; a naive round-trip would produce a tower aiming at a copy that is not in `world.enemies`. It is dropped and rebuilt, which is only safe because `step` re-acquires every frame — a property that exists because of the barrel-freeze fix earlier this week. Derived state (`path`, `pathLen`, `blocked`) is likewise rebuilt from `routeIndex` rather than stored.
 - **Saves are written on quiet beats**, not every frame: when a wave ends, and on `visibilitychange`. That last one is the event that actually fires when a phone backgrounds an app — `beforeunload` is unreliable on mobile. Serialising the whole board 60 times a second would buy nothing.
 - **The resume prompt offers both paths.** "Continue" and "New run" are two buttons, rather than resuming silently or hiding the fresh start behind a gesture — a stale save you cannot escape is worse than no save.
+
+## 2026-07-29 — Mid-run saves finished: Serpent Battery and Angle Iron
+
+The pattern set by Circuit Breaker carried over unchanged — engines own `snapshot`/`hydrate`, `shared/resume.js` owns storage — but each game had one non-obvious trap.
+
+**The `started` flag, in all three.** `saveNow` originally refused to write unless `world.running`. That is exactly backwards: the states most worth saving are the paused ones — Serpent Battery's shop is open between waves, Angle Iron sets `running = false` the moment a level clears — so the guard deleted the save at precisely the moments it should have written one. Shells now track a `started` boolean set when the player first presses Begin, and save on `!over && started`.
+
+**Serpent Battery: segment ids outlive the counter.** `battery.lastHitAt` is keyed by segment id, and `_segId` restarts at 1 every page load. Restoring a run brings back segments carrying ids from a previous session, so a freshly spawned segment could reuse one and inherit a stranger's convergence timing — a bug that would have shown up as occasional unearned FOCUS bonuses and been almost impossible to trace. `reserveSegIds` pushes the counter past anything restored.
+
+**Serpent Battery: `assistR` is not part of a run.** It records whether the *device* aims by touch or mouse. Storing it would let a phone save carry its 9px aim assist onto a desktop, quietly making the game easier there. Excluded from the snapshot; the live world keeps whatever its own device decided.
+
+Also dropped: in-flight shots and decorative particles. A shot resumed mid-trajectory is meaningless, and nobody comes back to a saved game hoping their sparks survived.
+
+**Angle Iron: saves are layout-agnostic.** Bricks are stored as damage keyed by `(row, col)` and the paddle as a fraction of board width, rather than as rectangles and pixels — the same trick `relayout` uses. A run saved on one board shape therefore restores correctly onto the other, which matters because the layout is picked at load from the device.
+
+Live Wire remains deliberately excluded. It is one-life score-attack; a resumable run makes its ladder meaningless.
