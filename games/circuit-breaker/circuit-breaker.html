@@ -87,6 +87,7 @@ import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
+import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
@@ -311,6 +312,66 @@ $('go').addEventListener('click', () => {
   sync();
 });
 
+/* ---------- resuming an interrupted run ----------
+
+   A phone closes the app constantly and without warning, and a tower-defense
+   run is long enough that losing one hurts. The save is written on the beats
+   where the world is quiet and meaningful — between waves, and when the page is
+   hidden — rather than every frame, which would be a JSON.stringify of the
+   whole board 60 times a second for no benefit. */
+
+let resumeOffered = false;
+
+function saveNow() {
+  if (!world.running || world.over || !world.wave) { clearRun(GAME_ID); return; }
+  saveRun(GAME_ID, E.snapshot(world), `Wave ${world.wave} · ${world.score}`);
+}
+
+// visibilitychange is the one that actually fires when a phone backgrounds an
+// app; `beforeunload` is unreliable on mobile and pagehide covers the rest.
+addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+addEventListener('pagehide', saveNow);
+
+function offerResume() {
+  const stored = loadRun(GAME_ID);
+  if (!stored) return false;
+  resumeOffered = true;
+  showBanner('Resume run?',
+    `You left off at <b style="color:var(--accent-hot)">${stored.label}</b>.`,
+    'Continue');
+  // a second button, so "start fresh" is one tap rather than a hidden gesture
+  const fresh = document.createElement('button');
+  fresh.type = 'button';
+  fresh.id = 'freshStart';
+  fresh.textContent = 'New run';
+  fresh.style.cssText = 'margin-left:8px;background:#1b3038;color:var(--bone)';
+  fresh.addEventListener('click', () => {
+    clearRun(GAME_ID);
+    fresh.remove();
+    resumeOffered = false;
+    showBanner('Circuit Breaker', 'Pick a tower, tap an empty cell to build it, then start the wave.', 'Begin');
+  });
+  $('go').after(fresh);
+
+  $('go').addEventListener('click', function once() {
+    $('go').removeEventListener('click', once);
+    if (!resumeOffered) return;
+    resumeOffered = false;
+    fresh.remove();
+    if (!E.hydrate(world, stored.snap)) {
+      // a snapshot this build cannot read is dropped rather than half-applied
+      clearRun(GAME_ID);
+      E.resetGame(world);
+    }
+    adoptLayout();
+    if (fitStage) fitStage();
+    sync();
+  }, { capture: true });
+  return true;
+}
+
+offerResume();
+
 /* ---------- loop ---------- */
 let last = performance.now();
 function frame(now) {
@@ -318,8 +379,12 @@ function frame(now) {
   last = now;
 
   if (world.running && !world.over) {
+    const wasActive = world.waveActive;
     E.step(world, dt);
+    // a wave just finished: the board is quiet and the run is worth keeping
+    if (wasActive && !world.waveActive && !world.over) saveNow();
     if (world.over) {
+      clearRun(GAME_ID);            // a finished run is not one to come back to
       const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
       syncBest();
       showBanner('Core Breached',

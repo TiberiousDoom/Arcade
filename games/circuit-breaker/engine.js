@@ -540,6 +540,64 @@ export function step(w, dt) {
   }
 }
 
+/* ---------- saving a run in progress ---------- */
+
+/** A JSON-safe picture of a run. Deliberately *not* the whole world: `L`, `fx`,
+ *  `path`, `pathLen` and `blocked` are all derived or injected, so they are
+ *  rebuilt on the way back in rather than stored. `routeIndex` is stored because
+ *  everything else derives from it — restore it wrong and every tower lands on
+ *  the path. */
+export function snapshot(w) {
+  return {
+    routeIndex: w.routeIndex,
+    seed: w.seed,
+    wave: w.wave, waveActive: w.waveActive, betweenWaves: w.betweenWaves,
+    clock: w.clock,
+    charge: w.charge, integrity: w.integrity, score: w.score,
+    over: w.over,
+    towers: w.towers.map(t => ({ c: t.c, r: t.r, type: t.type, tier: t.tier, cool: t.cool })),
+    enemies: w.enemies.map(e => ({
+      type: e.type, dist: e.dist, hp: e.hp, maxhp: e.maxhp, speed: e.speed, r: e.r,
+      slow: e.slow, slowStrength: e.slowStrength,
+    })),
+    spawnQueue: w.spawnQueue.map(s => ({ type: s.type, at: s.at })),
+  };
+}
+
+/** Restore a snapshot onto an existing world, in place. Returns false and
+ *  changes nothing if the snapshot is unusable, so a corrupt save degrades to
+ *  "start a new run" rather than to a broken one. */
+export function hydrate(w, snap) {
+  if (!snap || typeof snap !== 'object') return false;
+  if (!Array.isArray(snap.towers) || !Array.isArray(snap.enemies)) return false;
+  if (typeof snap.routeIndex !== 'number') return false;
+  // a tower of a type this build no longer has would break every lookup
+  if (snap.towers.some(t => !TOWER_TYPES[t.type])) return false;
+  if (snap.enemies.some(e => !ENEMY_TYPES[e.type])) return false;
+
+  w.routeIndex = ((snap.routeIndex % ROUTE_COUNT) + ROUTE_COUNT) % ROUTE_COUNT;
+  const { path, pathLen } = buildPath(w.L, w.routeIndex);
+  w.path = path; w.pathLen = pathLen;
+  w.blocked = pathCells(w.L, w.routeIndex);
+
+  w.seed = snap.seed ?? w.seed;
+  w.wave = snap.wave ?? 0;
+  w.waveActive = !!snap.waveActive;
+  w.betweenWaves = snap.betweenWaves ?? true;
+  w.clock = snap.clock ?? 0;
+  w.charge = snap.charge ?? START_CHARGE;
+  w.integrity = snap.integrity ?? START_INTEGRITY;
+  w.score = snap.score ?? 0;
+  w.over = !!snap.over;
+
+  // `aim` is rebuilt: it points at a live enemy object, and object identity
+  // cannot survive JSON. Safe to drop because `step` re-acquires every frame.
+  w.towers = snap.towers.map(t => ({ c: t.c, r: t.r, type: t.type, tier: t.tier, cool: t.cool || 0, aim: null }));
+  w.enemies = snap.enemies.map(e => ({ ...e, healed: 0 }));
+  w.spawnQueue = snap.spawnQueue ? snap.spawnQueue.map(s => ({ type: s.type, at: s.at })) : [];
+  return true;
+}
+
 /* ---------- rotation ---------- */
 
 /** Move an in-progress game onto the other layout, as when the phone is turned.

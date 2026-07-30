@@ -444,6 +444,94 @@ test('a Coil sets up the next tower rather than its own shot', () => {
   assert.ok(e.slow > 0, 'but the target is now set up');
 });
 
+/* ---------- saving a run in progress ---------- */
+
+test('a snapshot round-trips a run exactly', () => {
+  const w = richWorld({ routeIndex: 2, seed: 1234 });
+  // build a spread of towers and get a wave going
+  let built = 0;
+  for (let r = 0; r < w.L.ROWS && built < 5; r++)
+    for (let c = 0; c < w.L.COLS && built < 5; c++)
+      if (E.buildTower(w, c, r, E.TOWER_KEYS[built % 3])) { w.towers[built].tier = built % 3; built++; }
+  E.startWave(w);
+  for (let i = 0; i < 200; i++) E.step(w, 1 / 60);
+  assert.ok(w.enemies.length > 0, 'setup: enemies are on the board');
+
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));   // as it would be stored
+  const fresh = E.createWorld({ routeIndex: 0 });
+  assert.equal(E.hydrate(fresh, snap), true);
+
+  assert.equal(fresh.routeIndex, 2, 'the run keeps its own circuit');
+  assert.equal(fresh.wave, w.wave);
+  assert.equal(fresh.charge, w.charge);
+  assert.equal(fresh.integrity, w.integrity);
+  assert.equal(fresh.score, w.score);
+  assert.deepEqual(fresh.towers.map(t => `${t.c},${t.r},${t.type},${t.tier}`),
+                   w.towers.map(t => `${t.c},${t.r},${t.type},${t.tier}`));
+  assert.deepEqual(fresh.enemies.map(e => `${e.type}:${e.dist.toFixed(3)}:${e.hp}`),
+                   w.enemies.map(e => `${e.type}:${e.dist.toFixed(3)}:${e.hp}`));
+  // the derived fields were rebuilt from routeIndex, not stored
+  assert.deepEqual([...fresh.blocked].sort(), [...E.pathCells(fresh.L, 2)].sort());
+  assert.ok(Math.abs(fresh.pathLen - E.buildPath(fresh.L, 2).pathLen) < 1e-9);
+});
+
+test('a restored run keeps playing identically', () => {
+  const w = richWorld({ seed: 99 });
+  let built = 0;
+  for (let r = 0; r < w.L.ROWS && built < 6; r++)
+    for (let c = 0; c < w.L.COLS && built < 6; c++)
+      if (E.buildTower(w, c, r, 'node')) built++;
+  E.startWave(w);
+  for (let i = 0; i < 120; i++) E.step(w, 1 / 60);
+
+  const resumed = E.createWorld();
+  E.hydrate(resumed, JSON.parse(JSON.stringify(E.snapshot(w))));
+  // run both on from the same point; they must stay in lockstep
+  for (let i = 0; i < 300; i++) { E.step(w, 1 / 60); E.step(resumed, 1 / 60); }
+  assert.equal(resumed.score, w.score, 'same score after playing on');
+  assert.equal(resumed.integrity, w.integrity, 'same integrity');
+  assert.equal(resumed.enemies.length, w.enemies.length, 'same enemies alive');
+});
+
+test('towers re-acquire after a restore, since aim cannot be serialised', () => {
+  // `aim` holds a live enemy object; JSON cannot carry object identity, so it
+  // is dropped and rebuilt. Safe only because step() re-acquires every frame.
+  const w = towerVsEnemy('node');
+  E.step(w, 1 / 60);
+  assert.ok(w.towers[0].aim, 'setup: aiming at something');
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  assert.equal('aim' in snap.towers[0], false, 'aim is not stored');
+
+  const fresh = E.createWorld();
+  E.hydrate(fresh, snap);
+  assert.equal(fresh.towers[0].aim, null, 'starts blank');
+  E.step(fresh, 1 / 60);
+  assert.ok(fresh.towers[0].aim, 'and is re-acquired on the next frame');
+  assert.ok(fresh.enemies.includes(fresh.towers[0].aim), 'pointing at a real live enemy');
+});
+
+test('a corrupt or foreign snapshot is refused rather than half-applied', () => {
+  const good = E.snapshot(richWorld());
+  for (const bad of [
+    null, undefined, 42, 'nope', {},
+    { ...good, towers: 'not an array' },
+    { ...good, routeIndex: 'B' },
+    { ...good, towers: [{ c: 1, r: 1, type: 'deathray', tier: 0 }] },
+    { ...good, enemies: [{ type: 'kraken', dist: 0, hp: 1, maxhp: 1 }] },
+  ]) {
+    const w = E.createWorld();
+    const before = JSON.stringify(E.snapshot(w));
+    assert.equal(E.hydrate(w, bad), false, `should have refused: ${String(JSON.stringify(bad)).slice(0, 50)}`);
+    assert.equal(JSON.stringify(E.snapshot(w)), before, 'and changed nothing');
+  }
+});
+
+test('an out-of-range route index is wrapped, not trusted', () => {
+  const w = E.createWorld();
+  assert.equal(E.hydrate(w, { ...E.snapshot(w), routeIndex: 99 }), true);
+  assert.ok(w.routeIndex >= 0 && w.routeIndex < E.ROUTE_COUNT);
+});
+
 /* ---------- enemies: movement, kills, leaks ---------- */
 
 test('enemies advance along the path', () => {

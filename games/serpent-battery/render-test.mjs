@@ -40,12 +40,16 @@ test('every segment type renders on a real canvas without throwing', async () =>
   await wait(300);
   w.document.getElementById('go').click();
   await wait(100);
-  w.__world.wave = 6;
+  // late enough that every kind is unlocked. Was hardcoded to 6, which after
+  // KIND_UNLOCK landed exactly on the >= 6 threshold by luck — one more unlock
+  // moving and it would have started failing for no real reason.
+  w.__world.wave = Math.max(...Object.values(w.__E.KIND_UNLOCK));
   w.__E.spawnWave(w.__world);
   w.__world.chains[0].s = 1400;
   const kinds = new Set(w.__world.chains[0].segs.map(s => s.kind));
   w.__frame(1000);
-  assert.ok(kinds.size >= 6, `expected a variety of segment types, got ${[...kinds]}`);
+  const expected = Object.keys(w.__E.KIND_UNLOCK).length + 1;   // + the head
+  assert.equal(kinds.size, expected, `expected every segment type, got ${[...kinds]}`);
   assert.deepEqual(errors, [], 'render threw');
 });
 

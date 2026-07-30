@@ -150,14 +150,17 @@ Readability had to keep up, since "my towers aren't working" must read as *wrong
 
 ## Open decisions (not yet settled)
 
-- **Serpent Battery's aim rework is untested on a device** — the two constants above were chosen by reasoning, not by play. This is the live question.
+- ~~Serpent Battery's aim rework is untested on a device~~ — **settled 2026-07-29.** Confirmed good on a real phone. `AIM_ASSIST_R` (9) and `TRAVERSE_MAX` (5.6) stand; treat them as tuned unless something later disagrees.
 - **Circuit Breaker difficulty was not tuned**, deliberately: `wavePlan`/`hpScale`/`START_CHARGE` are untouched. But the smaller grid shortened the path (41 → 31 cells of travel) and cut the number of build sites, which raises difficulty on its own. Play it before turning any economy dial, or the two changes will be impossible to tell apart.
 - Whether portrait-only becomes a real deletion, or the flag stays. Don't delete until it's had device time.
 - Circuit Breaker has still never been checked on a real device.
 - ~~Angle Iron has no powerups~~ — **done 2026-07-27** (see below). Laser is deliberately still out.
 - Circuit Breaker towers are **hitscan** (instant zap). Projectiles (travelling shots) were deferred — a visual/feel upgrade, not a mechanics one.
-- No render smoke test for Angle Iron, Live Wire, or Circuit Breaker, unlike Serpent Battery. Now more tractable: `build.mjs` shows how to inline a module shell for jsdom, so the same approach would work for the others. Relevant because headless-browser rAF throttling (~0.1fps) makes visual verification unreliable — a jsdom render test is the more dependable safety net.
-- The cabinet shows personal bests. Still no "continue where you left off" — that needs mid-run state saving, a bigger job than a single number.
+- ~~No render smoke test for Angle Iron, Live Wire, or Circuit Breaker~~ — **done 2026-07-29.** All four games now have one, sharing `tools/inline.mjs` (recursive module inlining) and `tools/render-harness.mjs` (jsdom + node-canvas boot). 19 render tests. Building this immediately found a live bug: the standalone build had been throwing at boot since v9, because the old hand-written inliner deleted `help.js`'s new nested import of `version.js`.
+- **"Continue where you left off" — Circuit Breaker only so far.** `shared/resume.js` (storage, build-stamping, defensive reads) plus engine-side `snapshot()`/`hydrate()`. Serpent Battery and Angle Iron follow the same pattern and are the remaining work. **Live Wire is deliberately excluded**: it is one-life score-attack, where resuming a run is contrary to the genre.
+  - Saves are written when a wave ends and when the page is hidden — `visibilitychange` is the event that actually fires when a phone backgrounds an app; `beforeunload` is unreliable there.
+  - A snapshot is stamped with `BUILD` and refused if it doesn't match. A snapshot is a picture of engine internals, so a later build can easily have changed what they mean; restoring across that boundary gives a subtly corrupt run, which is worse than losing the save.
+  - `tower.aim` is deliberately *not* stored — it holds a live enemy object and JSON can't carry identity. Safe to drop only because `step` re-acquires every frame (see the barrel fix).
 
 ## How to update this file
 

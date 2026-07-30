@@ -48,11 +48,15 @@ python -m http.server 8123
 # serpent-battery.html, or anything in shared/.
 node games/serpent-battery/build.mjs
 
-# Render smoke test — boots the real game in jsdom + node-canvas and drives a
-# few frames, catching draw-path crashes the logic tests can't see.
-# Requires `jsdom` and `canvas` (not installed by default — no package.json/node_modules present):
+# Render smoke tests — boot the real shells in jsdom + node-canvas and drive
+# frames, catching draw-path crashes the logic tests can't see. All four games
+# have one. Requires `jsdom` and `canvas` (not installed by default — there is
+# no package.json/node_modules):
 npm install --no-save jsdom canvas
-node --test games/serpent-battery/render-test.mjs
+node --test games/*/render-test.mjs
+
+# Everything at once
+node --test games/*/engine.test.js shared/*.test.js games/*/render-test.mjs
 ```
 
 There is no lint config in the repo.
@@ -66,7 +70,8 @@ There is no lint config in the repo.
 - **[engine.js](games/serpent-battery/engine.js)** is the entire simulation: geometry, enemy chains, guns/battery, upgrades, pickups, and the `step(w, dt, firing)` function that advances the world by one frame. It has **no DOM, no canvas, no timers, no randomness beyond a seeded LCG** (`rollDrop`) — this is what makes it fully unit-testable. Never add `document`/`canvas`/`Date.now()`/`Math.random()` calls here; keep those in the HTML shell.
 - **[serpent-battery.html](games/serpent-battery/serpent-battery.html)** is the playable shell: it `import`s `engine.js` as a module, owns all rendering (canvas draw calls), input (pointer/keyboard/touch aiming), the shop UI, and the `requestAnimationFrame` loop. Game *rules* belong in `engine.js`; anything about pixels, DOM, or timing belongs here.
 - **[serpent-battery-standalone.html](games/serpent-battery/serpent-battery-standalone.html)** is a generated single-file build with the engine, `shared/fit.js`, and `shared/theme.css` all inlined. **Never edit it directly** — regenerate with `node games/serpent-battery/build.mjs` after touching `engine.js`, `serpent-battery.html`, or anything in `shared/`. `render-test.mjs` tests *this* file, not `serpent-battery.html`, so a stale standalone means the render test isn't checking current code.
-- **[build.mjs](games/serpent-battery/build.mjs)** is that generator. It inlines each ES module as an IIFE returning *all* its top-level names (the shell reaches for a few that aren't formally exported), embeds the self-hosted fonts as base64 data URIs (the inlined CSS sits in a different directory, so `./fonts/...` would resolve to nothing), and throws if any JS `import` survives. Note its stray-import guard matches `^\s*import\s` specifically — a plain substring check trips over CSS's legitimate `@import url(...)`. The result is genuinely self-contained: it loads with **zero** subresource requests.
+- **[build.mjs](games/serpent-battery/build.mjs)** is that generator — now a thin wrapper around **[tools/inline.mjs](tools/inline.mjs)**, which does the actual work and is shared with every render test. The inliner resolves the whole import graph **recursively**, embeds the self-hosted fonts as base64 data URIs (the inlined CSS sits in a different directory, so `./fonts/...` would resolve to nothing), and throws if any JS `import` survives. Note the stray-import guard matches `^\s*import\s` specifically — a plain substring check trips over CSS's legitimate `@import url(...)`. The result is genuinely self-contained: it loads with **zero** subresource requests.
+  - The recursion is not incidental. The previous version listed each import by hand and deleted any it didn't recognise, so when `shared/help.js` gained an import of its own (`version.js`) the nested import was silently dropped, `BUILD_LABEL` became a free variable, and the standalone threw at boot — shipping broken for two builds before a render test caught it.
 - **[engine.test.js](games/serpent-battery/engine.test.js)** is organized by subsystem (path geometry → chains/segments → shielding/deflection → recoil → overdrive/heat → aiming curves → upgrades → battery/guns → pickups → splitting → breach/wave/run lifecycle → full-run simulations). When adding engine behavior, find the matching section rather than appending to the end.
 - Core simulation model, useful when tracing a bug:
   - `world` (built by `createWorld`) holds `chains` (arrays of segments moving along a precomputed serpentine `path`), `battery` (multiple `guns`, shared aim/streak/overdrive), `shots`, `pickups`, `bits`/`floaters` (pure visual junk).
@@ -90,7 +95,7 @@ There is no lint config in the repo.
   - `brickBounce` deliberately resolves **at most one brick per sub-step** (the deepest overlap) — resolving two at a corner reflects twice and sends the ball back into itself.
   - An empty brick field means "level cleared," so a world built with no bricks will flag `levelClear` on its first step. Tests that want bare ball physics need a decoy brick (see `engine.test.js`).
 - **[engine.test.js](games/angle-iron/engine.test.js)** is organized by subsystem (brick field geometry → collision primitives → paddle → launch → ball dynamics → bricks → lives/level flow → full-run sanity), same convention as Serpent Battery.
-- There is **no standalone single-file build and no render smoke test** for Angle Iron yet — Serpent Battery has both. If draw-path crashes start slipping through, port `render-test.mjs` over.
+- Angle Iron has a **render smoke test** ([render-test.mjs](games/angle-iron/render-test.mjs)) but **no standalone build** — the test inlines the shell in memory via `tools/inline.mjs`, so it gets the safety net without a checked-in artifact to keep in sync. Only Serpent Battery has a standalone, because only it is meant to travel as a single file.
 
 ## Architecture: Live Wire (`games/live-wire/`)
 
@@ -121,7 +126,7 @@ earlier games rather than inventing anything.
   - Public API mirrors the others plus TD verbs: `canBuild`/`buildTower`/`upgradeTower`/`sellTower`, `startWave`, `cellAt`/`towerAt`, `relayout`.
 - **[circuit-breaker.html](games/circuit-breaker/circuit-breaker.html)** is the fullest shell: the standard layout/rotation/pause + help + audio + scores wiring from Angle Iron, plus a **`#controls` strip** (tower palette + Start Wave) reserved via `makeFit`'s `extra` hook — the same mechanism Serpent Battery used for its touch pad — and a tap-a-tower upgrade/sell popup. Tap a palette tower to select, tap an empty cell to build, tap a tower to adjust.
 - **[engine.test.js](games/circuit-breaker/engine.test.js)** — board/transpose invariant → path geometry → building → tower firing (range/cooldown/splash/slow) → enemies (movement/kill/leak) → waves → rotation (lossless round-trip) → full-run sanity.
-- **No standalone build, no render test** — matches Angle Iron and Live Wire.
+- **Render test but no standalone build** — [render-test.mjs](games/circuit-breaker/render-test.mjs) inlines the shell in memory, same as Angle Iron and Live Wire. It covers the full enemy roster with every trait cue, all three tower types across tiers, the upgrade popup driven through real pointer events, and a live run deep enough to include Shell, Phase and Patch.
 
 ## Architecture: the PWA layer
 

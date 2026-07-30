@@ -375,3 +375,30 @@ That is defensible for this app (nothing uses query-versioned assets, and ignori
 - **Local iteration needs the version bump too**, or two reloads with the worker unregistered. Unregistering alone is not enough, because `shared/pwa.js` re-registers on the next load and `activate` calls `clients.claim()`, so the fresh worker takes over and serves its cache to the page that just loaded.
 
 Practical loop when changing a file and verifying in a browser: bump `CACHE_VERSION` and `BUILD`, then reload twice — once to install the new worker, once for the page to read from the new cache.
+
+## 2026-07-29 — Render tests for every game, via a shared inliner
+
+Only Serpent Battery had a draw-path test, because only it had a standalone build for jsdom to boot. The other three were verified by eye in a browser, which is unreliable: headless rAF is throttled to ~0.1fps, so "is it moving" cannot be answered honestly, and two real bugs this month were caught only because a screenshot happened to be taken.
+
+Rather than give every game a standalone (four more checked-in artifacts to keep in sync, for games that are never distributed as single files), the inlining moved into `tools/inline.mjs` and the render tests inline **in memory**. Serpent Battery keeps its standalone because it is genuinely meant to travel alone; the others get the same safety net with nothing to go stale.
+
+**Building this immediately paid for itself.** The old inliner listed each import by hand and deleted any it did not recognise. When `shared/help.js` gained an import of its own (`version.js`, three days earlier), that nested import was silently dropped, `BUILD_LABEL` became a free variable, and the standalone threw at boot — shipped broken in v9 and v10, with the render test failing the whole time because it had not been re-run. The new inliner resolves the import graph recursively, so a shared module gaining a dependency is no longer a trap.
+
+Two things the harness has to fake, both worth knowing:
+
+- **`getBoundingClientRect` returns zeros in jsdom.** Every shell converts pointer positions to board coordinates by scaling with that rect, so a zero width yields `Infinity` and every click lands nowhere. Reporting the canvas's own pixel size makes client coordinates map 1:1 onto board coordinates, which is what makes input testable at all — the Circuit Breaker popup test depends on it.
+- **jsdom's default `about:blank` origin makes `localStorage` throw.** The games survive it (every access is wrapped) but scores and saved runs become untestable, so the harness boots on a real origin.
+
+## 2026-07-29 — Mid-run saves, and the three games that should have them
+
+"Continue where you left off" is not a feature every game should get. Live Wire is one-life score-attack: resuming a run makes its ladder meaningless, and the genre convention exists for a reason. Circuit Breaker and Serpent Battery have long runs where losing progress genuinely stings, and Angle Iron is level-based, so those three get it. Circuit Breaker is done; the other two follow the same pattern.
+
+The split follows the house rule: **engines own what a snapshot is** (`snapshot(w)` / `hydrate(w, snap)`, pure and unit-tested), `shared/resume.js` owns only storage. That keeps the interesting logic out of the DOM.
+
+Decisions inside that worth recording:
+
+- **Snapshots are stamped with `BUILD` and refused on mismatch.** A snapshot is a picture of engine internals, and this project changes those constantly — `routeIndex` did not exist a day ago. Restoring across a build boundary would produce a subtly corrupt run, which is far worse than losing the save. Discarding is the safe default.
+- **`hydrate` validates and refuses rather than half-applying.** A tower whose type this build no longer has would break every lookup downstream. On any bad input it changes nothing and returns false, so a corrupt save degrades to "start a new run" rather than to a broken one — the same posture `scores.js` takes toward whatever it finds under its key.
+- **`tower.aim` is not stored.** It holds a live enemy *object*, and JSON cannot carry identity; a naive round-trip would produce a tower aiming at a copy that is not in `world.enemies`. It is dropped and rebuilt, which is only safe because `step` re-acquires every frame — a property that exists because of the barrel-freeze fix earlier this week. Derived state (`path`, `pathLen`, `blocked`) is likewise rebuilt from `routeIndex` rather than stored.
+- **Saves are written on quiet beats**, not every frame: when a wave ends, and on `visibilitychange`. That last one is the event that actually fires when a phone backgrounds an app — `beforeunload` is unreliable on mobile. Serialising the whole board 60 times a second would buy nothing.
+- **The resume prompt offers both paths.** "Continue" and "New run" are two buttons, rather than resuming silently or hiding the fresh start behind a gesture — a stale save you cannot escape is worse than no save.
