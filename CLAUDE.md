@@ -31,8 +31,8 @@ node --test games/serpent-battery/engine.test.js
 node --test games/angle-iron/engine.test.js
 node --test games/circuit-breaker/engine.test.js
 
-# Run every engine suite at once
-node --test games/*/engine.test.js
+# Run every engine suite at once, plus the shared-module suites
+node --test games/*/engine.test.js shared/*.test.js
 
 # Run a single test by name
 node --test --test-name-pattern="a breach costs a life" games/serpent-battery/engine.test.js
@@ -57,7 +57,7 @@ node --test games/serpent-battery/render-test.mjs
 
 There is no lint config in the repo.
 
-**⚠ Adding or changing a file the app loads? Bump `CACHE_VERSION` in [sw.js](sw.js).** The service worker precaches the whole app and serves cache-first without revalidating, so a stale version string means returning players keep the old build indefinitely. Nothing automates this. If you add a new file, add it to the `PRECACHE` list too — otherwise it only reaches the cache on second visit, and the app is broken on a first-run offline launch.
+**⚠ Adding or changing a file the app loads? Bump `CACHE_VERSION` in [sw.js](sw.js) *and* `BUILD` in [shared/version.js](shared/version.js).** `shared/version.test.js` fails if the two disagree, so the test suite will catch a half-bump — but nothing catches forgetting both. The service worker precaches the whole app and serves cache-first without revalidating, so a stale version string means returning players keep the old build indefinitely. Nothing automates this. If you add a new file, add it to the `PRECACHE` list too — otherwise it only reaches the cache on second visit, and the app is broken on a first-run offline launch.
 
 **Verifying a shell in a headless/background browser:** `requestAnimationFrame` gets throttled hard there (measured at ~0.1fps), so the game simulates in slow motion and any judgement about pacing — or even "is it moving at all" — will be wrong. Don't fight it: temporarily expose the world at the bottom of the shell's module (`window.__world = world; window.__frame = frame;`), then either drive `__frame(t)` with your own advancing timestamps or call engine functions directly, assert on state, and remove the hook afterward. Note that death/level-clear banners fire on a false→true *edge* inside the frame loop, so killing the world with direct `tick()`/`step()` calls skips them — drive it through `__frame` when that's what you're checking.
 
@@ -140,6 +140,7 @@ Games follow a per-game engine/shell split modeled on Serpent Battery: pure logi
 - **`shared/theme.css`** — the cabinet look, plus the `@font-face` rules. Shells link it and override only the custom properties (`--accent`, `--accent-hot`, `--accent-ink`, `--board-max`). **Don't redeclare shared rules in a game's local `<style>`** — add a property hook to the theme instead.
 - **`shared/fonts/`** — self-hosted WOFF2 (Chivo Mono variable 300–700, Archivo Black 400), `latin` subset only, both OFL-1.1 with license text shipped alongside. Nothing loads from a CDN any more, so the games work offline; keep it that way, since offline operation is the point of the planned service worker.
 - **`shared/fit.js`** — `makeFit(...)` sizes the board and owns the resize/orientation listeners. It performs the first fit itself, so shells must not also call the returned function at startup.
+- **`shared/version.js`** — one app-wide `BUILD` string, shown in every help panel and on the cabinet. Deliberately **one version for the whole app, not one per game**: four hand-maintained numbers with no release process would drift instantly, and the only question anyone asks is which deploy they're looking at. Kept in lockstep with `sw.js`'s `CACHE_VERSION` by `shared/version.test.js`.
 - **`shared/fx.js`** — `makeFx(...)` for particles and the screen-flash value. Angle Iron and Live Wire use it. **Serpent Battery deliberately does not** — its bits/floaters live on the world and are stepped inside its engine, and rewiring that was judged not worth the churn.
 
 Deliberately not shared: banner show/hide (Serpent's variant hides a legend and two hint paragraphs, so sharing it would be a config-heavy wrapper around ~6 lines each), and the engine `step()` signatures.

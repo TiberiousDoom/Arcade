@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as E from './engine.js';
 
+/** The first wave on which every segment kind is unlocked. Most tests below are
+ *  about how a *kind* behaves, so they need a chain that actually contains the
+ *  interesting ones — wave 1 is deliberately nothing but `std` now. */
+const ALL_KINDS = Math.max(...Object.values(E.KIND_UNLOCK));
+
+/** Build a chain with every kind available but hp left at `KIND`'s published
+ *  numbers, so assertions can use those directly and stay independent of the
+ *  per-wave hp curve (which has its own tests). */
+function chain(count, speed, s, wave = ALL_KINDS, spacing = 30) {
+  const ch = E.makeChain(count, speed, s, spacing, wave);
+  for (const seg of ch.segs) {
+    const base = E.KIND[seg.kind].hp;
+    seg.hp = base; seg.maxhp = base;
+  }
+  return ch;
+}
+
 const gun0 = (w) => w.battery.guns[0];
 
 const { path, pathLen } = E.buildPath();
@@ -60,17 +77,117 @@ test('atS advances monotonically down the screen', () => {
 /* ---------- chain construction ---------- */
 
 test('chain always leads with a head segment', () => {
-  const ch = E.makeChain(12, 50, 0);
+  const ch = chain(12, 50, 0);
   assert.equal(ch.segs[0].kind, 'head');
   assert.equal(ch.segs.length, 12);
 });
 
 test('segment kinds are assigned deterministically', () => {
-  const a = E.makeChain(20, 50, 0).segs.map(s => s.kind);
-  const b = E.makeChain(20, 50, 0).segs.map(s => s.kind);
+  const a = chain(20, 50, 0).segs.map(s => s.kind);
+  const b = chain(20, 50, 0).segs.map(s => s.kind);
   assert.deepEqual(a, b);
   assert.ok(a.includes('armored'));
   assert.ok(a.includes('volatile'));
+});
+
+/* ---------- difficulty curve: unlocks, hp, length ---------- */
+
+test('wave 1 is nothing but a head and standard segments', () => {
+  // the whole point of the unlock schedule: wave 1 used to ship armored,
+  // volatile, shielded, regen, carrier and a splitter all at once
+  const kinds = E.makeChain(E.waveCount(1), 50, 0, 30, 1).segs.map(s => s.kind);
+  assert.equal(kinds[0], 'head');
+  assert.deepEqual([...new Set(kinds.slice(1))], ['std'], 'body is entirely std');
+});
+
+test('kinds unlock one at a time as waves pass', () => {
+  let prev = E.kindsForWave(1);
+  assert.deepEqual(prev, ['std'], 'only std to begin with');
+  for (let wave = 2; wave <= 12; wave++) {
+    const now = E.kindsForWave(wave);
+    for (const k of prev) assert.ok(now.includes(k), `wave ${wave} keeps ${k}`);
+    prev = now;
+  }
+  const all = E.kindsForWave(ALL_KINDS);
+  for (const k of Object.keys(E.KIND_UNLOCK)) assert.ok(all.includes(k), `${k} eventually unlocks`);
+  // every unlockable kind is a real KIND, and head is not one of them
+  for (const k of all) assert.ok(E.KIND[k], `${k} exists in KIND`);
+  assert.ok(!all.includes('head'), 'head is not a body kind');
+});
+
+test('a kind never appears before its unlock wave', () => {
+  for (const [kind, unlock] of Object.entries(E.KIND_UNLOCK)) {
+    for (let wave = 1; wave < unlock; wave++) {
+      const kinds = E.makeChain(56, 50, 0, 30, wave).segs.map(s => s.kind);
+      assert.ok(!kinds.includes(kind), `${kind} must not show up on wave ${wave}`);
+    }
+    const at = E.makeChain(56, 50, 0, 30, unlock).segs.map(s => s.kind);
+    assert.ok(at.includes(kind), `${kind} appears once wave ${unlock} arrives`);
+  }
+});
+
+test('kind assignment is still deterministic for a given wave', () => {
+  const a = E.makeChain(20, 50, 0, 30, ALL_KINDS).segs.map(s => s.kind);
+  const b = E.makeChain(20, 50, 0, 30, ALL_KINDS).segs.map(s => s.kind);
+  assert.deepEqual(a, b);
+  assert.ok(a.includes('armored'));
+  assert.ok(a.includes('volatile'));
+});
+
+test('segment hp climbs with the wave and then caps', () => {
+  assert.equal(E.hpScale(1), 1, 'wave 1 is the published KIND numbers');
+  assert.ok(E.hpScale(5) > E.hpScale(1), 'and it climbs');
+  assert.ok(E.hpScale(10) > E.hpScale(5));
+  assert.equal(E.hpScale(999), E.HP_SCALE_MAX, 'capped, so segments never outlast the wave');
+  assert.ok(E.hpScale(999) >= E.hpScale(50), 'monotonic up to the cap');
+});
+
+test('a later wave really is tougher per segment, not just longer', () => {
+  const one = E.makeChain(20, 50, 0, 30, 1).segs;
+  const ten = E.makeChain(20, 50, 0, 30, 10).segs;
+  assert.ok(ten[0].maxhp > one[0].maxhp, 'the head is tougher');
+  // compare like with like: a std segment against a std segment
+  const stdOf = (segs) => segs.find((s, i) => i > 0 && s.kind === 'std');
+  assert.ok(stdOf(ten).maxhp > stdOf(one).maxhp, 'and so is a plain segment');
+  // hp and maxhp must move together or hp bars and the hit-stop thresholds lie
+  for (const s of ten) assert.equal(s.hp, s.maxhp, 'segments spawn at full health');
+});
+
+test('the hp cap does not make late waves unwinnable', () => {
+  // The risk of scaling hp is a wall: a wave whose total health cannot be
+  // chewed through before it crosses, no matter how upgraded you are. A fully
+  // maxed battery with perfect aim must still clear deep waves untouched.
+  const w = E.createWorld();
+  w.lives = 999; w.scrap = 1e9;
+  for (const b of E.BRANCHES) while (E.buyUpgrade(w, b));
+  while (E.buyMount(w));
+
+  const aim = () => {
+    let best = null, bd = Infinity;
+    for (const ch of w.chains) {
+      for (let i = 0; i < ch.segs.length; i++) {
+        if (i === 0 && ch.segs.length > 1) continue;   // head is body-armoured
+        const p = E.segPos(w.path, w.pathLen, ch, i);
+        if (p.off) continue;
+        const d = Math.hypot(p.x - w.cannon.x, p.y - w.cannon.y);
+        if (d < bd) { bd = d; best = p; }
+      }
+    }
+    if (best) w.cannon.ang = E.clampAim(Math.atan2(best.y - w.cannon.y, best.x - w.cannon.x));
+  };
+
+  for (let f = 0; f < 60 * 60 * 8 && w.wave < 20; f++) {
+    aim();
+    E.step(w, 1 / 60, true);
+    if (w.shopOpen) E.nextWave(w);
+  }
+  assert.ok(w.wave >= 20, `stalled at wave ${w.wave} — the hp curve outran the damage ceiling`);
+  assert.equal(w.breaches, 0, 'and did it without a single breach');
+});
+
+test('waves get longer as well as tougher', () => {
+  assert.ok(E.waveCount(5) > E.waveCount(1));
+  assert.ok(E.waveCount(10) > E.waveCount(5), 'still climbing past the old wave-9 flatline');
 });
 
 test('an untouched wave stays on screen for a playable stretch', () => {
@@ -150,11 +267,14 @@ test('a world can be built on the tall layout', () => {
 test('wave scaling grows then caps', () => {
   assert.ok(E.waveCount(5) > E.waveCount(1));
   assert.ok(E.waveSpeed(5) > E.waveSpeed(1));
-  assert.equal(E.waveCount(99), 40, 'segment count caps at 40');
+  assert.equal(E.waveCount(99), 56, 'segment count caps');
+  // the cap has to leave the chain shorter than the path, or the tail would
+  // wrap around into the head
+  assert.ok(E.waveCount(99) * 30 < E.REF_PATH_LEN * 0.5, 'a maxed chain still fits the board');
 });
 
 test('segments trail the head by one spacing each', () => {
-  const ch = E.makeChain(4, 0, 400);
+  const ch = chain(4, 0, 400);
   const head = E.segPos(path, pathLen, ch, 0);
   const third = E.segPos(path, pathLen, ch, 3);
   assert.ok(!head.off && !third.off);
@@ -179,7 +299,7 @@ test('recoil is zero when nothing remains to link up', () => {
 
 test('destroying a mid segment pushes the chain backward', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(10, 40, 500)];
+  w.chains = [chain(10, 40, 500)];
   const before = w.chains[0].s;
 
   const seg = w.chains[0].segs[5];
@@ -192,7 +312,7 @@ test('destroying a mid segment pushes the chain backward', () => {
 
 test('recoil is paid off, then forward motion resumes', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(10, 40, 500)];
+  w.chains = [chain(10, 40, 500)];
   w.chains[0].recoil = 20;
 
   for (let i = 0; i < 60; i++) E.stepChains(w, 1 / 60);
@@ -207,7 +327,7 @@ test('recoil is paid off, then forward motion resumes', () => {
 
 test('a segment survives partial damage and dies on lethal', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(6, 0, 400)];
+  w.chains = [chain(6, 0, 400)];
   const before = w.chains[0].segs.length;
 
   assert.equal(E.damageSeg(w, 0, 1, 1), false);
@@ -218,7 +338,7 @@ test('a segment survives partial damage and dies on lethal', () => {
 
 test('volatile segments splash their neighbours', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 0, 600)];
+  w.chains = [chain(20, 0, 600)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'volatile');
   assert.ok(idx > 0, 'fixture contains a volatile segment');
 
@@ -230,7 +350,7 @@ test('volatile segments splash their neighbours', () => {
 
 test('kills award score and scrap', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(6, 0, 400)];
+  w.chains = [chain(6, 0, 400)];
   E.damageSeg(w, 0, 1, 99);
   assert.equal(w.score, E.KIND.std.score);
   assert.equal(w.scrap, E.KIND.std.scrap);
@@ -238,14 +358,101 @@ test('kills award score and scrap', () => {
 
 test('emptying a chain removes it from the world', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(1, 0, 400)];
+  w.chains = [chain(1, 0, 400)];
   E.damageSeg(w, 0, 0, 99);
   assert.equal(w.chains.length, 0);
 });
 
+/* ---------- the head: armoured by its body, lethal when it falls ---------- */
+
+test('the head takes a fraction of normal damage while a body remains', () => {
+  assert.equal(E.headDamageFactor(0), 1, 'exposed head takes full damage');
+  assert.ok(E.headDamageFactor(30) < E.headDamageFactor(5), 'a longer body protects more');
+  assert.ok(E.headDamageFactor(5) < 1, 'and any body at all protects some');
+  // the whole reason this exists: the head is the closest, most exposed target,
+  // so an unprotected instant-kill head would be the easiest shot on the board
+  assert.ok(E.headDamageFactor(30) < 0.05, 'a full-length chain makes the head near-immune');
+});
+
+test('shooting the head of a full chain barely scratches it', () => {
+  const w = E.createWorld();
+  w.chains = [chain(30, 0, 1200)];
+  const head = w.chains[0].segs[0];
+  const hp0 = head.hp;
+  E.damageSeg(w, 0, 0, 5);
+  assert.ok(head.hp > hp0 - 5, 'damage was scaled down');
+  assert.ok(head.hp > 0, 'and it survived comfortably');
+  assert.equal(w.chains.length, 1, 'chain still there');
+});
+
+test('killing an exposed head destroys the whole chain and scores it', () => {
+  const w = E.createWorld();
+  w.chains = [chain(1, 0, 1200)];        // head alone: fully exposed
+  const before = w.score;
+  const died = E.damageSeg(w, 0, 0, 999);
+  assert.equal(died, true);
+  assert.equal(w.chains.length, 0, 'chain gone');
+  assert.ok(w.score > before, 'and it paid out');
+});
+
+test('decapitation pays for every segment still on the chain', () => {
+  // a body still attached is worth something, so the gamble has a real prize
+  const w = E.createWorld();
+  w.chains = [chain(12, 0, 1200)];
+  const segs = w.chains[0].segs;
+  const expected = segs.reduce((sum, s) => sum + E.KIND[s.kind].score, 0);
+  const scrap = segs.reduce((sum, s) => sum + E.KIND[s.kind].scrap, 0);
+  const s0 = w.score, c0 = w.scrap;
+  E.damageSeg(w, 0, 0, 1e9);            // enough to punch through the penalty
+  assert.equal(w.chains.length, 0, 'the body died with the head');
+  assert.equal(w.score - s0, expected, 'every segment scored');
+  assert.equal(w.scrap - c0, scrap, 'and paid scrap');
+});
+
+test('an early decapitation is possible but costs far more damage', () => {
+  // the risk/reward shape: the same kill is available either way, but taking
+  // it early has to be paid for in burst damage
+  const straightAway = (() => {
+    const w = E.createWorld();
+    w.chains = [chain(20, 0, 1200)];
+    let spent = 0;
+    while (w.chains.length && spent < 1e6) { E.damageSeg(w, 0, 0, 10); spent += 10; }
+    return spent;
+  })();
+  const bodyFirst = (() => {
+    const w = E.createWorld();
+    w.chains = [chain(20, 0, 1200)];
+    let spent = 0;
+    // clear the body from the back, then the head
+    while (w.chains.length && w.chains[0].segs.length > 1 && spent < 1e6) {
+      E.damageSeg(w, 0, w.chains[0].segs.length - 1, 10); spent += 10;
+    }
+    while (w.chains.length && spent < 1e6) { E.damageSeg(w, 0, 0, 10); spent += 10; }
+    return spent;
+  })();
+  assert.ok(straightAway > bodyFirst, `head-first cost ${straightAway}, body-first ${bodyFirst}`);
+});
+
+test('a head grown by a split is armoured by its own new body', () => {
+  const w = E.createWorld();
+  w.wave = ALL_KINDS;
+  E.spawnWave(w);
+  // find and kill a splitter to grow a second head
+  const ch = w.chains[0];
+  const si = ch.segs.findIndex(s => s.kind === 'splitter');
+  assert.ok(si > 0, 'the wave contains a splitter');
+  E.damageSeg(w, 0, si, 999);
+  assert.equal(w.chains.length, 2, 'it split');
+  const tail = w.chains[1];
+  assert.equal(tail.segs[0].kind, 'head');
+  const hp0 = tail.segs[0].hp;
+  E.damageSeg(w, 1, 0, 5);
+  assert.ok(tail.segs[0].hp > hp0 - 5, 'the new head is protected too');
+});
+
 test('damageSeg is safe on indices that no longer exist', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(3, 0, 400)];
+  w.chains = [chain(3, 0, 400)];
   assert.equal(E.damageSeg(w, 0, 99, 5), false);
   assert.equal(E.damageSeg(w, 7, 0, 5), false);
 });
@@ -464,7 +671,7 @@ test('the shield arc is frontal, not full coverage', () => {
 });
 
 test('segment heading follows the path direction', () => {
-  const ch = E.makeChain(4, 0, 300);
+  const ch = chain(4, 0, 300);
   const h = E.segHeading(path, pathLen, ch, 0);
   assert.ok(Math.abs(Math.hypot(h.x, h.y) - 1) < 1e-6, 'unit vector');
   assert.ok(Math.abs(h.x) > 0.9, 'first row runs horizontally');
@@ -472,7 +679,7 @@ test('segment heading follows the path direction', () => {
 
 test('a deflected shot survives and keeps the streak', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(14, 0, 700)];
+  w.chains = [chain(14, 0, 700)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'shielded');
   assert.ok(idx > 0, 'fixture has a shielded segment');
 
@@ -491,7 +698,7 @@ test('a deflected shot survives and keeps the streak', () => {
 
 test('a regenerator heals over time', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 0, 700)];
+  w.chains = [chain(20, 0, 700)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'regen');
   assert.ok(idx > 0, 'fixture has a regenerator');
 
@@ -503,7 +710,7 @@ test('a regenerator heals over time', () => {
 
 test('regeneration never exceeds the cap', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 0, 700)];
+  w.chains = [chain(20, 0, 700)];
   const seg = w.chains[0].segs.find(s => s.kind === 'regen');
   seg.hp = seg.maxhp - 0.1;
   E.stepChains(w, 10);
@@ -512,7 +719,7 @@ test('regeneration never exceeds the cap', () => {
 
 test('only regenerators heal', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 0, 700)];
+  w.chains = [chain(20, 0, 700)];
   const others = w.chains[0].segs.filter(s => s.kind !== 'regen');
   for (const s of others) s.hp = 1;
   E.stepChains(w, 2);
@@ -521,7 +728,7 @@ test('only regenerators heal', () => {
 
 test('a destroyed regenerator does not come back', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 0, 700)];
+  w.chains = [chain(20, 0, 700)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'regen');
   const before = w.chains[0].segs.length;
   E.damageSeg(w, 0, idx, 99);
@@ -551,7 +758,7 @@ test('splitters are rare', () => {
 
 test('destroying a splitter produces two independent chains', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 40, 800)];
+  w.chains = [chain(20, 40, 800)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'splitter');
   assert.ok(idx > 0, 'fixture has a splitter');
   const total = w.chains[0].segs.length;
@@ -567,7 +774,7 @@ test('destroying a splitter produces two independent chains', () => {
 
 test('the tail half grows its own head', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 40, 800)];
+  w.chains = [chain(20, 40, 800)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'splitter');
   E.damageSeg(w, 0, idx, 99);
   assert.equal(w.chains[1].segs[0].kind, 'head', 'new head at the front of the tail');
@@ -576,7 +783,7 @@ test('the tail half grows its own head', () => {
 
 test('a split pays no recoil', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 40, 800)];
+  w.chains = [chain(20, 40, 800)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'splitter');
   E.damageSeg(w, 0, idx, 99);
   assert.equal(w.chains[0].recoil, 0, 'splitting buys no time — that is the trade');
@@ -584,7 +791,7 @@ test('a split pays no recoil', () => {
 
 test('a chain can only split once', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(26, 40, 900)];
+  w.chains = [chain(26, 40, 900)];
   const first = w.chains[0].segs.findIndex(s => s.kind === 'splitter');
   E.damageSeg(w, 0, first, 99);
   assert.equal(w.chains.length, 2);
@@ -600,9 +807,9 @@ test('a chain can only split once', () => {
 test('splitting is capped so late waves stay readable', () => {
   const w = E.createWorld();
   w.chains = [
-    E.makeChain(20, 40, 800),
-    E.makeChain(20, 40, 600),
-    E.makeChain(20, 40, 400),
+    chain(20, 40, 800),
+    chain(20, 40, 600),
+    chain(20, 40, 400),
   ];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'splitter');
   E.damageSeg(w, 0, idx, 99);
@@ -611,7 +818,7 @@ test('splitting is capped so late waves stay readable', () => {
 
 test('a splitter too near an end falls back to recoil', () => {
   const w = E.createWorld();
-  const ch = E.makeChain(10, 40, 500);
+  const ch = chain(10, 40, 500);
   // force a splitter one from the tail, where a split would leave a stub
   ch.segs[9] = { kind: 'splitter', hp: 1, maxhp: 4, r: 15, flash: 0, deflect: 0 };
   w.chains = [ch];
@@ -622,7 +829,7 @@ test('a splitter too near an end falls back to recoil', () => {
 
 test('both halves keep moving independently after a split', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 40, 800)];
+  w.chains = [chain(20, 40, 800)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'splitter');
   E.damageSeg(w, 0, idx, 99);
 
@@ -635,7 +842,7 @@ test('both halves keep moving independently after a split', () => {
 
 test('the split chain does not teleport', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 40, 800)];
+  w.chains = [chain(20, 40, 800)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'splitter');
   const wherePreSplit = E.segPos(path, pathLen, w.chains[0], idx);
 
@@ -649,7 +856,7 @@ test('the split chain does not teleport', () => {
 
 test('a wave is only clear once every chain is gone', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(6, 40, 400), E.makeChain(6, 40, 200)];
+  w.chains = [chain(6, 40, 400), chain(6, 40, 200)];
   w.chains[0].segs = [];
   E.step(w, 1 / 60);
   assert.equal(w.waveClear, false, 'one surviving chain keeps the wave alive');
@@ -743,7 +950,7 @@ test('each branch changes something the others do not', () => {
 
 test('the first shop visit is never empty-handed', () => {
   // wave 1 must fund at least one upgrade, or the shop feels pointless
-  const ch = E.makeChain(E.waveCount(1), 100, 0);
+  const ch = chain(E.waveCount(1), 100, 0);
   const income = ch.segs.reduce((a, s) => a + E.KIND[s.kind].scrap, 0);
   const cheapest = Math.min(...E.BRANCHES.map(b => E.UPGRADES[b].costs[0]));
   assert.ok(income >= cheapest, `wave 1 pays ${income}, cheapest upgrade is ${cheapest}`);
@@ -755,7 +962,7 @@ test('a long run cannot afford everything', () => {
   // a choice between a deeper tree and a wider battery
   let income = 0;
   for (let wv = 1; wv <= 12; wv++) {
-    const ch = E.makeChain(E.waveCount(wv), 100, 0);
+    const ch = chain(E.waveCount(wv), 100, 0);
     income += ch.segs.reduce((a, s) => a + E.KIND[s.kind].scrap, 0);
   }
   const treeCost = E.fullTreeCost();
@@ -852,6 +1059,9 @@ test('a bigger battery measurably improves survival', () => {
     let best = null, bd = Infinity;
     for (const ch of w.chains) {
       for (let i = 0; i < ch.segs.length; i++) {
+        // skip the head while any body remains: it takes a fraction of normal
+        // damage until the chain behind it is gone, so aiming there is wasted
+        if (i === 0 && ch.segs.length > 1) continue;
         const p = E.segPos(w.path, w.pathLen, ch, i);
         if (p.off) continue;
         const d = Math.hypot(p.x - w.L.W / 2, p.y - w.battery.y);
@@ -922,7 +1132,7 @@ test('the drop table favours situational effects over strong ones', () => {
 
 test('carriers drop a pickup when destroyed', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(16, 0, 700)];
+  w.chains = [chain(16, 0, 700)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'carrier');
   assert.ok(idx > 0, 'fixture has a carrier');
 
@@ -934,7 +1144,7 @@ test('carriers drop a pickup when destroyed', () => {
 
 test('non-carriers drop nothing', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(16, 0, 700)];
+  w.chains = [chain(16, 0, 700)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'std');
   E.damageSeg(w, 0, idx, 99);
   assert.equal(w.pickups.length, 0);
@@ -1017,7 +1227,7 @@ test('pierce and ricochet raise their shot properties', () => {
 
 test('freeze halts the snake without freezing the player', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(8, 100, 400)];
+  w.chains = [chain(8, 100, 400)];
   E.applyPowerup(w, 'freeze');
 
   const before = w.chains[0].s;
@@ -1033,7 +1243,7 @@ test('a frozen regenerator still heals', () => {
   // freeze stops movement, not biology — otherwise freeze silently doubles
   // as a regen counter, which is not what it says on the tin
   const w = E.createWorld();
-  w.chains = [E.makeChain(20, 100, 700)];
+  w.chains = [chain(20, 100, 700)];
   const seg = w.chains[0].segs.find(s => s.kind === 'regen');
   seg.hp = 1;
   E.applyPowerup(w, 'freeze');
@@ -1043,7 +1253,7 @@ test('a frozen regenerator still heals', () => {
 
 test('a bomb damages segments near where it was caught', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(10, 0, 500)];
+  w.chains = [chain(10, 0, 500)];
   const target = E.segPos(path, pathLen, w.chains[0], 3);
   const before = w.chains[0].segs.length;
 
@@ -1057,7 +1267,7 @@ test('a bomb does not reach across the whole board', () => {
   // regression: an inflated radius let a bomb clear segments the player
   // never got near, including splitters they meant to leave alone
   const w = E.createWorld();
-  w.chains = [E.makeChain(10, 0, 500)];
+  w.chains = [chain(10, 0, 500)];
   const far = E.segPos(path, pathLen, w.chains[0], 0);
   const before = w.chains[0].segs.length;
 
@@ -1117,7 +1327,7 @@ test('resetting a run clears effects and charges', () => {
 
 test('destroying a segment triggers hit-stop and shake', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(8, 0, 400)];
+  w.chains = [chain(8, 0, 400)];
   E.damageSeg(w, 0, 1, 99);
   assert.ok(w.hitStop > 0, 'brief freeze on impact');
   assert.ok(w.shake > 0, 'screen shake on impact');
@@ -1125,12 +1335,12 @@ test('destroying a segment triggers hit-stop and shake', () => {
 
 test('tougher targets stop the world for longer', () => {
   const soft = E.createWorld();
-  soft.chains = [E.makeChain(16, 0, 700)];
+  soft.chains = [chain(16, 0, 700)];
   const softIdx = soft.chains[0].segs.findIndex(s => s.kind === 'std');
   E.damageSeg(soft, 0, softIdx, 99);
 
   const hard = E.createWorld();
-  hard.chains = [E.makeChain(16, 0, 700)];
+  hard.chains = [chain(16, 0, 700)];
   const hardIdx = hard.chains[0].segs.findIndex(s => s.kind === 'armored');
   E.damageSeg(hard, 0, hardIdx, 99);
 
@@ -1139,7 +1349,7 @@ test('tougher targets stop the world for longer', () => {
 
 test('hit-stop pauses the simulation but always resolves', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(8, 100, 400)];
+  w.chains = [chain(8, 100, 400)];
   w.hitStop = 0.05;
   const s0 = w.chains[0].s;
 
@@ -1160,7 +1370,7 @@ test('shake decays to zero', () => {
 
 test('a breach shakes harder than a routine kill', () => {
   const kill = E.createWorld();
-  kill.chains = [E.makeChain(8, 0, 400)];
+  kill.chains = [chain(8, 0, 400)];
   E.damageSeg(kill, 0, 1, 99);
 
   const hit = E.createWorld();
@@ -1174,6 +1384,9 @@ test('power-ups appear and take effect during real play', () => {
     let best = null, bd = Infinity;
     for (const ch of w.chains) {
       for (let i = 0; i < ch.segs.length; i++) {
+        // skip the head while any body remains: it takes a fraction of normal
+        // damage until the chain behind it is gone, so aiming there is wasted
+        if (i === 0 && ch.segs.length > 1) continue;
         const p = E.segPos(w.path, w.pathLen, ch, i);
         if (p.off) continue;
         const d = Math.hypot(p.x - w.cannon.x, p.y - w.cannon.y);
@@ -1184,7 +1397,7 @@ test('power-ups appear and take effect during real play', () => {
   };
 
   const w = E.createWorld();
-  w.wave = 6;
+  w.wave = ALL_KINDS;
   E.spawnWave(w);
   w.lives = 99;
 
@@ -1212,6 +1425,9 @@ test('splits still happen once power-ups are in play', () => {
     let best = null, bd = Infinity;
     for (const ch of w.chains) {
       for (let i = 0; i < ch.segs.length; i++) {
+        // skip the head while any body remains: it takes a fraction of normal
+        // damage until the chain behind it is gone, so aiming there is wasted
+        if (i === 0 && ch.segs.length > 1) continue;
         const p = E.segPos(w.path, w.pathLen, ch, i);
         if (p.off) continue;
         const d = Math.hypot(p.x - w.cannon.x, p.y - w.cannon.y);
@@ -1222,7 +1438,7 @@ test('splits still happen once power-ups are in play', () => {
   };
 
   const w = E.createWorld();
-  w.wave = 6;
+  w.wave = ALL_KINDS;
   E.spawnWave(w);
   w.lives = 99;
 
@@ -1360,7 +1576,7 @@ test('overheating one gun does not silence the whole battery', () => {
 
 test('two guns hitting the same segment together deal bonus damage', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(10, 0, 500)];
+  w.chains = [chain(10, 0, 500)];
   const sp = E.segPos(w.path, w.pathLen, w.chains[0], 3);
   const seg = w.chains[0].segs[3];
   const hp0 = seg.hp;
@@ -1381,7 +1597,7 @@ test('two guns hitting the same segment together deal bonus damage', () => {
 
 test('hits outside the window are not focused', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(10, 0, 500)];
+  w.chains = [chain(10, 0, 500)];
   const sp = E.segPos(w.path, w.pathLen, w.chains[0], 3);
   const seg = w.chains[0].segs[3];
 
@@ -1539,7 +1755,7 @@ test('a shot leaving the top counts as a miss', () => {
 
 test('a shot on target damages a segment and is consumed', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(8, 0, 500)];
+  w.chains = [chain(8, 0, 500)];
   const target = E.segPos(path, pathLen, w.chains[0], 3);
   w.shots = [{ x: target.x, y: target.y, vx: 0, vy: 0, dmg: 1, pierce: 0, r: 3.2 }];
 
@@ -1550,7 +1766,7 @@ test('a shot on target damages a segment and is consumed', () => {
 
 test('a piercing shot survives its first hit', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(8, 0, 500)];
+  w.chains = [chain(8, 0, 500)];
   const target = E.segPos(path, pathLen, w.chains[0], 3);
   w.shots = [{ x: target.x, y: target.y, vx: 0, vy: 0, dmg: 1, pierce: 1, r: 3.2 }];
 
@@ -1563,13 +1779,13 @@ test('a piercing shot survives its first hit', () => {
 
 test('no breach while the chain is still up the path', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(8, 40, 300)];
+  w.chains = [chain(8, 40, 300)];
   assert.equal(E.checkBreach(w), false);
 });
 
 test('breach fires when a segment crosses the floor line', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(8, 40, pathLen - 5)];
+  w.chains = [chain(8, 40, pathLen - 5)];
   // walk the chain down until something crosses
   for (let i = 0; i < 600 && !E.checkBreach(w); i++) E.stepChains(w, 1 / 60);
   assert.equal(E.checkBreach(w), true);
@@ -1674,7 +1890,7 @@ test('a long run with constant fire stays internally consistent', () => {
 
 test('splits happen during real play and stay within the cap', () => {
   const w = E.createWorld();
-  w.wave = 6;              // long enough chains to contain splitters
+  w.wave = ALL_KINDS;      // late enough that splitters exist at all
   E.spawnWave(w);
   w.lives = 99;
 
@@ -1698,7 +1914,7 @@ test('splits happen during real play and stay within the cap', () => {
 
 test('the world model holds a list of chains, ready for splitters', () => {
   const w = E.createWorld();
-  w.chains = [E.makeChain(6, 40, 400), E.makeChain(6, 40, 200)];
+  w.chains = [chain(6, 40, 400), chain(6, 40, 200)];
   E.step(w, 1 / 60);
   assert.equal(w.chains.length, 2, 'both chains simulate independently');
 });

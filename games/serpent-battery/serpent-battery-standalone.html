@@ -91,8 +91,17 @@ h1{
   letter-spacing:-.02em;text-transform:uppercase;
 }
 h1 span{color:var(--accent)}
-.meta{display:flex;gap:14px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-.meta b{color:var(--bone);font-weight:600;letter-spacing:.04em}
+/* The HUD strip. Every item used to be the same size and weight, so mid-run the
+   numbers you actually need were no easier to find than the labels beside them.
+   Now the label is small and dim and the *value* carries the weight, which is
+   what you glance at. `white-space:nowrap` per item stops a label splitting
+   from its number when the row wraps on a narrow phone. */
+.meta{
+  display:flex;gap:8px 14px;flex-wrap:wrap;align-items:baseline;
+  font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+}
+.meta > *{display:flex;align-items:baseline;gap:5px;white-space:nowrap}
+.meta b{color:var(--bone);font-weight:700;font-size:13px;letter-spacing:.02em}
 
 /* the title block: a way back to the cabinet, then the game's name */
 .titles{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
@@ -183,6 +192,8 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 }
 #helpPanel li::before{content:'—';position:absolute;left:0;color:var(--line)}
 #helpClose{align-self:flex-start;margin-top:auto;padding:10px 20px}
+/* the build string, deliberately the quietest thing in the panel */
+#helpPanel .build{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--line);margin-top:10px}
 
 footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
 
@@ -193,7 +204,8 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
     padding-left:calc(8px + env(safe-area-inset-left,0px));
     padding-right:calc(8px + env(safe-area-inset-right,0px));
   }
-  .meta{gap:10px;font-size:9px}
+  .meta{gap:6px 11px;font-size:8px}
+  .meta b{font-size:12px}
   footer{display:none}
 }
 
@@ -257,18 +269,24 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
   .shopSection{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);
     border-bottom:1px solid var(--line);padding-bottom:5px;margin-top:4px}
   .assign{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
-  .chip{width:26px;height:26px;border:1px solid var(--line);background:#0f2027;color:var(--dim);
-    font:700 11px/1 'Chivo Mono',monospace;cursor:pointer;border-radius:2px}
+  /* Shop controls are thumb targets, not cursor targets. These were all sized
+     for a mouse: .buy computed to ~28px tall and .chip was 26px square, both
+     well under a comfortable tap. */
+  .chip{width:34px;height:34px;border:1px solid var(--line);background:#0f2027;color:var(--dim);
+    font:700 12px/1 'Chivo Mono',monospace;cursor:pointer;border-radius:3px}
   .chip.on{background:var(--scale);color:#06201a;border-color:var(--scale)}
-  .branch{border:1px solid var(--line);background:#0f2027;padding:10px 11px;display:flex;flex-direction:column;gap:7px;text-align:left}
-  .branch h3{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone);font-weight:700}
-  .branch p{font-size:10px;color:var(--dim);line-height:1.5;min-height:2.6em}
+  .branch{border:1px solid var(--line);background:#0f2027;padding:12px 13px;display:flex;flex-direction:column;gap:8px;text-align:left}
+  .branch h3{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone);font-weight:700}
+  .branch p{font-size:11px;color:var(--dim);line-height:1.5;min-height:2.6em}
   .pips{display:flex;gap:3px}
-  .pips i{flex:1;height:4px;background:#1b3038;border-radius:1px}
+  .pips i{flex:1;height:5px;background:#1b3038;border-radius:1px}
   .pips i.on{background:var(--scale)}
-  .buy{width:100%;padding:9px;font:700 10px/1 'Chivo Mono',monospace;letter-spacing:.12em;
-    text-transform:uppercase;border:0;cursor:pointer;background:var(--brass);color:#1a1405}
+  .buy{width:100%;min-height:42px;padding:12px 10px;font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.12em;
+    text-transform:uppercase;border:0;cursor:pointer;background:var(--brass);color:#1a1405;border-radius:3px}
+  /* "maxed" and "can't afford yet" are different states and used to look
+     identical — the second is temporary, so it keeps a hint of the brass. */
   .buy:disabled{background:#1b3038;color:#4d6068;cursor:default}
+  .buy.poor:disabled{background:#2a2416;color:#8a7645;border:1px solid #3d3520}
   #shopGo{align-self:center;margin-top:2px}
 </style>
 
@@ -435,24 +453,62 @@ const MAX_CHAINS = 3;
  *  placement rule keeps them away from the head and tail. */
 const SPLIT_MARGIN = 3;
 
-function kindForIndex(i, count = Infinity) {
+/** The wave each segment kind first appears on. Wave 1 is deliberately nothing
+ *  but `std` (plus the head): the modular placement rules below used to fire
+ *  from the first wave, so wave 1 shipped armored, volatile, shielded, regen,
+ *  carrier *and* a splitter all at once — which is why it read as a wall rather
+ *  than an opening. Kinds now arrive one at a time so each can be learned.
+ *
+ *  Order is roughly "how much new thinking does this demand": carrier is a
+ *  bonus, armored is just tougher, volatile teaches chain reactions, shielded
+ *  forces flanking, regen punishes chip damage, splitter changes the board. */
+const KIND_UNLOCK = {
+  std: 1, carrier: 2, armored: 3, volatile: 4, shielded: 5, regen: 7, splitter: 9,
+};
+
+/** Kinds available on a given wave, in unlock order. Head is always present and
+ *  is not a body kind, so it isn't listed. */
+function kindsForWave(wave) {
+  return Object.keys(KIND_UNLOCK).filter(k => wave >= KIND_UNLOCK[k]);
+}
+
+function kindForIndex(i, count = Infinity, wave = Infinity) {
   if (i === 0) return 'head';
+  const has = (k) => wave >= KIND_UNLOCK[k];
   // splitters first: rare, and only where both halves would be worth having
-  if (i % 13 === 8 && i >= SPLIT_MARGIN && count - i > SPLIT_MARGIN) return 'splitter';
-  if (i % 7 === 3) return 'armored';
-  if (i % 11 === 6) return 'volatile';
-  if (i % 9 === 5) return 'shielded';
-  if (i % 17 === 11) return 'regen';
-  if (i % 6 === 4) return 'carrier';
+  if (has('splitter') && i % 13 === 8 && i >= SPLIT_MARGIN && count - i > SPLIT_MARGIN) return 'splitter';
+  if (has('armored') && i % 7 === 3) return 'armored';
+  if (has('volatile') && i % 11 === 6) return 'volatile';
+  if (has('shielded') && i % 9 === 5) return 'shielded';
+  if (has('regen') && i % 17 === 11) return 'regen';
+  if (has('carrier') && i % 6 === 4) return 'carrier';
   return 'std';
 }
 
-function makeChain(count, speed, startS, spacing = 30) {
+/* ---------- difficulty scaling ---------- */
+
+/** Per-segment hp multiplier for a wave. Until now `KIND` hp values were fixed
+ *  constants and nothing scaled them, so late waves were only *longer and
+ *  faster* — never tougher to chew through. Same shape as Circuit Breaker's
+ *  `hpScale`, and capped so a very long run doesn't turn every segment into a
+ *  sponge that outlasts the wave timer. */
+const HP_PER_WAVE = 0.14;
+const HP_SCALE_MAX = 4.0;
+
+function hpScale(wave) {
+  return Math.min(HP_SCALE_MAX, 1 + (wave - 1) * HP_PER_WAVE);
+}
+
+function makeChain(count, speed, startS, spacing = 30, wave = 1) {
   const segs = [];
+  const scale = hpScale(wave);
   for (let i = 0; i < count; i++) {
-    const k = kindForIndex(i, count);
+    const k = kindForIndex(i, count, wave);
     const K = KIND[k];
-    segs.push({ id: nextSegId(), kind: k, hp: K.hp, maxhp: K.hp, r: K.r, flash: 0, deflect: 0 });
+    // scale maxhp too, or hp bars would read wrong and the hit-stop/shake
+    // thresholds (which test maxhp) would stay stuck at wave-1 values
+    const hp = Math.max(1, Math.round(K.hp * scale));
+    segs.push({ id: nextSegId(), kind: k, hp, maxhp: hp, r: K.r, flash: 0, deflect: 0 });
   }
   return { segs, s: startS, speed, spacing, recoil: 0, split: false };
 }
@@ -460,7 +516,12 @@ function makeChain(count, speed, startS, spacing = 30) {
 let _segId = 1;
 function nextSegId() { return _segId++; }
 
-const waveCount = (wave) => Math.min(14 + wave * 3, 40);
+/** Segments in a wave. Growth was +3/wave capped at 40, which flatlined around
+ *  wave 9 and left length doing no work after that; +4 to a 56 cap keeps it
+ *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
+ *  56-segment chain spans 1650px of a ~5750px path, so it still fits the board
+ *  comfortably without the tail overlapping the head. */
+const waveCount = (wave) => Math.min(14 + wave * 4, 56);
 /** Path length of the standard layout, used as the default reference. */
 const REF_PATH_LEN = buildPath(LAYOUT).pathLen;
 
@@ -783,7 +844,7 @@ function relayout(w, L2) {
 }
 
 function spawnWave(w) {
-  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30)];
+  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30, 30, w.wave)];
   w.shots = []; w.bits = []; w.floaters = [];
   w.pickups = [];
   w.waveClear = false;
@@ -1096,9 +1157,10 @@ function splitChain(w, ci, i) {
   const front = ch.segs.slice(0, i);
   if (front.length < 2 || tail.length < 2) return false;
 
-  // the tail's leading segment becomes a head, at head stats
+  // the tail's leading segment becomes a head, at head stats for this wave
   const H = KIND.head;
-  tail[0] = { id: nextSegId(), kind: 'head', hp: H.hp, maxhp: H.hp, r: H.r, flash: 0, deflect: 0 };
+  const hhp = Math.max(1, Math.round(H.hp * hpScale(w.wave)));
+  tail[0] = { id: nextSegId(), kind: 'head', hp: hhp, maxhp: hhp, r: H.r, flash: 0, deflect: 0 };
 
   ch.segs = front;
   ch.split = true;
@@ -1115,6 +1177,49 @@ function splitChain(w, ci, i) {
   return true;
 }
 
+/* ---------- the head ----------
+
+   The head sits at index 0, which is the *leading* segment: the first thing to
+   reach the floor and the closest target to the battery. So making a head kill
+   destroy the whole chain, on its own, would have made the easiest shot on the
+   board an instant win and left recoil, mid-chain cutting, splitters and
+   shielded flanking pointless.
+
+   Instead the body armours the head. Damage to it is divided by how much body
+   is still alive, so clearing the chain first is the efficient route — but a
+   rail shot or an overdrive burst can still attempt an early decapitation for
+   a large payoff. That turns the head into a risk/reward decision rather than
+   a shortcut, and killing it does end the whole snake. */
+
+/** Fraction of normal damage the head takes with `bodyLeft` segments behind it.
+ *  1 at full exposure, falling away steeply while the body is intact. */
+function headDamageFactor(bodyLeft) {
+  return 1 / (1 + Math.max(0, bodyLeft));
+}
+
+/** Destroy a whole chain at once, paying out every segment still on it. Used
+ *  when the head dies: the body dies with it, and it all scores. */
+function decapitate(w, ci) {
+  const ch = w.chains[ci];
+  if (!ch) return false;
+  let score = 0, scrap = 0;
+  for (let j = 0; j < ch.segs.length; j++) {
+    const s = ch.segs[j];
+    const K = KIND[s.kind];
+    score += K.score; scrap += K.scrap;
+    const p = segPos(w.path, w.pathLen, ch, j);
+    if (!p.off) w.fx.burst(p.x, p.y, K.col, 10);
+  }
+  const hp = segPos(w.path, w.pathLen, ch, 0);
+  w.score += score;
+  w.scrap += scrap;
+  w.fx.push('DECAPITATED +' + score, hp.x, hp.y, KIND.head.col);
+  w.hitStop = Math.max(w.hitStop, 0.12);
+  w.shake = Math.max(w.shake, 0.6);
+  w.chains.splice(ci, 1);
+  return true;
+}
+
 /** Apply damage. Returns true if the segment died. */
 function damageSeg(w, ci, i, dmg) {
   const ch = w.chains[ci];
@@ -1122,9 +1227,23 @@ function damageSeg(w, ci, i, dmg) {
   const seg = ch.segs[i];
   if (!seg) return false;
 
+  // the head is shielded by whatever body is still behind it
+  if (seg.kind === 'head') {
+    const bodyLeft = ch.segs.length - 1;
+    if (bodyLeft > 0) {
+      dmg *= headDamageFactor(bodyLeft);
+      // reuse the shielded plates' flash field so the shell can show the hit
+      // being absorbed — otherwise a shot on a protected head looks like a bug
+      seg.deflect = 0.12;
+    }
+  }
+
   seg.hp -= dmg;
   seg.flash = 0.12;
   if (seg.hp > 0) return false;
+
+  // a downed head takes the whole snake with it, body and all
+  if (seg.kind === 'head') return decapitate(w, ci);
 
   const K = KIND[seg.kind];
   const pos = segPos(w.path, w.pathLen, ch, i);
@@ -1138,8 +1257,11 @@ function damageSeg(w, ci, i, dmg) {
   w.shake = Math.max(w.shake, seg.maxhp >= 6 ? 0.32 : 0.16);
 
   if (seg.kind === 'volatile') {
+    // splash scales with the wave alongside segment hp, or the chain reaction
+    // would quietly stop mattering once segments carry 4x the health
+    const splash = 3 * hpScale(w.wave);
     for (const j of [i - 1, i + 1]) {
-      if (ch.segs[j]) { ch.segs[j].hp -= 3; ch.segs[j].flash = 0.12; }
+      if (ch.segs[j]) { ch.segs[j].hp -= splash; ch.segs[j].flash = 0.12; }
     }
     w.fx.burst(pos.x, pos.y, '#e0503c', 26);
   }
@@ -1388,7 +1510,7 @@ function nextWave(w) {
   w.running = true;
 }
 
-return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, kindForIndex, makeChain, _segId, nextSegId, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, AIM_ASSIST_R, TRAVERSE_MAX, slewAim, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
+return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, KIND_UNLOCK, kindsForWave, kindForIndex, HP_PER_WAVE, HP_SCALE_MAX, hpScale, makeChain, _segId, nextSegId, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, AIM_ASSIST_R, TRAVERSE_MAX, slewAim, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, headDamageFactor, decapitate, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
 })();
 const { makeFit } = (() => {
 /* Fit a fixed-size game board into whatever space is left on screen.
@@ -1456,6 +1578,7 @@ const { makeHelp } = (() => {
  * @param rows     [[term, description], …] — the controls table
  * @param notes    array of short strings shown under the table
  */
+
 function makeHelp({ stage, title, rows = [], notes = [] }) {
   const btn = document.createElement('button');
   btn.id = 'helpBtn';
@@ -1473,7 +1596,11 @@ function makeHelp({ stage, title, rows = [], notes = [] }) {
     `<h2>${title}</h2>` +
     `<dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>` +
     (notes.length ? `<ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
-    `<button type="button" id="helpClose">Got it</button>`;
+    `<button type="button" id="helpClose">Got it</button>` +
+    // which build this is. Here rather than next to the title because it is a
+    // diagnostic — the answer to "did my phone actually pick up the new code?"
+    // — and not something a player needs while playing.
+    `<p class="build">${BUILD_LABEL}</p>`;
 
   stage.append(btn, panel);
 
@@ -1872,6 +1999,7 @@ makeHelp({
   notes: [
     'Cutting mid-chain shoves the snake backwards.',
     'Plated segments glance shots off the front — hit the flank.',
+    'The head is armoured by its body: the ring around it thins as you clear behind it. Drop the head and the whole serpent dies with it.',
     'Keyboard: arrows and Space.',
   ],
 });
@@ -1980,8 +2108,11 @@ function renderShop() {
       `<p>${U.blurb}</p>`;
 
     const btn = document.createElement('button');
-    btn.className = 'buy';
-    btn.textContent = maxed ? 'Maxed' : `Buy · ${cost}`;
+    btn.className = 'buy' + (!maxed && !afford ? ' poor' : '');
+    // spell out the shortfall: "Buy · 40" while holding 25 leaves you counting
+    btn.textContent = maxed ? 'Maxed'
+      : afford ? `Buy · ${cost}`
+      : `${cost} · need ${cost - world.scrap} more`;
     btn.disabled = maxed || !afford;
     btn.addEventListener('click', () => {
       if (E.buyUpgrade(world, b)) { renderShop(); sync(); }
@@ -2105,7 +2236,7 @@ function shade(hex, amt) {
 
 // draw one segment as an oriented, lit plate. `idx` gives each plate a slight
 // size cadence so a run of them reads as overlapping armour.
-function drawSegment(seg, sp, heading, idx) {
+function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
   const K = E.KIND[seg.kind];
   const dmgT = 1 - seg.hp / seg.maxhp;
   const ang = Math.atan2(heading.y, heading.x);
@@ -2184,6 +2315,21 @@ function drawSegment(seg, sp, heading, idx) {
   }
 
   ctx.restore();
+
+  // The head's body-armour, made visible. Without this the mechanic is a
+  // mystery: shots land on the head and simply do nothing, with no hint that
+  // the body behind it is the reason. The ring tightens and fades as the body
+  // is cleared, so "keep chewing and the head opens up" is readable at a glance.
+  if (seg.kind === 'head' && bodyLeft > 0) {
+    const prot = 1 - E.headDamageFactor(bodyLeft);      // 0 = exposed, →1 = sealed
+    const hit = seg.deflect > 0;
+    const pulse = reduce ? 0 : Math.sin(performance.now() / 260) * 1.6;
+    ctx.strokeStyle = hit ? '#ffffff' : `rgba(201,162,39,${0.18 + prot * 0.5})`;
+    ctx.lineWidth = hit ? 3 : 1 + prot * 2;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, seg.r * 1.55 + (1 - prot) * 6 + pulse, 0, TAU);
+    ctx.stroke();
+  }
 
   // HP readout for tough segments, upright (outside the rotation)
   if (seg.maxhp > 3) {
@@ -2353,7 +2499,7 @@ function draw() {
       const seg = ch.segs[i], sp = E.segPos(path, pathLen, ch, i);
       if (sp.off) continue;
       const heading = E.segHeading(path, pathLen, ch, i);
-      drawSegment(seg, sp, heading, i);
+      drawSegment(seg, sp, heading, i, ch.segs.length - 1);
     }
     if (ch.recoil > 0 && ch.segs.length) {
       const hp = E.segPos(path, pathLen, ch, 0);

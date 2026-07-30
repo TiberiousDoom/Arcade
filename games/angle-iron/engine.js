@@ -149,6 +149,116 @@ export function buildBricks(level = 1, L = LAYOUT) {
 
 export const aliveBricks = (w) => w.bricks.filter(b => b.alive).length;
 
+/* ---------- powerups ---------- */
+
+/** The four drops. `wide` and `slow` are timed; `multi` and `life` fire once.
+ *  Kept as data so the shell can label and colour them without a second table. */
+export const POWERUPS = {
+  multi: { name: 'Split',  col: '#6fb7e8', timed: false },
+  wide:  { name: 'Wide',   col: '#3fae8f', timed: true  },
+  slow:  { name: 'Slow',   col: '#c9a227', timed: true  },
+  life:  { name: 'Spare',  col: '#e0503c', timed: false },
+};
+export const POWERUP_KEYS = Object.keys(POWERUPS);
+
+export const DROP_SPEED = 150;        // px/sec a capsule falls
+export const DROP_R = 11;             // catch radius, generous on purpose
+export const EFFECT_SECONDS = 12;     // how long a timed effect lasts
+export const WIDE_MULT = 1.6;         // paddle width while `wide` is up
+export const SLOW_MULT = 0.72;        // speed multiplier while `slow` is up
+export const MAX_BALLS = 6;           // ceiling so repeat splits can't run away
+export const SPLIT_ANGLE = 0.42;      // how far the two new balls fan out
+
+/** Which powerup a brick at (row, col) yields on level `level`, or null for
+ *  most bricks. Pure arithmetic — this engine has no randomness anywhere, so a
+ *  level's drops sit in the same places every run and in every test, and are
+ *  therefore learnable. Same reasoning as `brickPresent`.
+ *
+ *  The weighting lives in the table's repeats rather than in a branch: `wide`
+ *  and `multi` are common, `life` is one entry in eight. */
+const DROP_KINDS = ['multi', 'wide', 'slow', 'wide', 'multi', 'slow', 'wide', 'life'];
+
+export function dropFor(level, row, col) {
+  const h = (row * 7 + col * 13 + level * 11) >>> 0;
+  if (h % 7 !== 3) return null;                    // roughly one brick in seven
+  return DROP_KINDS[(h >> 3) % DROP_KINDS.length];
+}
+
+/** Ball speed right now: the level's pace, scaled if `slow` is running. All
+ *  speed still comes from one place — the point of `levelSpeed` was that pace
+ *  can't drift as the ball rattles around, and a visible, timed modifier keeps
+ *  that property while making the powerup possible. */
+export function effectiveSpeed(w) {
+  const base = levelSpeed(w.level, w.L);
+  return w.effects.slow > 0 ? base * SLOW_MULT : base;
+}
+
+/** Rescale every live ball to the current effective speed, keeping direction.
+ *  Called when `slow` starts and when it lapses. */
+function retimeBalls(w) {
+  const spd = effectiveSpeed(w);
+  for (const b of w.balls) {
+    const m = Math.hypot(b.vx, b.vy);
+    if (m === 0) continue;
+    b.vx = (b.vx / m) * spd;
+    b.vy = (b.vy / m) * spd;
+  }
+}
+
+/** Paddle width for the current effect state. */
+function paddleWidth(w) {
+  return w.effects.wide > 0 ? w.L.PADDLE_W * WIDE_MULT : w.L.PADDLE_W;
+}
+
+/** Split each live ball into three, fanning the copies out either side of the
+ *  original heading. Respects MAX_BALLS, so stacked splits taper off instead of
+ *  filling the board. */
+function splitBalls(w) {
+  const room = MAX_BALLS - w.balls.length;
+  if (room <= 0) return;
+  const added = [];
+  for (const b of w.balls) {
+    if (added.length + 1 > room) break;
+    const ang = Math.atan2(b.vy, b.vx);
+    const spd = Math.hypot(b.vx, b.vy);
+    for (const off of [SPLIT_ANGLE, -SPLIT_ANGLE]) {
+      if (added.length >= room) break;
+      added.push(makeBall(b.x, b.y, Math.cos(ang + off) * spd, Math.sin(ang + off) * spd, b.r));
+    }
+  }
+  w.balls.push(...added);
+}
+
+/** Apply a caught powerup. Timed kinds refresh their full duration rather than
+ *  stacking, which keeps the HUD honest and the maths trivial. */
+export function applyPowerup(w, kind) {
+  switch (kind) {
+    case 'multi': splitBalls(w); break;
+    case 'life':  w.lives++; break;
+    case 'wide':
+      w.effects.wide = EFFECT_SECONDS;
+      w.paddle.w = paddleWidth(w);
+      setPaddle(w, w.paddle.x);        // re-clamp: a wider bar may now overlap a wall
+      break;
+    case 'slow':
+      w.effects.slow = EFFECT_SECONDS;
+      retimeBalls(w);
+      break;
+    default: return false;
+  }
+  // optional-chained like Serpent Battery's fx hooks: worlds built without a
+  // `power` hook (every older caller, and most tests) must not throw
+  w.fx.power?.(kind);
+  return true;
+}
+
+/** Drop timers and any falling capsules, cleared between lives and levels. */
+function clearEffects(w) {
+  w.drops = [];
+  w.effects = { wide: 0, slow: 0 };
+  w.paddle.w = w.L.PADDLE_W;
+}
+
 /* ---------- collision primitives ---------- */
 
 /** True if a circle overlaps an axis-aligned rectangle. */
@@ -199,10 +309,12 @@ export function createWorld(opts = {}) {
     balls: [],            // live, moving balls
     held: true,           // a ball is resting on the paddle, awaiting launch
     bricks: buildBricks(1, L),
+    drops: [],            // powerup capsules falling toward the paddle
+    effects: { wide: 0, slow: 0 },   // seconds remaining on each timed effect
     level: 1, score: 0, lives: START_LIVES,
     running: false, over: false,
     levelClear: false,
-    fx: opts.fx || { brick() {}, bounce() {}, lose() {} },
+    fx: opts.fx || { brick() {}, bounce() {}, lose() {}, power() {} },
   };
   return w;
 }
@@ -213,7 +325,8 @@ export function resetGame(w) {
   w.over = false; w.levelClear = false;
   w.bricks = buildBricks(1, w.L);
   w.balls = []; w.held = true;
-  w.paddle.x = w.L.W / 2; w.paddle.w = w.L.PADDLE_W;
+  clearEffects(w);
+  w.paddle.x = w.L.W / 2;
 }
 
 /** Move an in-progress game onto a different board, as when the phone is
@@ -236,7 +349,11 @@ export function relayout(w, L2) {
   w.bricks = rebuilt;
   w.balls = [];
   w.held = true;
-  w.paddle.w = L2.PADDLE_W;
+  // capsules in flight go the way the ball does — their position means nothing
+  // on a board of another shape — but timed effects are earned, so they persist
+  // and the paddle is re-widened against the new layout's base width.
+  w.drops = [];
+  w.paddle.w = paddleWidth(w);
   setPaddle(w, centreFrac * L2.W);
   return w;
 }
@@ -276,7 +393,7 @@ function makeBall(x, y, vx, vy, r) {
 export function launch(w) {
   if (!w.held) return false;
   const p = heldBallPos(w);
-  const spd = levelSpeed(w.level, w.L);
+  const spd = effectiveSpeed(w);
   w.balls.push(makeBall(p.x, p.y, spd * Math.sin(LAUNCH_ANGLE), -spd * Math.cos(LAUNCH_ANGLE), w.L.BALL_R));
   w.held = false;
   return true;
@@ -287,6 +404,8 @@ export function launch(w) {
 function loseLife(w) {
   w.lives--;
   w.balls = [];
+  // a fresh ball starts clean: losing the board loses whatever was running on it
+  clearEffects(w);
   w.fx.lose();
   if (w.lives <= 0) { w.lives = 0; w.over = true; w.running = false; }
   else w.held = true;
@@ -338,6 +457,44 @@ function brickBounce(w, ball) {
     bestBrick.alive = false;
     w.score += brickScore(bestBrick.maxhp);
     w.fx.brick(bestBrick.x + bestBrick.w / 2, bestBrick.y + bestBrick.h / 2, bestBrick.row);
+    const kind = dropFor(w.level, bestBrick.row, bestBrick.col);
+    if (kind) {
+      w.drops.push({
+        kind,
+        x: bestBrick.x + bestBrick.w / 2,
+        y: bestBrick.y + bestBrick.h / 2,
+        vy: DROP_SPEED,
+      });
+    }
+  }
+}
+
+/** Advance falling capsules: catch the ones that reach the paddle, discard the
+ *  ones that pass the floor. The catch test is against the paddle's own
+ *  rectangle, so a wide paddle really is easier to collect with. */
+function stepDrops(w, dt) {
+  const L = w.L, p = w.paddle;
+  for (let i = w.drops.length - 1; i >= 0; i--) {
+    const d = w.drops[i];
+    d.y += d.vy * dt;
+    if (circleRect(d.x, d.y, DROP_R, p.x - p.w / 2, L.PADDLE_Y, p.w, L.PADDLE_H)) {
+      w.drops.splice(i, 1);
+      applyPowerup(w, d.kind);
+      continue;
+    }
+    if (d.y - DROP_R > L.FLOOR) w.drops.splice(i, 1);
+  }
+}
+
+/** Tick the timed effects down and undo them as they lapse. */
+function stepEffects(w, dt) {
+  if (w.effects.wide > 0) {
+    w.effects.wide = Math.max(0, w.effects.wide - dt);
+    if (w.effects.wide === 0) { w.paddle.w = w.L.PADDLE_W; setPaddle(w, w.paddle.x); }
+  }
+  if (w.effects.slow > 0) {
+    w.effects.slow = Math.max(0, w.effects.slow - dt);
+    if (w.effects.slow === 0) retimeBalls(w);   // back up to full pace
   }
 }
 
@@ -373,6 +530,11 @@ export function step(w, dt) {
   // drop any ball that fell past the floor. FLOOR, not H: on a portrait board
   // the thumb rest sits below the floor line, and a ball must die at the paddle
   // line rather than sailing on through the band where your hand is.
+  // capsules and timers advance after the balls, so a brick broken this frame
+  // drops a capsule that starts falling on the next one
+  stepDrops(w, dt);
+  stepEffects(w, dt);
+
   w.balls = w.balls.filter(b => b.y - b.r <= w.L.FLOOR);
   if (w.balls.length === 0 && !w.held) loseLife(w);
 
@@ -389,6 +551,7 @@ export function nextLevel(w) {
   w.level++;
   w.bricks = buildBricks(w.level, w.L);
   w.balls = []; w.held = true;
+  clearEffects(w);
   w.levelClear = false;
   w.running = true;
 }

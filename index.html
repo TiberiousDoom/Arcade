@@ -139,11 +139,16 @@
 
   <footer>
     <b>Everything runs offline. No accounts, no ads, no tracking.</b>
+    <b id="build"></b>
   </footer>
 </div>
 <script type="module">
 /* Personal bests on the cards. Read-only here — the games do the writing. */
 import { best } from './shared/scores.js';
+import { BUILD_LABEL } from './shared/version.js';
+
+// which build this cabinet is running, for "did my phone pick up the deploy?"
+document.getElementById('build').textContent = BUILD_LABEL;
 
 for (const card of document.querySelectorAll('.card')) {
   // the card's second class IS the game id — keep them in step

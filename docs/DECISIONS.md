@@ -291,3 +291,47 @@ Recorded because the scoped plan got this wrong and the mistake is easy to repea
 So the grid went 15x10 → 12x8, with `CELL` raised to 64 alongside purely to keep the backing buffer sharp. On a 375px phone that's ~36px → ~45px cells — a real tap target. The route was redrawn inside the smaller grid, and the transpose invariant (and its tests) still hold.
 
 This has a difficulty side effect that must not be confused with tuning: the path is now 31 cells of travel instead of 41, and there are fewer buildable cells, so towers get less time per surge and less room. Circuit Breaker was reported as "too easy," and the economy constants were deliberately left alone so the next playtest can judge the grid change on its own.
+
+## 2026-07-27 — Angle Iron powerups: deterministic drops, and no laser
+
+The first depth work on an existing game rather than feel work. Four drops, chosen because each one reuses machinery already present: `multi` (the `w.balls` array was built as an array for exactly this), `wide` (`paddle.w` was already separate from `L.PADDLE_W`), `slow`, and `life`.
+
+**The drop map is pure arithmetic on `(level, row, col)`, not random.** This engine's defining constraint is that it has *no randomness at all* — level layouts come from arithmetic so level N is byte-identical every run and in every test. A random drop would have been the first seeded LCG in the file and would have broken that property for no gain. `dropFor(level, row, col)` hashes the three into a sparse, weighted table instead. The payoff is more than testability: a level's drops sit in the same places every time, so they become something a player learns rather than something that happens to them. Same reasoning as `brickPresent`.
+
+Weighting lives in the table's repeats (`['multi','wide','slow','wide','multi','slow','wide','life']`) rather than in a branch, so changing the mix is editing data. `life` is one entry in eight of that table, and only about one brick in seven drops at all.
+
+**`slow` bends a documented invariant, deliberately.** The engine's comment says a ball keeps its speed for its whole life, so difficulty is set entirely by `levelSpeed` rather than drifting as the ball rattles around. `slow` scales it. The property actually worth keeping is the *second* half of that sentence — speed comes from one authority and never drifts through collisions — so speed now resolves through `effectiveSpeed(w)` (`levelSpeed` × an explicit, timed, visible modifier) and bounces still preserve whatever it currently is. A test pins that `slow` changes magnitude only, never heading.
+
+**Lifecycle decisions worth recording:** timed effects clear on life loss, `nextLevel` and `resetGame` — losing the board loses what was running on it. But they **survive a relayout**, because they were earned and a board change isn't a failure; the paddle is re-widened against the new layout's base width. Capsules in flight do *not* survive a relayout, for the same reason the ball doesn't: their position means nothing on a board of another shape.
+
+**No laser**, though it's the fourth item in the classic set. Multiball, wide and slow are all modifiers on things that already exist. A laser is a new verb: a projectile system, a fire input, and its own collision pass against the brick field. That's a feature, not a powerup, and it would have doubled the size of this change.
+
+The shell draws capsules as pills with a one-letter glyph (letters, not icons — they stay legible at ~22px on a phone), tints the paddle while `wide` is up so the effect is visible on the thing it changed, and puts the effect timers bottom-left just inside the floor line. Top-left was the obvious spot and was wrong: the audio toggle and help button already own both top corners, which a screenshot caught immediately.
+
+## 2026-07-27 — Serpent Battery difficulty: what was actually missing, and why the head is armoured
+
+The ask was "make it harder": longer serpents, more hp per segment, killing the head kills the snake, and harder segment types unlocked over time. Three of those were straightforwardly right, and the code showed why they were needed rather than merely wanted.
+
+**Segment hp never scaled with the wave.** `KIND` hp were fixed constants and nothing multiplied them, so a wave 20 segment had exactly the health of a wave 1 segment — late waves were only longer and faster. Added `hpScale(wave)`, deliberately the same shape as Circuit Breaker's so the two games' difficulty maths read alike. Capped at ×4 so a deep run can't produce a wave whose total health simply cannot be cleared in the time it takes to cross. Two knock-on scalings that would otherwise have rotted: volatile's neighbour splash (a flat 3 against 4×-health neighbours is nothing) and the head a splitter grows.
+
+**Wave 1 was already throwing everything at once.** `kindForIndex(i, count)` had no wave parameter, so its modular placement rules fired from the first wave — wave 1 contained armored, volatile, shielded, regen, carrier *and* a splitter. That, more than the aim curve, is why "couldn't clear level 1" was the report. `KIND_UNLOCK` now introduces one kind at a time, ordered by how much new thinking each demands rather than by raw toughness: carrier (a bonus) → armored (just tougher) → volatile (chain reactions) → shielded (forces flanking) → regen (punishes chip damage) → splitter (changes the board). Note this makes the early game *easier*, which is the correct direction for an opening.
+
+**Killing the head kills the snake — but the body armours the head.** Taken literally the request would have made the game much easier, and it's worth recording why. The head is index 0, the **leading** segment: the closest target to the battery and the first thing to breach. So an instant-kill head would have been simultaneously the easiest shot available and a win button, collapsing every other mechanic — recoil, mid-chain cutting, splitters, shielded flanking — into irrelevance.
+
+The fix keeps the requested payoff and inverts the incentive: `headDamageFactor(bodyLeft) = 1/(1 + bodyLeft)`, so a full-length chain leaves the head taking ~3% of normal damage. Clearing the body first is the efficient route; a rail shot or overdrive burst can still buy an early decapitation, which pays out every segment still attached. That turns the head from a shortcut into a risk/reward decision, and a decapitation now genuinely feels like a finisher.
+
+This *had* to be made visible or it would read as a bug — shots landing on the head and doing nothing, with no stated reason. The shell draws a ring around the head whose weight tracks the protection and which flashes white when a hit is absorbed, reusing the `deflect` field the shielded plates already use. The help panel says it in one line.
+
+A test asserts a maxed battery with perfect aim still reaches wave 20 without a breach, which is the guard against the hp cap quietly becoming a wall. (Unbounded, that same bot clears wave 46.)
+
+Also in this pass: the shared `.meta` HUD gave every item identical weight, so mid-run the numbers were no easier to find than their labels — the value now carries the weight and the label is small and dim, for a 4px header cost. Serpent Battery's shop controls were sized for a cursor (`.buy` computed to ~28px tall, `.chip` 26px square); both are now proper thumb targets, and "can't afford" is visually distinct from "maxed" and names the shortfall instead of leaving the player to subtract.
+
+## 2026-07-27 — One app-wide build version, not one per game
+
+Asked whether each game should show a version number next to its name. Declined the per-game form and built the app-wide one instead.
+
+Per-game semver would mean four numbers maintained by hand with no release process behind them; they would drift within weeks, and a player does not care that Live Wire is at 1.3.0. But the question came from a real problem, hit twice in one session: `sw.js` serves cache-first without revalidating, so a phone can keep running a stale build after a deploy with no way to tell by looking. (It bit the local verification loop repeatedly too.)
+
+So `shared/version.js` exports one `BUILD`, surfaced in every help panel and the cabinet footer — quiet, diagnostic, and enough to answer "did my phone pick up the deploy?" in two taps. It is placed away from the game titles on purpose: it's a diagnostic, not decoration.
+
+The one hazard is a displayed version that disagrees with the cache actually being served, which would be worse than showing nothing — a build string that confidently lies. `shared/version.test.js` reads `sw.js` and fails if `BUILD` and `CACHE_VERSION` drift, which turns a convention into a guarantee. This also adds a second test location, so the documented command is now `node --test games/*/engine.test.js shared/*.test.js`.

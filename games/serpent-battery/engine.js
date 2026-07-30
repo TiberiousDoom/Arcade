@@ -108,24 +108,62 @@ export const MAX_CHAINS = 3;
  *  placement rule keeps them away from the head and tail. */
 export const SPLIT_MARGIN = 3;
 
-export function kindForIndex(i, count = Infinity) {
+/** The wave each segment kind first appears on. Wave 1 is deliberately nothing
+ *  but `std` (plus the head): the modular placement rules below used to fire
+ *  from the first wave, so wave 1 shipped armored, volatile, shielded, regen,
+ *  carrier *and* a splitter all at once — which is why it read as a wall rather
+ *  than an opening. Kinds now arrive one at a time so each can be learned.
+ *
+ *  Order is roughly "how much new thinking does this demand": carrier is a
+ *  bonus, armored is just tougher, volatile teaches chain reactions, shielded
+ *  forces flanking, regen punishes chip damage, splitter changes the board. */
+export const KIND_UNLOCK = {
+  std: 1, carrier: 2, armored: 3, volatile: 4, shielded: 5, regen: 7, splitter: 9,
+};
+
+/** Kinds available on a given wave, in unlock order. Head is always present and
+ *  is not a body kind, so it isn't listed. */
+export function kindsForWave(wave) {
+  return Object.keys(KIND_UNLOCK).filter(k => wave >= KIND_UNLOCK[k]);
+}
+
+export function kindForIndex(i, count = Infinity, wave = Infinity) {
   if (i === 0) return 'head';
+  const has = (k) => wave >= KIND_UNLOCK[k];
   // splitters first: rare, and only where both halves would be worth having
-  if (i % 13 === 8 && i >= SPLIT_MARGIN && count - i > SPLIT_MARGIN) return 'splitter';
-  if (i % 7 === 3) return 'armored';
-  if (i % 11 === 6) return 'volatile';
-  if (i % 9 === 5) return 'shielded';
-  if (i % 17 === 11) return 'regen';
-  if (i % 6 === 4) return 'carrier';
+  if (has('splitter') && i % 13 === 8 && i >= SPLIT_MARGIN && count - i > SPLIT_MARGIN) return 'splitter';
+  if (has('armored') && i % 7 === 3) return 'armored';
+  if (has('volatile') && i % 11 === 6) return 'volatile';
+  if (has('shielded') && i % 9 === 5) return 'shielded';
+  if (has('regen') && i % 17 === 11) return 'regen';
+  if (has('carrier') && i % 6 === 4) return 'carrier';
   return 'std';
 }
 
-export function makeChain(count, speed, startS, spacing = 30) {
+/* ---------- difficulty scaling ---------- */
+
+/** Per-segment hp multiplier for a wave. Until now `KIND` hp values were fixed
+ *  constants and nothing scaled them, so late waves were only *longer and
+ *  faster* — never tougher to chew through. Same shape as Circuit Breaker's
+ *  `hpScale`, and capped so a very long run doesn't turn every segment into a
+ *  sponge that outlasts the wave timer. */
+export const HP_PER_WAVE = 0.14;
+export const HP_SCALE_MAX = 4.0;
+
+export function hpScale(wave) {
+  return Math.min(HP_SCALE_MAX, 1 + (wave - 1) * HP_PER_WAVE);
+}
+
+export function makeChain(count, speed, startS, spacing = 30, wave = 1) {
   const segs = [];
+  const scale = hpScale(wave);
   for (let i = 0; i < count; i++) {
-    const k = kindForIndex(i, count);
+    const k = kindForIndex(i, count, wave);
     const K = KIND[k];
-    segs.push({ id: nextSegId(), kind: k, hp: K.hp, maxhp: K.hp, r: K.r, flash: 0, deflect: 0 });
+    // scale maxhp too, or hp bars would read wrong and the hit-stop/shake
+    // thresholds (which test maxhp) would stay stuck at wave-1 values
+    const hp = Math.max(1, Math.round(K.hp * scale));
+    segs.push({ id: nextSegId(), kind: k, hp, maxhp: hp, r: K.r, flash: 0, deflect: 0 });
   }
   return { segs, s: startS, speed, spacing, recoil: 0, split: false };
 }
@@ -133,7 +171,12 @@ export function makeChain(count, speed, startS, spacing = 30) {
 let _segId = 1;
 export function nextSegId() { return _segId++; }
 
-export const waveCount = (wave) => Math.min(14 + wave * 3, 40);
+/** Segments in a wave. Growth was +3/wave capped at 40, which flatlined around
+ *  wave 9 and left length doing no work after that; +4 to a 56 cap keeps it
+ *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
+ *  56-segment chain spans 1650px of a ~5750px path, so it still fits the board
+ *  comfortably without the tail overlapping the head. */
+export const waveCount = (wave) => Math.min(14 + wave * 4, 56);
 /** Path length of the standard layout, used as the default reference. */
 export const REF_PATH_LEN = buildPath(LAYOUT).pathLen;
 
@@ -456,7 +499,7 @@ export function relayout(w, L2) {
 }
 
 export function spawnWave(w) {
-  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30)];
+  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30, 30, w.wave)];
   w.shots = []; w.bits = []; w.floaters = [];
   w.pickups = [];
   w.waveClear = false;
@@ -769,9 +812,10 @@ export function splitChain(w, ci, i) {
   const front = ch.segs.slice(0, i);
   if (front.length < 2 || tail.length < 2) return false;
 
-  // the tail's leading segment becomes a head, at head stats
+  // the tail's leading segment becomes a head, at head stats for this wave
   const H = KIND.head;
-  tail[0] = { id: nextSegId(), kind: 'head', hp: H.hp, maxhp: H.hp, r: H.r, flash: 0, deflect: 0 };
+  const hhp = Math.max(1, Math.round(H.hp * hpScale(w.wave)));
+  tail[0] = { id: nextSegId(), kind: 'head', hp: hhp, maxhp: hhp, r: H.r, flash: 0, deflect: 0 };
 
   ch.segs = front;
   ch.split = true;
@@ -788,6 +832,49 @@ export function splitChain(w, ci, i) {
   return true;
 }
 
+/* ---------- the head ----------
+
+   The head sits at index 0, which is the *leading* segment: the first thing to
+   reach the floor and the closest target to the battery. So making a head kill
+   destroy the whole chain, on its own, would have made the easiest shot on the
+   board an instant win and left recoil, mid-chain cutting, splitters and
+   shielded flanking pointless.
+
+   Instead the body armours the head. Damage to it is divided by how much body
+   is still alive, so clearing the chain first is the efficient route — but a
+   rail shot or an overdrive burst can still attempt an early decapitation for
+   a large payoff. That turns the head into a risk/reward decision rather than
+   a shortcut, and killing it does end the whole snake. */
+
+/** Fraction of normal damage the head takes with `bodyLeft` segments behind it.
+ *  1 at full exposure, falling away steeply while the body is intact. */
+export function headDamageFactor(bodyLeft) {
+  return 1 / (1 + Math.max(0, bodyLeft));
+}
+
+/** Destroy a whole chain at once, paying out every segment still on it. Used
+ *  when the head dies: the body dies with it, and it all scores. */
+function decapitate(w, ci) {
+  const ch = w.chains[ci];
+  if (!ch) return false;
+  let score = 0, scrap = 0;
+  for (let j = 0; j < ch.segs.length; j++) {
+    const s = ch.segs[j];
+    const K = KIND[s.kind];
+    score += K.score; scrap += K.scrap;
+    const p = segPos(w.path, w.pathLen, ch, j);
+    if (!p.off) w.fx.burst(p.x, p.y, K.col, 10);
+  }
+  const hp = segPos(w.path, w.pathLen, ch, 0);
+  w.score += score;
+  w.scrap += scrap;
+  w.fx.push('DECAPITATED +' + score, hp.x, hp.y, KIND.head.col);
+  w.hitStop = Math.max(w.hitStop, 0.12);
+  w.shake = Math.max(w.shake, 0.6);
+  w.chains.splice(ci, 1);
+  return true;
+}
+
 /** Apply damage. Returns true if the segment died. */
 export function damageSeg(w, ci, i, dmg) {
   const ch = w.chains[ci];
@@ -795,9 +882,23 @@ export function damageSeg(w, ci, i, dmg) {
   const seg = ch.segs[i];
   if (!seg) return false;
 
+  // the head is shielded by whatever body is still behind it
+  if (seg.kind === 'head') {
+    const bodyLeft = ch.segs.length - 1;
+    if (bodyLeft > 0) {
+      dmg *= headDamageFactor(bodyLeft);
+      // reuse the shielded plates' flash field so the shell can show the hit
+      // being absorbed — otherwise a shot on a protected head looks like a bug
+      seg.deflect = 0.12;
+    }
+  }
+
   seg.hp -= dmg;
   seg.flash = 0.12;
   if (seg.hp > 0) return false;
+
+  // a downed head takes the whole snake with it, body and all
+  if (seg.kind === 'head') return decapitate(w, ci);
 
   const K = KIND[seg.kind];
   const pos = segPos(w.path, w.pathLen, ch, i);
@@ -811,8 +912,11 @@ export function damageSeg(w, ci, i, dmg) {
   w.shake = Math.max(w.shake, seg.maxhp >= 6 ? 0.32 : 0.16);
 
   if (seg.kind === 'volatile') {
+    // splash scales with the wave alongside segment hp, or the chain reaction
+    // would quietly stop mattering once segments carry 4x the health
+    const splash = 3 * hpScale(w.wave);
     for (const j of [i - 1, i + 1]) {
-      if (ch.segs[j]) { ch.segs[j].hp -= 3; ch.segs[j].flash = 0.12; }
+      if (ch.segs[j]) { ch.segs[j].hp -= splash; ch.segs[j].flash = 0.12; }
     }
     w.fx.burst(pos.x, pos.y, '#e0503c', 26);
   }

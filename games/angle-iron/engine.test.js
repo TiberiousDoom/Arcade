@@ -335,6 +335,200 @@ test('at most one brick is resolved per sub-step', () => {
   assert.equal(killed, 1, 'exactly one brick broken in the frame');
 });
 
+/* ---------- powerups ---------- */
+
+/** Any test that steps more than once needs a surviving brick: an empty field
+ *  flags levelClear, after which `step` early-returns and nothing advances.
+ *  Parked in the top-left corner with absurd hp so a loose ball can't clear it. */
+function decoy(w) {
+  w.bricks.push({ x: L.MARGIN, y: L.WALL + 4, w: 20, h: L.BRICK_H,
+                  row: 0, col: 0, hp: 1e9, maxhp: 1, alive: true, flash: 0 });
+  return w;
+}
+
+/** A brick placed so a ball rising from below breaks it this frame. */
+function brickToBreak(w, row = 5, col = 0) {
+  const bw = E.brickWidth();
+  w.bricks = [{ x: 400, y: 200, w: bw, h: L.BRICK_H, row, col, hp: 1, maxhp: 1, alive: true, flash: 0 }];
+  w.balls = [{ x: 400 + bw / 2, y: 200 + L.BRICK_H + 3, vx: 0, vy: -300, r: L.BALL_R }];
+}
+
+test('drops are deterministic — the same level yields the same map every time', () => {
+  for (const level of [1, 2, 3, 7]) {
+    const a = [], b = [];
+    for (let r = 0; r < L.BRICK_ROWS; r++) for (let c = 0; c < L.BRICK_COLS; c++) {
+      a.push(E.dropFor(level, r, c));
+      b.push(E.dropFor(level, r, c));
+    }
+    assert.deepEqual(a, b, `level ${level} is stable`);
+  }
+});
+
+test('drops are sparse, and every kind shows up across the early levels', () => {
+  let total = 0, dropped = 0;
+  const seen = new Set();
+  for (let level = 1; level <= 4; level++) {
+    for (let r = 0; r < L.BRICK_ROWS; r++) for (let c = 0; c < L.BRICK_COLS; c++) {
+      total++;
+      const k = E.dropFor(level, r, c);
+      if (k) { dropped++; seen.add(k); }
+    }
+  }
+  const rate = dropped / total;
+  assert.ok(rate > 0.05 && rate < 0.25, `drop rate ${(rate * 100).toFixed(0)}% is a treat, not a torrent`);
+  assert.deepEqual([...seen].sort(), E.POWERUP_KEYS.slice().sort(), 'all four kinds appear');
+  // every kind must be a real entry in the table the shell reads
+  for (const k of seen) assert.ok(E.POWERUPS[k], `${k} is described in POWERUPS`);
+});
+
+test('breaking a brick that carries a drop spawns a falling capsule', () => {
+  // find a cell that does drop on level 1, and one that does not
+  let withDrop = null, without = null;
+  for (let r = 0; r < L.BRICK_ROWS && (!withDrop || !without); r++) {
+    for (let c = 0; c < L.BRICK_COLS; c++) {
+      const k = E.dropFor(1, r, c);
+      if (k && !withDrop) withDrop = { r, c, k };
+      if (!k && !without) without = { r, c };
+    }
+  }
+  assert.ok(withDrop && without, 'level 1 has both kinds of cell');
+
+  const a = emptyWorld();
+  brickToBreak(a, withDrop.r, withDrop.c);
+  E.step(a, 1 / 60);
+  assert.equal(a.drops.length, 1, 'capsule spawned');
+  assert.equal(a.drops[0].kind, withDrop.k, 'and it is the kind the table promised');
+
+  const b = emptyWorld();
+  brickToBreak(b, without.r, without.c);
+  E.step(b, 1 / 60);
+  assert.equal(b.drops.length, 0, 'a plain brick drops nothing');
+});
+
+test('a capsule falls, is caught by the paddle, and is discarded past the floor', () => {
+  const caught = decoy(emptyWorld());
+  caught.drops = [{ kind: 'life', x: caught.paddle.x, y: L.PADDLE_Y - 60, vy: E.DROP_SPEED }];
+  caught.balls = [{ x: 400, y: 300, vx: 0, vy: -300, r: L.BALL_R }];
+  const lives = caught.lives;
+  for (let i = 0; i < 60 && caught.drops.length; i++) E.step(caught, 1 / 60);
+  assert.equal(caught.drops.length, 0, 'capsule consumed');
+  assert.equal(caught.lives, lives + 1, 'and the paddle caught it');
+
+  const missed = decoy(emptyWorld());
+  missed.drops = [{ kind: 'life', x: L.WALL + 20, y: L.PADDLE_Y - 60, vy: E.DROP_SPEED }];
+  missed.paddle.x = L.W - 100;          // paddle nowhere near it
+  missed.balls = [{ x: 400, y: 300, vx: 0, vy: -300, r: L.BALL_R }];
+  const lives2 = missed.lives;
+  for (let i = 0; i < 200 && missed.drops.length; i++) E.step(missed, 1 / 60);
+  assert.equal(missed.drops.length, 0, 'capsule gone');
+  assert.equal(missed.lives, lives2, 'but nothing was granted');
+});
+
+test('split multiplies the balls, fans them out, and respects the ceiling', () => {
+  const w = emptyWorld();
+  w.balls = [{ x: 400, y: 300, vx: 0, vy: -300, r: L.BALL_R }];
+  E.applyPowerup(w, 'multi');
+  assert.equal(w.balls.length, 3, 'one became three');
+  const headings = new Set(w.balls.map(b => Math.atan2(b.vy, b.vx).toFixed(3)));
+  assert.equal(headings.size, 3, 'all three head somewhere different');
+  for (const b of w.balls) {
+    assert.ok(Math.abs(Math.hypot(b.vx, b.vy) - 300) < 1e-6, 'speed unchanged by splitting');
+  }
+  // stacked splits taper instead of filling the board
+  for (let i = 0; i < 5; i++) E.applyPowerup(w, 'multi');
+  assert.ok(w.balls.length <= E.MAX_BALLS, `capped at ${E.MAX_BALLS}, got ${w.balls.length}`);
+});
+
+test('wide widens the paddle for a while, then puts it back', () => {
+  const w = decoy(emptyWorld());
+  const base = w.paddle.w;
+  E.applyPowerup(w, 'wide');
+  assert.ok(w.paddle.w > base, 'wider now');
+  assert.ok(Math.abs(w.paddle.w - base * E.WIDE_MULT) < 1e-6);
+  w.balls = [{ x: 400, y: 300, vx: 0, vy: -300, r: L.BALL_R }];
+  for (let i = 0; i < 60 * (E.EFFECT_SECONDS + 1); i++) E.step(w, 1 / 60);
+  assert.equal(w.effects.wide, 0, 'effect lapsed');
+  assert.equal(w.paddle.w, base, 'and the paddle is back to normal');
+});
+
+test('a wide paddle at the wall is pushed back inside it', () => {
+  const w = emptyWorld();
+  E.setPaddle(w, 0);                    // hard against the left wall
+  const atWall = w.paddle.x;
+  E.applyPowerup(w, 'wide');
+  assert.ok(w.paddle.x > atWall, 'the wider bar was nudged clear of the wall');
+  assert.ok(w.paddle.x - w.paddle.w / 2 >= L.WALL - 1e-6, 'no overlap with the border');
+});
+
+test('slow scales live balls and the next launch, and restores full pace', () => {
+  const w = decoy(emptyWorld());
+  const full = E.levelSpeed(w.level, w.L);
+  w.balls = [{ x: 400, y: 300, vx: 0, vy: -full, r: L.BALL_R }];
+  E.applyPowerup(w, 'slow');
+  assert.ok(Math.abs(Math.hypot(w.balls[0].vx, w.balls[0].vy) - full * E.SLOW_MULT) < 1e-6, 'ball slowed');
+  assert.ok(Math.abs(E.effectiveSpeed(w) - full * E.SLOW_MULT) < 1e-6, 'and so is a new launch');
+  for (let i = 0; i < 60 * (E.EFFECT_SECONDS + 1); i++) E.step(w, 1 / 60);
+  assert.equal(w.effects.slow, 0, 'effect lapsed');
+  assert.ok(Math.abs(Math.hypot(w.balls[0].vx, w.balls[0].vy) - full) < 1e-6, 'back to full pace');
+  assert.ok(Math.abs(E.effectiveSpeed(w) - full) < 1e-6);
+});
+
+test('slow only changes magnitude, never direction', () => {
+  const w = emptyWorld();
+  const b = { x: 400, y: 300, vx: 120, vy: -260, r: L.BALL_R };
+  w.balls = [b];
+  const before = Math.atan2(b.vy, b.vx);
+  E.applyPowerup(w, 'slow');
+  assert.ok(Math.abs(Math.atan2(b.vy, b.vx) - before) < 1e-9, 'heading untouched');
+});
+
+test('losing a life clears capsules and running effects', () => {
+  const w = emptyWorld();
+  E.applyPowerup(w, 'wide');
+  w.drops = [{ kind: 'multi', x: 400, y: 300, vy: E.DROP_SPEED }];
+  w.balls = [{ x: 400, y: L.FLOOR - 1, vx: 0, vy: 400, r: L.BALL_R }];
+  E.step(w, 1 / 30);
+  assert.equal(w.drops.length, 0, 'capsules cleared');
+  assert.equal(w.effects.wide, 0, 'effects cleared');
+  assert.equal(w.paddle.w, L.PADDLE_W, 'paddle back to base width');
+});
+
+test('nextLevel and resetGame both start clean', () => {
+  for (const advance of [E.nextLevel, E.resetGame]) {
+    const w = emptyWorld();
+    E.applyPowerup(w, 'wide');
+    E.applyPowerup(w, 'slow');
+    w.drops = [{ kind: 'multi', x: 400, y: 300, vy: E.DROP_SPEED }];
+    advance(w);
+    assert.deepEqual(w.effects, { wide: 0, slow: 0 });
+    assert.equal(w.drops.length, 0);
+    assert.equal(w.paddle.w, L.PADDLE_W);
+  }
+});
+
+test('a relayout keeps earned effects but drops capsules in flight', () => {
+  const w = E.createWorld();
+  w.running = true;
+  E.applyPowerup(w, 'wide');
+  w.drops = [{ kind: 'multi', x: 400, y: 300, vy: E.DROP_SPEED }];
+  E.relayout(w, E.LAYOUT_TALL);
+  assert.equal(w.drops.length, 0, 'in-flight capsules do not survive a board change');
+  assert.ok(w.effects.wide > 0, 'but the effect was earned, so it carries');
+  assert.ok(Math.abs(w.paddle.w - E.LAYOUT_TALL.PADDLE_W * E.WIDE_MULT) < 1e-6,
+    'and is re-applied against the new board\'s base width');
+});
+
+test('the fx.power hook fires on a pickup, and its absence is safe', () => {
+  const seen = [];
+  const w = E.createWorld({ fx: { brick() {}, bounce() {}, lose() {}, power: (k) => seen.push(k) } });
+  E.applyPowerup(w, 'life');
+  assert.deepEqual(seen, ['life']);
+  // a world built without the hook (every older caller) must not throw
+  const bare = E.createWorld();
+  delete bare.fx.power;
+  assert.doesNotThrow(() => E.applyPowerup(bare, 'life'));
+});
+
 /* ---------- lives and level flow ---------- */
 
 test('a ball lost past the floor costs a life and re-racks', () => {

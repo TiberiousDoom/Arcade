@@ -11,6 +11,8 @@
  * @param rows     [[term, description], …] — the controls table
  * @param notes    array of short strings shown under the table
  */
+import { BUILD_LABEL } from './version.js';
+
 export function makeHelp({ stage, title, rows = [], notes = [] }) {
   const btn = document.createElement('button');
   btn.id = 'helpBtn';
@@ -28,7 +30,11 @@ export function makeHelp({ stage, title, rows = [], notes = [] }) {
     `<h2>${title}</h2>` +
     `<dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>` +
     (notes.length ? `<ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
-    `<button type="button" id="helpClose">Got it</button>`;
+    `<button type="button" id="helpClose">Got it</button>` +
+    // which build this is. Here rather than next to the title because it is a
+    // diagnostic — the answer to "did my phone actually pick up the new code?"
+    // — and not something a player needs while playing.
+    `<p class="build">${BUILD_LABEL}</p>`;
 
   stage.append(btn, panel);
 

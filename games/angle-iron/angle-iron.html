@@ -42,6 +42,7 @@
   <footer>
     <span>Hit the edges of the paddle to steer</span>
     <span>Back rows take more hits</span>
+    <span>Catch the capsules bricks drop</span>
     <span>Clear the board to advance</span>
   </footer>
 </div>
@@ -70,6 +71,12 @@ const fx = {
   },
   bounce() { audio.bounce(); },
   lose() { gfx.hit(.5); audio.lose(); },
+  // a caught capsule: burst in its own colour, and reuse the pickup blip
+  power(kind) {
+    const p = world.paddle;
+    gfx.burst(p.x, world.L.PADDLE_Y, E.POWERUPS[kind].col, 14);
+    if (kind === 'life') audio.bonus(); else audio.eat();
+  },
 };
 
 /* Portrait phones get the narrower, taller board with a thumb rest below the
@@ -189,12 +196,14 @@ makeHelp({
   stage: $('stage'),
   title: 'Angle Iron',
   rows: [
-    ['Steer', 'Slide anywhere. In landscape you can drag in the dim strip either side instead.'],
+    ['Steer', 'Slide anywhere. You can also drag in the dim strip either side.'],
     ['Serve', 'Tap.'],
     ['Aim', 'Where the ball hits the paddle sets the angle it leaves.'],
+    ['Catch', 'Some bricks drop a capsule. Catch it with the paddle.'],
   ],
   notes: [
     'Back rows take three hits.',
+    '3 splits the ball · ↔ widens the paddle · ▼ slows it down · + is a spare ball.',
     'Keyboard: arrows and Space.',
   ],
 });
@@ -314,9 +323,21 @@ function draw() {
     ctx.strokeRect(b.x + .5, b.y + .5, b.w - 1, b.h - 1);
   }
 
-  // paddle
+  // falling powerup capsules, drawn under the paddle layer so a catch reads as
+  // the paddle taking them in
+  for (const d of world.drops) drawDrop(d);
+
+  // paddle. It glows while `wide` is up, so the effect is visible on the thing
+  // it actually changed rather than only in the HUD.
   const p = world.paddle;
-  ctx.fillStyle = '#c9a227';
+  const wide = world.effects.wide > 0;
+  if (wide) {
+    ctx.fillStyle = E.POWERUPS.wide.col;
+    ctx.globalAlpha = .25;
+    ctx.fillRect(p.x - p.w / 2 - 3, L.PADDLE_Y - 3, p.w + 6, L.PADDLE_H + 6);
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = wide ? E.POWERUPS.wide.col : '#c9a227';
   ctx.fillRect(p.x - p.w / 2, L.PADDLE_Y, p.w, L.PADDLE_H);
   ctx.fillStyle = 'rgba(230,233,226,.25)';
   ctx.fillRect(p.x - p.w / 2, L.PADDLE_Y, p.w, 3);
@@ -330,12 +351,55 @@ function draw() {
     ball(hp.x, hp.y, L.BALL_R);
   }
   for (const b of world.balls) ball(b.x, b.y, b.r);
+
+  drawEffects();
 }
 
 function ball(x, y, r) {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, TAU);
   ctx.fill();
+}
+
+/* A capsule: a rounded pill in the powerup's colour with a one-letter glyph.
+   Letters rather than icons because they stay legible at ~22px on a phone. */
+const DROP_GLYPH = { multi: '3', wide: '↔', slow: '▼', life: '+' };
+
+function drawDrop(d) {
+  const P = E.POWERUPS[d.kind], r = E.DROP_R;
+  ctx.fillStyle = P.col;
+  ctx.globalAlpha = .22;
+  ctx.beginPath(); ctx.arc(d.x, d.y, r + 4, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#0b1418';
+  ctx.font = "700 13px 'Chivo Mono', monospace";
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(DROP_GLYPH[d.kind] || '?', d.x, d.y + .5);
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+}
+
+/* Remaining time on the timed effects, as slim bars just inside the floor line.
+   Bottom-left rather than top-left: the audio toggle and the "?" button already
+   own the top corners of the stage, and down here it sits near the paddle where
+   the player is already looking. Only drawn when something is running. */
+function drawEffects() {
+  const L = world.L;
+  const active = ['wide', 'slow'].filter(k => world.effects[k] > 0).length;
+  let y = L.FLOOR - 10 - (active - 1) * 12;
+  for (const kind of ['wide', 'slow']) {
+    const left = world.effects[kind];
+    if (left <= 0) continue;
+    const P = E.POWERUPS[kind];
+    ctx.fillStyle = P.col;
+    ctx.globalAlpha = .5;
+    ctx.fillRect(L.WALL + 8, y, 54, 3);
+    ctx.globalAlpha = 1;
+    ctx.fillRect(L.WALL + 8, y, 54 * (left / E.EFFECT_SECONDS), 3);
+    ctx.font = "700 9px 'Chivo Mono', monospace";
+    ctx.fillText(P.name.toUpperCase(), L.WALL + 68, y + 4);
+    y += 12;
+  }
 }
 
 syncBest();

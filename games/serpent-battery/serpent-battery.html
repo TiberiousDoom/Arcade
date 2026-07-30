@@ -50,18 +50,24 @@
   .shopSection{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);
     border-bottom:1px solid var(--line);padding-bottom:5px;margin-top:4px}
   .assign{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
-  .chip{width:26px;height:26px;border:1px solid var(--line);background:#0f2027;color:var(--dim);
-    font:700 11px/1 'Chivo Mono',monospace;cursor:pointer;border-radius:2px}
+  /* Shop controls are thumb targets, not cursor targets. These were all sized
+     for a mouse: .buy computed to ~28px tall and .chip was 26px square, both
+     well under a comfortable tap. */
+  .chip{width:34px;height:34px;border:1px solid var(--line);background:#0f2027;color:var(--dim);
+    font:700 12px/1 'Chivo Mono',monospace;cursor:pointer;border-radius:3px}
   .chip.on{background:var(--scale);color:#06201a;border-color:var(--scale)}
-  .branch{border:1px solid var(--line);background:#0f2027;padding:10px 11px;display:flex;flex-direction:column;gap:7px;text-align:left}
-  .branch h3{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone);font-weight:700}
-  .branch p{font-size:10px;color:var(--dim);line-height:1.5;min-height:2.6em}
+  .branch{border:1px solid var(--line);background:#0f2027;padding:12px 13px;display:flex;flex-direction:column;gap:8px;text-align:left}
+  .branch h3{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone);font-weight:700}
+  .branch p{font-size:11px;color:var(--dim);line-height:1.5;min-height:2.6em}
   .pips{display:flex;gap:3px}
-  .pips i{flex:1;height:4px;background:#1b3038;border-radius:1px}
+  .pips i{flex:1;height:5px;background:#1b3038;border-radius:1px}
   .pips i.on{background:var(--scale)}
-  .buy{width:100%;padding:9px;font:700 10px/1 'Chivo Mono',monospace;letter-spacing:.12em;
-    text-transform:uppercase;border:0;cursor:pointer;background:var(--brass);color:#1a1405}
+  .buy{width:100%;min-height:42px;padding:12px 10px;font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.12em;
+    text-transform:uppercase;border:0;cursor:pointer;background:var(--brass);color:#1a1405;border-radius:3px}
+  /* "maxed" and "can't afford yet" are different states and used to look
+     identical — the second is temporary, so it keeps a hint of the brass. */
   .buy:disabled{background:#1b3038;color:#4d6068;cursor:default}
+  .buy.poor:disabled{background:#2a2416;color:#8a7645;border:1px solid #3d3520}
   #shopGo{align-self:center;margin-top:2px}
 </style>
 
@@ -292,6 +298,7 @@ makeHelp({
   notes: [
     'Cutting mid-chain shoves the snake backwards.',
     'Plated segments glance shots off the front — hit the flank.',
+    'The head is armoured by its body: the ring around it thins as you clear behind it. Drop the head and the whole serpent dies with it.',
     'Keyboard: arrows and Space.',
   ],
 });
@@ -400,8 +407,11 @@ function renderShop() {
       `<p>${U.blurb}</p>`;
 
     const btn = document.createElement('button');
-    btn.className = 'buy';
-    btn.textContent = maxed ? 'Maxed' : `Buy · ${cost}`;
+    btn.className = 'buy' + (!maxed && !afford ? ' poor' : '');
+    // spell out the shortfall: "Buy · 40" while holding 25 leaves you counting
+    btn.textContent = maxed ? 'Maxed'
+      : afford ? `Buy · ${cost}`
+      : `${cost} · need ${cost - world.scrap} more`;
     btn.disabled = maxed || !afford;
     btn.addEventListener('click', () => {
       if (E.buyUpgrade(world, b)) { renderShop(); sync(); }
@@ -525,7 +535,7 @@ function shade(hex, amt) {
 
 // draw one segment as an oriented, lit plate. `idx` gives each plate a slight
 // size cadence so a run of them reads as overlapping armour.
-function drawSegment(seg, sp, heading, idx) {
+function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
   const K = E.KIND[seg.kind];
   const dmgT = 1 - seg.hp / seg.maxhp;
   const ang = Math.atan2(heading.y, heading.x);
@@ -604,6 +614,21 @@ function drawSegment(seg, sp, heading, idx) {
   }
 
   ctx.restore();
+
+  // The head's body-armour, made visible. Without this the mechanic is a
+  // mystery: shots land on the head and simply do nothing, with no hint that
+  // the body behind it is the reason. The ring tightens and fades as the body
+  // is cleared, so "keep chewing and the head opens up" is readable at a glance.
+  if (seg.kind === 'head' && bodyLeft > 0) {
+    const prot = 1 - E.headDamageFactor(bodyLeft);      // 0 = exposed, →1 = sealed
+    const hit = seg.deflect > 0;
+    const pulse = reduce ? 0 : Math.sin(performance.now() / 260) * 1.6;
+    ctx.strokeStyle = hit ? '#ffffff' : `rgba(201,162,39,${0.18 + prot * 0.5})`;
+    ctx.lineWidth = hit ? 3 : 1 + prot * 2;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, seg.r * 1.55 + (1 - prot) * 6 + pulse, 0, TAU);
+    ctx.stroke();
+  }
 
   // HP readout for tough segments, upright (outside the rotation)
   if (seg.maxhp > 3) {
@@ -773,7 +798,7 @@ function draw() {
       const seg = ch.segs[i], sp = E.segPos(path, pathLen, ch, i);
       if (sp.off) continue;
       const heading = E.segHeading(path, pathLen, ch, i);
-      drawSegment(seg, sp, heading, i);
+      drawSegment(seg, sp, heading, i, ch.segs.length - 1);
     }
     if (ch.recoil > 0 && ch.segs.length) {
       const hp = E.segPos(path, pathLen, ch, 0);
