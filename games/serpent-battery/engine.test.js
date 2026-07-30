@@ -309,6 +309,58 @@ test('a slow drag still gives fine control', () => {
   assert.ok(step < span * 0.04, `6px drag covered ${(step / span * 100).toFixed(1)}% of the arc`);
 });
 
+/* ---------- per-input corrections: assist and traverse ---------- */
+
+test('touch aim assist widens the hit radius; mouse and keyboard get none', () => {
+  assert.equal(E.createWorld({ assist: true }).assistR, E.AIM_ASSIST_R);
+  assert.equal(E.createWorld({ assist: false }).assistR, 0);
+  assert.equal(E.createWorld().assistR, 0, 'off unless asked for');
+});
+
+test('a near miss connects with assist on and misses without it', () => {
+  // one shot placed just outside the segment's true radius, fired into an
+  // otherwise identical world twice — the only difference is the assist
+  const shotAt = (assist) => {
+    const w = E.createWorld({ assist });
+    E.spawnWave(w);
+    const ch = w.chains[0];
+    ch.s = w.pathLen * 0.5;      // a fresh chain starts off-board; put it on-path
+    ch.segs.length = 1;          // and trim it: the path folds back near itself
+                                 // at mid-length, so a trailing segment would
+                                 // otherwise be the thing the shot lands on
+    const sp = E.segPos(w.path, w.pathLen, ch, 0);
+    const seg = ch.segs[0];
+    const hp0 = seg.hp;
+    // offset by more than seg.r + shot r, but less than that plus the assist
+    const gap = seg.r + 4 + E.AIM_ASSIST_R * 0.5;
+    w.shots.push({ x: sp.x + gap, y: sp.y, vx: 0, vy: 0, r: 4, dmg: 1, pierce: 0, bounces: 2 });
+    E.stepShots(w, 1 / 600);
+    return w.chains[0] && w.chains[0].segs[0] ? w.chains[0].segs[0].hp < hp0 : true;
+  };
+  assert.equal(shotAt(true), true, 'assist turns the near miss into a hit');
+  assert.equal(shotAt(false), false, 'without assist it sails past');
+});
+
+test('traverse caps how fast the battery can swing', () => {
+  const span = E.AIM_MAX - E.AIM_MIN;
+  // asked to cross the whole arc in one frame, it moves only its rate
+  const after = E.slewAim(E.AIM_MIN, E.AIM_MAX, 1 / 60);
+  assert.ok(after - E.AIM_MIN <= E.TRAVERSE_MAX / 60 + 1e-9, 'did not teleport');
+  assert.ok(after < E.AIM_MAX, 'still short of the target');
+  // but it does get there in a reasonable time, not a sluggish one
+  let a = E.AIM_MIN, frames = 0;
+  while (a < E.AIM_MAX - 1e-6 && frames < 600) { a = E.slewAim(a, E.AIM_MAX, 1 / 60); frames++; }
+  assert.ok(frames / 60 < 0.75, `full sweep took ${(frames / 60).toFixed(2)}s`);
+  assert.ok(span > 0);
+});
+
+test('traverse honours the arc clamp and small moves land exactly', () => {
+  assert.equal(E.slewAim(E.AIM_MAX, 99, 1), E.AIM_MAX, 'cannot climb past the top of the arc');
+  assert.equal(E.slewAim(E.AIM_MIN, -99, 1), E.AIM_MIN, 'nor below the bottom');
+  const near = E.AIM_MIN + 0.01;
+  assert.ok(Math.abs(E.slewAim(E.AIM_MIN, near, 1 / 60) - near) < 1e-9, 'short hops arrive');
+});
+
 test('aimDelta preserves drag direction', () => {
   assert.ok(E.aimDelta(50, 0.1) > 0);
   assert.ok(E.aimDelta(-50, 0.1) < 0);

@@ -254,3 +254,40 @@ The build is almost entirely reuse, which is the point worth recording:
 - The shell is the fullest example of the shared-module wiring, and reuses `makeFit`'s `extra` hook (built originally for Serpent Battery's touch pad) to reserve the tower-palette controls strip.
 
 No standalone build or render test, matching Angle Iron and Live Wire — only Serpent Battery has those.
+
+## 2026-07-27 — Portrait-only, as a flag rather than a deletion
+
+Device testing said landscape "doesn't look or feel quite right." The scoped plan was to cut it outright: delete `LAYOUT`, `relayout`, `pickLayout`, the rotation handover and their tests across four engines and four shells — 105 references across 13 files, including a real chunk of every `engine.test.js`.
+
+Done instead as `const PORTRAIT_ONLY = true` beside each shell's `pickLayout()`, with everything else left intact and inert. Three reasons:
+
+- The signal is soft. "Doesn't feel quite right" is the least specific piece of feedback in the round, and the rotation work it reverses shipped **five days earlier** (lossless transpose rotation, pause-on-turn) after its own device pass. Reversing that permanently on a vibe, in the same month, is a bad trade when the reversible version costs one line per game.
+- It is not enforceable where it matters most. `manifest.webmanifest` `"orientation": "portrait"` only binds once installed as a PWA; a browser tab cannot be orientation-locked. So on the Pages URL — the way it actually gets shown to people — a sideways phone gets a letterboxed portrait board either way. Deleting the landscape layout makes that case *worse*, not better, because there's no wide board to fall back to if we ever want one.
+- Deleting the tests deletes the invariants. Circuit Breaker's transpose test and Live Wire's are the things that keep the two layouts honest; they're cheap to keep and expensive to reconstruct.
+
+The deletion stays on the table. The trigger is device time, not another opinion: play portrait-only for a stretch, and if nobody misses landscape, delete it then.
+
+## 2026-07-27 — Serpent Battery aim: two inputs, two corrections
+
+Reported as too hard on a phone (level 1 unclearable) and too easy with a mouse. The instinct is to retune the aim gain curve, which had already been raised once on device feedback and still wasn't right. That instinct is wrong, because one curve cannot fix two opposite problems.
+
+The asymmetry is structural, not tuning. A mouse aims **absolutely and instantly**: the cannon snapped to `atan2` of the cursor every pointermove, so acquiring any target was free and the game reduced to clicking. A thumb aims **relatively**, through a drag, and always lags. Same difficulty curve, two very different effective skill ceilings.
+
+So each input gets its own correction, and neither touches the drag gain:
+
+- **Touch — `AIM_ASSIST_R` (9px).** Extra hit radius on the shot/segment test, applied only when the shell built the world with `assist: true` (set from `pointer:coarse`). Forgiveness placed where the imprecision actually is, rather than making the aim faster, which is what the previous two attempts did.
+- **Mouse — `TRAVERSE_MAX` (5.6 rad/s).** The cursor now sets a *desired* angle and the frame loop swings the battery toward it at a finite rate (`slewAim`), crossing the full 2.58-rad arc in about 0.46s. This is a genuine game rule, not a nerf: a turret has traverse speed. It costs the mouse its teleport without touching touch, where a drag rarely commands more than that anyway.
+
+Both are single exported constants specifically so the next device session has two dials to turn and nothing else. Neither was validated by play — that's the open item.
+
+Also fixed here, unrelated to feel: Circuit Breaker towers acquired a target only inside the `cool <= 0` branch, so `tower.aim` stayed pointed at whatever they last shot for the whole cooldown. The shell guards against drawing at a dead enemy, so the visible symptom was barrels vanishing. Acquisition now runs every frame; firing is still gated on cooldown.
+
+## 2026-07-27 — CELL is resolution, COLS/ROWS is size
+
+Recorded because the scoped plan got this wrong and the mistake is easy to repeat. "Circuit Breaker's grid squares are too small" was filed as "raise `CELL` (currently 52)."
+
+`CELL` cannot fix it. `makeFit` scales the whole canvas to the stage, so `CELL` only sets how many backing-buffer pixels a cell is drawn with; a cell's **physical** size on a phone is `screen width / COLS`, and raising `CELL` just makes a bigger canvas that gets scaled right back down to the same size. The only lever on apparent cell size is the column count.
+
+So the grid went 15x10 → 12x8, with `CELL` raised to 64 alongside purely to keep the backing buffer sharp. On a 375px phone that's ~36px → ~45px cells — a real tap target. The route was redrawn inside the smaller grid, and the transpose invariant (and its tests) still hold.
+
+This has a difficulty side effect that must not be confused with tuning: the path is now 31 cells of travel instead of 41, and there are fewer buildable cells, so towers get less time per surge and less room. Circuit Breaker was reported as "too easy," and the economy constants were deliberately left alone so the next playtest can judge the grid change on its own.

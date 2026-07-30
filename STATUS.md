@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-07-22
+Last updated: 2026-07-27
 
 ## Read this first
 
@@ -18,7 +18,7 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Live Wire** ([games/live-wire/live-wire.html](games/live-wire/live-wire.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe. Engine has 34 passing tests. Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
 - **Circuit Breaker** ([games/circuit-breaker/circuit-breaker.html](games/circuit-breaker/circuit-breaker.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build. Engine has 25 passing tests. Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**267 engine tests pass across all four games** (`node --test games/*/engine.test.js`), plus 2 render smoke tests (`node --test games/serpent-battery/render-test.mjs`, after `npm install --no-save jsdom canvas`).
+**273 engine tests pass across all four games** (`node --test games/*/engine.test.js`), plus 2 render smoke tests (`node --test games/serpent-battery/render-test.mjs`, after `npm install --no-save jsdom canvas`).
 
 ## In progress / just decided
 
@@ -48,11 +48,13 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 Do **not** try to unify the engine `step()` signatures — those differ per game on purpose (see DECISIONS.md).
 
-## Store readiness (decided: targeting both stores)
+## Store readiness (decided 2026-07-27: Google Play first, Apple deferred)
 
-Neither store takes a PWA directly — both need a native binary, so a wrapper (Bubblewrap/TWA or Capacitor for Play, Capacitor for Apple) comes eventually. $99/yr plus a Mac for Apple, $25 once for Google.
+Neither store takes a PWA directly — both need a native binary. **Google Play is the real near-term target**: a TWA built with Bubblewrap, $25 one-time, far more permissive review, and no Mac required. The Pages HTTPS domain satisfies the Digital Asset Links requirement, subpath included.
 
-**Apple Guideline 4.2 (minimum functionality) is the binding constraint.** Three simple arcade games with no scores, audio, or progression is the profile Apple rejects. Google Play would accept this today. So the items below are *entry requirements for Apple*, not polish:
+**Apple is deferred, not cancelled** — $99/yr plus a Mac plus stricter review isn't worth scheduling against yet. The Guideline 4.2 work below already landed and isn't wasted: scores, audio, and depth make the Play listing better too. Treat the 4.2 checklist as done-and-banked rather than as the thing currently driving priorities.
+
+Original 4.2 (minimum functionality) checklist — three simple arcade games with no scores, audio, or progression is the profile Apple rejects; Play would have accepted it from the start:
 
 - [x] Score persistence — `shared/scores.js`, personal bests in localStorage, shown in each game's HUD, on the game-over banner ("New best"), and on the cabinet cards. No backend, no identifier, no privacy surface.
 - [x] Audio — `shared/audio.js`, all effects synthesized with WebAudio (no sound files, stays offline). Mute toggle per game, remembered. Wired into all three.
@@ -90,9 +92,21 @@ From a real phone, via the Pages deploy:
 - All three games now **pause on rotate** with a "Turned / Resume" banner rather than dropping you back in mid-flight.
 - Gutter drag and the new aim gain were both confirmed good on device — left alone.
 
+## Device feedback, round three (acted on 2026-07-27)
+
+- **Landscape is gone — portrait only.** It "didn't look or feel quite right" on a real phone. Done as a **reversible flip**, not a deletion: each shell has `const PORTRAIT_ONLY = true` beside `pickLayout()`, and `LAYOUT`, `relayout`, the rotation handover and all their tests are intact but inert. `manifest.webmanifest` is now `"orientation": "portrait"`. **Caveat worth knowing: the manifest only locks orientation once installed as a PWA** — a plain browser tab cannot be orientation-locked, so a sideways phone on the Pages URL just gets a letterboxed portrait board. Play it for a while; if portrait-only sticks, *then* delete the machinery (see DECISIONS.md).
+- **Circuit Breaker's grid went 15x10 → 12x8** (`CELL` 52 → 64). The reported "squares too small" is not a `CELL` problem — `makeFit` scales the canvas to the stage, so `CELL` is only backing-buffer resolution and on-screen cell size is `screen width / COLS`. Fewer columns is the only lever. On a 375px-wide phone cells went ~36px → ~45px. The route was redrawn to fit and the transpose invariant still holds.
+- **Circuit Breaker palette buttons enlarged** (min-height 54 → 72px, larger type), popup buttons too. Showing/hiding Start Wave now re-fits the board — the strip's height is reserved by `makeFit`, and it was changing without a re-fit.
+- **Towers no longer freeze their barrel between shots.** `step` acquired a target only at the instant a shot was allowed, so `tower.aim` went stale for the whole cooldown and the shell (which correctly refuses to draw at a dead enemy) drew nothing. Targets are now acquired every frame; firing is still gated on cooldown.
+- **The upgrade popup stays open on upgrade**, re-rendering tier and cost in place; only an outside tap (or a sell) closes it. Its Upgrade button now also tracks affordability live as kills come in.
+- **Serpent Battery aim is now corrected per input device**, since the report was opposite on the two: unclearable on a phone, trivial with a mouse. Touch gets `AIM_ASSIST_R` (9px of extra hit radius — forgiveness where the input is imprecise); mouse gets `TRAVERSE_MAX` (5.6 rad/s, so the turret swings rather than teleports to the cursor, ~0.46s for the full arc). The drag gain curve was left alone. **These two constants are the dials for the next playtest.**
+
 ## Open decisions (not yet settled)
 
-- Portrait is now device-tested and tuned. **Landscape is not**, and neither is Circuit Breaker on any real device — the wide layouts, the gutter thumb rests, the rotation handover, and all of Circuit Breaker have only been checked in an emulator. A device pass on the new game is the obvious next thing.
+- **Serpent Battery's aim rework is untested on a device** — the two constants above were chosen by reasoning, not by play. This is the live question.
+- **Circuit Breaker difficulty was not tuned**, deliberately: `wavePlan`/`hpScale`/`START_CHARGE` are untouched. But the smaller grid shortened the path (41 → 31 cells of travel) and cut the number of build sites, which raises difficulty on its own. Play it before turning any economy dial, or the two changes will be impossible to tell apart.
+- Whether portrait-only becomes a real deletion, or the flag stays. Don't delete until it's had device time.
+- Circuit Breaker has still never been checked on a real device.
 - Angle Iron has no powerups (the classic multiball/wide-paddle/laser set). The engine's `w.balls` array was built as an array specifically to leave that door open.
 - Circuit Breaker towers are **hitscan** (instant zap). Projectiles (travelling shots) were deferred — a visual/feel upgrade, not a mechanics one.
 - No render smoke test for Angle Iron, Live Wire, or Circuit Breaker, unlike Serpent Battery. Now more tractable: `build.mjs` shows how to inline a module shell for jsdom, so the same approach would work for the others. Relevant because headless-browser rAF throttling (~0.1fps) makes visual verification unreliable — a jsdom render test is the more dependable safety net.

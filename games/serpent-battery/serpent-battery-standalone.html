@@ -552,6 +552,39 @@ function aimGain(speedPxPerSec) {
   return AIM_FINE * (1 + (AIM_COARSE_MULT - 1) * shaped);
 }
 
+/* ---------- input-dependent aim: assist and traverse ----------
+
+   Device testing found opposite problems on the two inputs: too hard on a
+   phone (level 1 unclearable), too easy with a mouse. That is not one badly
+   tuned curve, it is two inputs with different ceilings — a cursor aims
+   absolutely and instantly, a thumb aims relatively and always lags. So the
+   two are corrected separately, and the shell picks which applies.
+
+   TOUCH gets a wider effective hit radius: forgiveness where the input is
+   imprecise, without touching the aim curve the drag already uses.
+
+   MOUSE gets a traverse cap: the battery is a turret, and a turret swings at
+   a finite rate. Sweeping the whole arc takes real time instead of being a
+   free teleport, which is what made mouse play trivial. Touch is unaffected
+   in practice — a thumb drag rarely commands more than this anyway.
+
+   Both are single constants on purpose: these are the two dials to turn after
+   a device playtest. */
+
+/** Extra pixels of hit radius granted when aim assist is on (touch). */
+const AIM_ASSIST_R = 9;
+/** Fastest the battery can swing, in radians per second. The aim arc is about
+ *  2.58 rad, so this crosses it in a bit under half a second. */
+const TRAVERSE_MAX = 5.6;
+
+/** Move `from` toward `to` by at most the traverse rate, and clamp to the arc.
+ *  Pure — the shell owns where `to` came from. */
+function slewAim(from, to, dt) {
+  const max = TRAVERSE_MAX * dt;
+  const d = clamp(to - from, -max, max);
+  return clampAim(from + d);
+}
+
 /** Convert a drag delta into an angle delta. `dt` guards against a huge
  *  jump when the browser coalesces events after a stall. */
 function aimDelta(dx, dt) {
@@ -699,6 +732,9 @@ function createWorld(opts = {}) {
     gunUnlocks: { auto: false, rail: false, mortar: false },
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
     shake: 0, hitStop: 0,
+    // extra hit radius, set by the shell from the input device (see
+    // AIM_ASSIST_R). Zero for mouse and keyboard, which aim precisely.
+    assistR: opts.assist ? AIM_ASSIST_R : 0,
     shopOpen: false,
     running: false, over: false,
     waveClear: false, clearTimer: 0,
@@ -1233,7 +1269,7 @@ function stepShots(w, dt) {
         const seg = ch.segs[i];
         const sp = segPos(w.path, w.pathLen, ch, i);
         if (sp.off) continue;
-        if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r) {
+        if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r + w.assistR) {
           const heading = segHeading(w.path, w.pathLen, ch, i);
           if (isDeflected(seg, heading, p.vx, p.vy)) {
             // glances off the plate: the shot bounces away and the streak
@@ -1352,7 +1388,7 @@ function nextWave(w) {
   w.running = true;
 }
 
-return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, kindForIndex, makeChain, _segId, nextSegId, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
+return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, kindForIndex, makeChain, _segId, nextSegId, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, AIM_ASSIST_R, TRAVERSE_MAX, slewAim, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
 })();
 const { makeFit } = (() => {
 /* Fit a fixed-size game board into whatever space is left on screen.
@@ -1701,10 +1737,21 @@ const fx = {
    somewhere to rest and drag a thumb without covering the play area. Landscape
    uses the wide board and the side gutters. Re-picked whenever the phone
    turns — see applyLayout. */
+/* Portrait-only since 2026-07-27: landscape didn't feel right on a real phone.
+   Every board uses the tall layout regardless of orientation. The rotation
+   machinery below is left intact but inert (applyLayout early-returns because
+   the layout never changes) — flip this flag back to false to restore
+   landscape without re-deriving anything. */
+const PORTRAIT_ONLY = true;
 const pickLayout = () =>
-  matchMedia('(max-aspect-ratio: 4/5)').matches ? E.LAYOUT_TALL : E.LAYOUT;
+  (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
 
-const world = E.createWorld({ fx, layout: pickLayout() });
+/* Which input this device aims with decides which correction the engine
+   applies: touch gets a wider hit radius, mouse gets a traverse cap. Declared
+   here rather than beside the pointer handlers because the world needs it. */
+const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+
+const world = E.createWorld({ fx, layout: pickLayout(), assist: isTouch });
 E.spawnWave(world);
 
 const board = { w: world.L.W, h: world.L.H };   // makeFit re-reads this
@@ -1725,8 +1772,12 @@ function stagePt(e) {
   const r = cv.getBoundingClientRect();
   return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
 }
+/* Mouse aim is absolute, so the cursor sets a *desired* angle and the frame
+   loop swings the battery toward it at the turret's traverse rate. Snapping
+   straight to the cursor is what made mouse play trivially easy. */
+let aimTarget = null;
 function aimAt(p) {
-  world.cannon.ang = E.clampAim(Math.atan2(p.y - world.cannon.y, p.x - world.cannon.x));
+  aimTarget = E.clampAim(Math.atan2(p.y - world.cannon.y, p.x - world.cannon.x));
 }
 
 /* Touch: the field is one control. Press anywhere to start firing, then drag
@@ -1734,7 +1785,6 @@ function aimAt(p) {
    so you can rest a thumb low and never cover the snake.
    Mouse keeps absolute aiming, which is what a cursor is good at. */
 let drag = null;
-const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
 
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
@@ -1753,6 +1803,7 @@ cv.addEventListener('pointermove', e => {
   const dx = e.clientX - drag.x;
   const dt = Math.max((now - drag.t) / 1000, 1e-3);
   world.cannon.ang = E.clampAim(world.cannon.ang + E.aimDelta(dx, dt));
+  aimTarget = null;            // a drag takes over; stop chasing an old cursor
   drag.x = e.clientX; drag.t = now;
 });
 
@@ -1836,7 +1887,9 @@ function frame(now) {
     let kb = 0;
     if (keys.ArrowLeft) kb -= 1;
     if (keys.ArrowRight) kb += 1;
-    if (kb) c.ang = E.clampAim(c.ang + kb * 2.0 * dt);
+    if (kb) { c.ang = E.clampAim(c.ang + kb * 2.0 * dt); aimTarget = null; }
+    // swing toward the cursor at the turret's traverse rate (mouse aiming)
+    else if (aimTarget !== null) c.ang = E.slewAim(c.ang, aimTarget, dt);
 
     if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
 

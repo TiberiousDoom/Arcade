@@ -157,10 +157,21 @@ const fx = {
    somewhere to rest and drag a thumb without covering the play area. Landscape
    uses the wide board and the side gutters. Re-picked whenever the phone
    turns — see applyLayout. */
+/* Portrait-only since 2026-07-27: landscape didn't feel right on a real phone.
+   Every board uses the tall layout regardless of orientation. The rotation
+   machinery below is left intact but inert (applyLayout early-returns because
+   the layout never changes) — flip this flag back to false to restore
+   landscape without re-deriving anything. */
+const PORTRAIT_ONLY = true;
 const pickLayout = () =>
-  matchMedia('(max-aspect-ratio: 4/5)').matches ? E.LAYOUT_TALL : E.LAYOUT;
+  (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
 
-const world = E.createWorld({ fx, layout: pickLayout() });
+/* Which input this device aims with decides which correction the engine
+   applies: touch gets a wider hit radius, mouse gets a traverse cap. Declared
+   here rather than beside the pointer handlers because the world needs it. */
+const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+
+const world = E.createWorld({ fx, layout: pickLayout(), assist: isTouch });
 E.spawnWave(world);
 
 const board = { w: world.L.W, h: world.L.H };   // makeFit re-reads this
@@ -181,8 +192,12 @@ function stagePt(e) {
   const r = cv.getBoundingClientRect();
   return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
 }
+/* Mouse aim is absolute, so the cursor sets a *desired* angle and the frame
+   loop swings the battery toward it at the turret's traverse rate. Snapping
+   straight to the cursor is what made mouse play trivially easy. */
+let aimTarget = null;
 function aimAt(p) {
-  world.cannon.ang = E.clampAim(Math.atan2(p.y - world.cannon.y, p.x - world.cannon.x));
+  aimTarget = E.clampAim(Math.atan2(p.y - world.cannon.y, p.x - world.cannon.x));
 }
 
 /* Touch: the field is one control. Press anywhere to start firing, then drag
@@ -190,7 +205,6 @@ function aimAt(p) {
    so you can rest a thumb low and never cover the snake.
    Mouse keeps absolute aiming, which is what a cursor is good at. */
 let drag = null;
-const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
 
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
@@ -209,6 +223,7 @@ cv.addEventListener('pointermove', e => {
   const dx = e.clientX - drag.x;
   const dt = Math.max((now - drag.t) / 1000, 1e-3);
   world.cannon.ang = E.clampAim(world.cannon.ang + E.aimDelta(dx, dt));
+  aimTarget = null;            // a drag takes over; stop chasing an old cursor
   drag.x = e.clientX; drag.t = now;
 });
 
@@ -292,7 +307,9 @@ function frame(now) {
     let kb = 0;
     if (keys.ArrowLeft) kb -= 1;
     if (keys.ArrowRight) kb += 1;
-    if (kb) c.ang = E.clampAim(c.ang + kb * 2.0 * dt);
+    if (kb) { c.ang = E.clampAim(c.ang + kb * 2.0 * dt); aimTarget = null; }
+    // swing toward the cursor at the turret's traverse rate (mouse aiming)
+    else if (aimTarget !== null) c.ang = E.slewAim(c.ang, aimTarget, dt);
 
     if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
 

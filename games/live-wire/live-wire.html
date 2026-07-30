@@ -79,8 +79,14 @@ const fx = {
 
 /* Portrait phones get a taller, narrower grid at the same cell size.
    Re-picked whenever the phone turns — see applyLayout. */
+/* Portrait-only since 2026-07-27: landscape didn't feel right on a real phone.
+   Every board uses the tall layout regardless of orientation. The rotation
+   machinery below is left intact but inert (applyLayout early-returns because
+   the layout never changes) — flip this flag back to false to restore
+   landscape without re-deriving anything. */
+const PORTRAIT_ONLY = true;
 const pickLayout = () =>
-  matchMedia('(max-aspect-ratio: 4/5)').matches ? E.LAYOUT_TALL : E.LAYOUT;
+  (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
 
 const world = E.createWorld({ fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff });
 

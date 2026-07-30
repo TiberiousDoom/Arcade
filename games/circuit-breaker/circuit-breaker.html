@@ -25,18 +25,20 @@
      makeFit's `extra` hook so the board never hides behind it. */
   #controls{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;
     padding-bottom:env(safe-area-inset-bottom,0px)}
+  /* Sized for thumbs, not cursors — these were reported as too small to hit
+     reliably on a phone. Keep min-height at or above ~64px. */
   .pick{
-    flex:1 1 0;min-width:78px;min-height:54px;
+    flex:1 1 0;min-width:92px;min-height:72px;
     border:1px solid var(--line);background:#0f2027;color:var(--bone);
-    border-radius:4px;padding:6px 8px;cursor:pointer;text-align:left;
-    display:flex;flex-direction:column;gap:2px;
+    border-radius:5px;padding:10px 11px;cursor:pointer;text-align:left;
+    display:flex;flex-direction:column;gap:3px;
   }
   .pick.on{border-color:var(--accent-hot);background:#13293a}
   .pick:disabled{opacity:.5;cursor:default}
-  .pick b{font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
-  .pick .cost{font-size:10px;color:var(--accent-hot)}
-  .pick .blurb{font-size:9px;color:var(--dim);line-height:1.3}
-  #startWave{flex:1 1 100%;min-height:44px}
+  .pick b{font:700 13px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+  .pick .cost{font-size:12px;color:var(--accent-hot)}
+  .pick .blurb{font-size:10px;color:var(--dim);line-height:1.3}
+  #startWave{flex:1 1 100%;min-height:52px}
   #startWave.hide{display:none}
 
   /* the tap-a-tower popup: upgrade / sell */
@@ -45,7 +47,7 @@
     padding:10px;min-width:150px}
   #tsel.on{display:flex}
   #tsel h3{font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-hot)}
-  #tsel button{padding:9px 12px;font-size:10px}
+  #tsel button{padding:12px 14px;font-size:12px}
   #tsel .sell{background:#2a1a17;color:#e0a89c}
   #tsel .sell:hover{background:#3a241f}
 </style>
@@ -112,8 +114,14 @@ const fx = {
 };
 
 /* ---------- layout ---------- */
+/* Portrait-only since 2026-07-27: landscape didn't feel right on a real phone.
+   Every board uses the tall layout regardless of orientation. The rotation
+   machinery below is left intact but inert (applyLayout early-returns because
+   the layout never changes) — flip this flag back to false to restore
+   landscape without re-deriving anything. */
+const PORTRAIT_ONLY = true;
 const pickLayout = () =>
-  matchMedia('(max-aspect-ratio: 4/5)').matches ? E.LAYOUT_TALL : E.LAYOUT;
+  (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
 
 const world = E.createWorld({ fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff });
 
@@ -130,6 +138,9 @@ adoptLayout();
 
 /* ---------- tower palette ---------- */
 let selected = 'node';   // currently-picked tower type for building
+// assigned further down, but syncPalette can run before then, so it has to
+// exist as a binding from the start rather than be a later `const`.
+let fitStage = null;
 
 const controls = $('controls');
 const pickBtns = {};
@@ -155,7 +166,15 @@ function syncPalette() {
     pickBtns[key].classList.toggle('on', key === selected);
     pickBtns[key].disabled = world.charge < E.TOWER_TYPES[key].cost;
   }
-  startBtn.classList.toggle('hide', !(world.running && world.betweenWaves && !world.over));
+  // Showing/hiding Start Wave changes the controls strip's height, and makeFit
+  // reserves that height for the board — so the board has to be re-fit when it
+  // toggles, or it keeps a size computed against the old strip and can run off
+  // the bottom of a short screen. Only on the actual edge; sync() runs per frame.
+  const wantStart = world.running && world.betweenWaves && !world.over;
+  if (wantStart === startBtn.classList.contains('hide')) {
+    startBtn.classList.toggle('hide', !wantStart);
+    if (fitStage) fitStage();
+  }
 }
 
 /* ---------- tower popup (upgrade / sell) ---------- */
@@ -164,20 +183,32 @@ let popupIndex = -1;
 
 function openTowerPopup(i, px, py) {
   popupIndex = i;
-  const t = world.towers[i];
-  const up = E.upgradeCost(t);
-  tsel.innerHTML =
-    `<h3>${E.TOWER_TYPES[t.type].name} ·${' ★'.repeat(t.tier + 1)}</h3>` +
-    (up === null
-      ? `<button disabled>Maxed</button>`
-      : `<button id="tUp">Upgrade · ${up}</button>`) +
-    `<button class="sell" id="tSell">Sell · +${E.sellValue(t)}</button>`;
   // place near the tap, clamped into the stage
   const rect = cv.getBoundingClientRect();
   tsel.style.left = Math.min(px, rect.width - 160) + 'px';
   tsel.style.top = Math.min(py, rect.height - 110) + 'px';
   tsel.classList.add('on');
-  const upBtn = $('tUp'); if (upBtn) upBtn.addEventListener('click', () => { E.upgradeTower(world, popupIndex); closePopup(); sync(); });
+  renderPopup();
+}
+
+/* Redraws the popup's contents in place. Upgrading re-renders rather than
+   closing — tier and cost changed, and a player buying two tiers in a row
+   shouldn't have to re-tap the tower. Only an outside tap (or a sell, which
+   removes the tower) closes it. */
+function renderPopup() {
+  const t = world.towers[popupIndex];
+  if (!t) { closePopup(); return; }
+  const up = E.upgradeCost(t);
+  tsel.innerHTML =
+    `<h3>${E.TOWER_TYPES[t.type].name} ·${' ★'.repeat(t.tier + 1)}</h3>` +
+    (up === null
+      ? `<button disabled>Maxed</button>`
+      : `<button id="tUp"${world.charge < up ? ' disabled' : ''}>Upgrade · ${up}</button>`) +
+    `<button class="sell" id="tSell">Sell · +${E.sellValue(t)}</button>`;
+  const upBtn = $('tUp');
+  if (upBtn) upBtn.addEventListener('click', () => {
+    if (E.upgradeTower(world, popupIndex)) { sync(); renderPopup(); }
+  });
   $('tSell').addEventListener('click', () => { E.sellTower(world, popupIndex); closePopup(); sync(); });
 }
 function closePopup() { tsel.classList.remove('on'); popupIndex = -1; }
@@ -220,7 +251,7 @@ addEventListener('keydown', e => {
 });
 
 /* keep the popup reserved-height aware: makeFit reserves the controls strip */
-const fitStage = makeFit({
+fitStage = makeFit({
   canvas: cv, stage: $('stage'), board,
   extra: () => controls.getBoundingClientRect().height + 10,
 });
@@ -314,6 +345,19 @@ function sync() {
   $('uiCharge').textContent = world.charge;
   $('uiIntegrity').textContent = world.integrity;
   syncPalette();
+  syncPopup();
+}
+
+/* The popup now outlives a single upgrade, so its affordability has to track
+   charge as kills come in. Toggle the button rather than re-rendering — sync()
+   runs every frame, and rebuilding the DOM that often would kill the taps. */
+function syncPopup() {
+  if (popupIndex < 0) return;
+  const t = world.towers[popupIndex];
+  if (!t) { closePopup(); return; }
+  const upBtn = $('tUp');
+  const up = E.upgradeCost(t);
+  if (upBtn && up !== null) upBtn.disabled = world.charge < up;
 }
 
 /* ---------- draw ---------- */

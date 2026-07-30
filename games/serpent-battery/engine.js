@@ -225,6 +225,39 @@ export function aimGain(speedPxPerSec) {
   return AIM_FINE * (1 + (AIM_COARSE_MULT - 1) * shaped);
 }
 
+/* ---------- input-dependent aim: assist and traverse ----------
+
+   Device testing found opposite problems on the two inputs: too hard on a
+   phone (level 1 unclearable), too easy with a mouse. That is not one badly
+   tuned curve, it is two inputs with different ceilings — a cursor aims
+   absolutely and instantly, a thumb aims relatively and always lags. So the
+   two are corrected separately, and the shell picks which applies.
+
+   TOUCH gets a wider effective hit radius: forgiveness where the input is
+   imprecise, without touching the aim curve the drag already uses.
+
+   MOUSE gets a traverse cap: the battery is a turret, and a turret swings at
+   a finite rate. Sweeping the whole arc takes real time instead of being a
+   free teleport, which is what made mouse play trivial. Touch is unaffected
+   in practice — a thumb drag rarely commands more than this anyway.
+
+   Both are single constants on purpose: these are the two dials to turn after
+   a device playtest. */
+
+/** Extra pixels of hit radius granted when aim assist is on (touch). */
+export const AIM_ASSIST_R = 9;
+/** Fastest the battery can swing, in radians per second. The aim arc is about
+ *  2.58 rad, so this crosses it in a bit under half a second. */
+export const TRAVERSE_MAX = 5.6;
+
+/** Move `from` toward `to` by at most the traverse rate, and clamp to the arc.
+ *  Pure — the shell owns where `to` came from. */
+export function slewAim(from, to, dt) {
+  const max = TRAVERSE_MAX * dt;
+  const d = clamp(to - from, -max, max);
+  return clampAim(from + d);
+}
+
 /** Convert a drag delta into an angle delta. `dt` guards against a huge
  *  jump when the browser coalesces events after a stall. */
 export function aimDelta(dx, dt) {
@@ -372,6 +405,9 @@ export function createWorld(opts = {}) {
     gunUnlocks: { auto: false, rail: false, mortar: false },
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
     shake: 0, hitStop: 0,
+    // extra hit radius, set by the shell from the input device (see
+    // AIM_ASSIST_R). Zero for mouse and keyboard, which aim precisely.
+    assistR: opts.assist ? AIM_ASSIST_R : 0,
     shopOpen: false,
     running: false, over: false,
     waveClear: false, clearTimer: 0,
@@ -906,7 +942,7 @@ export function stepShots(w, dt) {
         const seg = ch.segs[i];
         const sp = segPos(w.path, w.pathLen, ch, i);
         if (sp.off) continue;
-        if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r) {
+        if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r + w.assistR) {
           const heading = segHeading(w.path, w.pathLen, ch, i);
           if (isDeflected(seg, heading, p.vx, p.vy)) {
             // glances off the plate: the shot bounces away and the streak

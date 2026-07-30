@@ -14,18 +14,23 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
  *  (c, r) -> (r, c), and because cells are square the transposed path has the
  *  *same total length*, so an enemy's distance along it carries straight over
  *  with no rescaling. See `relayout`, and Live Wire for the same trick. */
-export const CELL = 52;
+/*  Note CELL is a *resolution* knob, not an on-screen size one: the shell's
+ *  makeFit scales the whole canvas to the stage, so a cell's physical size is
+ *  screen-width / COLS. Bigger squares on a phone therefore means *fewer*
+ *  columns, which is why the grid went 15x10 -> 12x8 (2026-07-27); CELL rose
+ *  alongside only to keep the backing canvas sharp. */
+export const CELL = 64;
 
 /** The circuit path, as a list of [col, row] waypoints in landscape space.
  *  Enters top-left, snakes across, and ends at the core on the right edge.
  *  Transposing (swap each pair) yields a valid portrait route by construction,
- *  since the grid dimensions swap too. Kept within a 15x10 grid. */
+ *  since the grid dimensions swap too. Kept within a 12x8 grid. */
 const ROUTE = [
-  [0, 1], [12, 1], [12, 4], [2, 4], [2, 7], [13, 7], [13, 9],
+  [0, 1], [9, 1], [9, 3], [2, 3], [2, 5], [11, 5], [11, 7],
 ];
 
 export const LAYOUT = {
-  COLS: 15, ROWS: 10, CELL,
+  COLS: 12, ROWS: 8, CELL,
   route: ROUTE,
   get W() { return this.COLS * this.CELL; },
   get H() { return this.ROWS * this.CELL; },
@@ -317,11 +322,10 @@ function acquire(w, tower) {
 }
 
 /** Apply a tower's shot: damage the target (plus splash), and slow if it slows.
- *  Kills are resolved here so bounty and fx fire immediately. */
-function fireTower(w, tower) {
+ *  Kills are resolved here so bounty and fx fire immediately. The caller passes
+ *  the target in — `step` already acquired one this frame for the barrel. */
+function fireTower(w, tower, target) {
   const s = stats(tower);
-  const target = acquire(w, tower);
-  tower.aim = target;
   if (!target) return;
 
   const tc = cellCenter(w.L, tower.c, tower.r);
@@ -365,13 +369,17 @@ export function step(w, dt) {
     e.dist += sp * dt;
   }
 
-  // towers fire on cooldown
+  // towers fire on cooldown. Targets are acquired every frame, not just at the
+  // instant a shot is allowed: `aim` is what the shell draws the barrel from,
+  // so a tower tracks the current leader continuously instead of staying frozen
+  // on whatever it last shot at (which may already be dead) until cooldown ends.
   for (const tower of w.towers) {
     tower.cool = Math.max(0, tower.cool - dt);
-    if (tower.cool <= 0) {
-      const hadTarget = acquire(w, tower);
-      if (hadTarget) { fireTower(w, tower); tower.cool = stats(tower).rate; }
-      else tower.aim = null;
+    const target = acquire(w, tower);
+    tower.aim = target;
+    if (target && tower.cool <= 0) {
+      fireTower(w, tower, target);
+      tower.cool = stats(tower).rate;
     }
   }
 

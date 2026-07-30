@@ -8,7 +8,7 @@
   "display": "standalone",
   "background_color": "#0b1418",
   "theme_color": "#0b1418",
-  "orientation": "any",
+  "orientation": "portrait",
   "categories": ["games", "entertainment"],
   "icons": [
     {

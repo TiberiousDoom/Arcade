@@ -199,6 +199,30 @@ test('a breaker splashes nearby enemies', () => {
   assert.ok(w.enemies[0].hp < hpA && w.enemies[1].hp < hpB, 'both took damage from one shot');
 });
 
+test('a tower re-aims mid-cooldown, so the barrel never points at nothing', () => {
+  const w = towerVsEnemy('node');
+  E.step(w, 1 / 60);                 // fires, aims at the only enemy
+  const first = w.enemies[0];
+  assert.equal(w.towers[0].aim, first, 'aimed at what it shot');
+
+  // a second enemy alongside the first, then the first dies mid-cooldown
+  w.enemies.push({ ...first, dist: first.dist + 6, hp: 500 });
+  first.hp = 0;
+  E.step(w, 1 / 60);                 // still cooling — but must retarget anyway
+  assert.ok(w.towers[0].cool > 0, 'still on cooldown');
+  assert.equal(w.enemies.length, 1, 'the dead one was cleared');
+  assert.equal(w.towers[0].aim, w.enemies[0], 'aim followed to the live enemy');
+});
+
+test('aim clears when the last target leaves range, even mid-cooldown', () => {
+  const w = towerVsEnemy('node');
+  E.step(w, 1 / 60);
+  assert.ok(w.towers[0].aim, 'has a target');
+  w.enemies.length = 0;
+  E.step(w, 1 / 60);
+  assert.equal(w.towers[0].aim, null, 'nothing to aim at');
+});
+
 /* ---------- enemies: movement, kills, leaks ---------- */
 
 test('enemies advance along the path', () => {
