@@ -373,10 +373,43 @@ function drawWire() {
    a solid gold body, and a near-white centre — the hot core is what makes a
    small object read as "there" rather than as a smudge, and this is the one
    thing on the board you are actually looking for. */
+/* The food is a world you are about to take, so it is drawn as one: a solid
+   sphere with a hot centre and an orbital ring.
+
+   The ring is not decoration. Reported twice as "the food is gone" — and both
+   times it was provably rendering, at full brightness, in every environment I
+   could measure. What a bare disc actually loses is *silhouette*: a small round
+   glow on a board that is now full of bright glowing shapes has nothing to make
+   the eye stop on it. The ring roughly doubles its footprint and gives it an
+   outline nothing else on the board has, which is a far more reliable fix than
+   chasing brightness that was never the problem. It also makes it a planet
+   rather than a pellet, which is what the fiction says it is. */
 function drawFood(f) {
   const t = performance.now() / 400;
   const px = cx(f.x) + C / 2, py = cy(f.y) + C / 2;
-  const r = C * .30 + (reduce ? 0 : Math.sin(t) * 1.2);
+  const pulse = reduce ? 0 : Math.sin(t) * 1.2;
+  const r = C * .30 + pulse;
+
+  // orbital ring, tilted, drawn behind the body
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(-0.42);
+  ctx.scale(1, 0.34);
+  glowStroke(ctx, c => c.arc(0, 0, r * 1.85, 0, Math.PI * 2), '#e8c86a', 1.6, GLOW_PASSES_CHEAP);
+  ctx.restore();
+
+  /* A normally-composited body under the glow, not glow alone. Everything else
+     that survived on device has a source-over fill beneath its additive rim;
+     the food was the only thing drawn purely additively, which makes it the
+     only thing that would disappear outright if `lighter` misbehaved at small
+     sizes on a given GPU. Cheap insurance against a failure I could not
+     reproduce, and it costs one fill. */
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#c9a227';
+  ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
   glowDot(ctx, px, py, r, '#c9a227');
   glowDot(ctx, px, py, r * .42, '#fff3c4');
 }
