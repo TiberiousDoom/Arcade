@@ -452,3 +452,19 @@ The real cause was the falloff table. `glowDot`'s passes ran `[1.9, 1.35, 0.9, 0
 `r` now means the solid core, with the glow spreading outside it, so a dot is at least as substantial as the flat shape it replaces and merely gains a halo. Live Wire's food additionally gets a near-white inner dot: a hot centre is what makes a small emissive object read as *present*, and it is the one thing on that board a player is actively hunting for.
 
 The general lesson for the rest of the art pass: **glow is a poor substitute for mass.** Adding a halo while shrinking the solid core makes something prettier and harder to see, and readability regressions of this kind survive every automated check — the pixels are all there, correctly, in the wrong proportions.
+
+## 2026-07-30 — Circuit Breaker's art pass, and the no-trails decision
+
+Third game onto the vector look, and the one flagged from the start as needing the most conservative treatment.
+
+**No phosphor trails here, unlike Live Wire.** A tower-defense puts many small moving objects on screen whose exact position and type have to be read at a glance; smearing them would work directly against the enemy trait cues, which exist precisely so a player can tell why a tower is underperforming. Circuit Breaker clears every frame. A useful side effect is that static alphas are literal, with none of the accumulation Live Wire has to compensate for.
+
+**Enemies keep their solid bodies and gain a halo outside them** — the rule learned from Live Wire's food, applied pre-emptively. These are smaller than the food, there are far more of them, and they must be told apart, so the opaque disc stays exactly the size it was. The trait cues (heavy ring, dashed shell, chevron, cross) are deliberately drawn hard-edged and *unglowed*: a halo on a 3px chevron is a smudge, and distinguishing Shell from Phase from Patch is the most load-bearing readability job on that board.
+
+**Towers are what `extrude` was built for** — discrete objects on a dark board — in contrast to Live Wire's head, where the same call punched a hole in a glowing tube. One adjustment was needed: the default body colour is near-black, which against this board made towers read as hollow rings rather than solid installations. Their body is lifted well above the board colour.
+
+**The mistake worth recording: additive compositing cannot darken.** The path was meant to be a recessed channel with lit edges, so it was drawn as a wide additive band with a dark inner stroke laid over it — also additively. Additive of a dark colour still *adds*, so the "dark" inner brightened the channel and the path came out as a glowing ribbon dominating the board, exactly the opposite of the intent. The inner stroke is now painted with the normal composite, which leaves the additive band showing only as a fringe. This is the same trap as Live Wire's pupils, and is now called out in `shared/README.md`: anything meant to be *darker* than its surroundings cannot go through `glowStroke`.
+
+Beams get the biggest payoff, unsurprisingly — a hitscan zap is literally a line of light. Tower colour with a white-hot core, plus a flare where it lands so a hit registers even when the target survives.
+
+Also fixed `tools/screenshot.mjs`, which had been quietly lying: most shells clear to transparent and let the page background show through, so a raw capture carries an alpha channel that renders as white and makes a dark game look like a blown-out negative. It now paints the board colour underneath with `destination-over` — which also avoids `drawImage` rejecting a canvas from a different copy of the node-canvas module.

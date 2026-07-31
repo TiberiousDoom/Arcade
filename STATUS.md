@@ -158,7 +158,9 @@ Decided against sprites and for an emissive vector look built in Canvas 2D — s
 
 `tools/screenshot.mjs` renders a real frame to a PNG through the render harness. Art cannot be judged from a headless browser at all — rAF is throttled until the page stops compositing, so screenshots come back blank.
 
-**Remaining:** Serpent Battery, Angle Iron, then Circuit Breaker — CB last and most conservatively, because bloom fights the enemy trait cues that depend on crisp silhouettes. Not yet seen on a real device.
+**Circuit Breaker is done too** (taken out of order, at request). It gets the glow and the extrusion but **no phosphor trails** — a TD needs precise, unsmeared positions, and trails would fight the trait cues. Enemy bodies stay fully solid with halos outside them; the trait cues stay hard-edged and unglowed.
+
+**Remaining:** Serpent Battery and Angle Iron. Neither game is yet seen on a real device.
 
 ## Open decisions (not yet settled)
 

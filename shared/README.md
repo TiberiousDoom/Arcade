@@ -34,7 +34,7 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
 - **[glow.js](glow.js)** — the vector/CRT art primitives: `glowStroke` (the
   multi-pass emissive stroke everything else is built on), `glowDot`, `inkDot`,
   `extrude`/`extrudeDisc`/`extrudeRect`, `fadeFrame` and `scanlines`. Piloted on
-  Live Wire. Three things to know before using it:
+  Live Wire and Circuit Breaker. Four things to know before using it:
   - **Static content accumulates** under `fadeFrame`, settling at roughly
     `1/fade` times the alpha you wrote — a grid drawn at 0.5 ends up looking
     like 1.5. Write static alphas about a third of what you want.
@@ -48,6 +48,12 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
     genuinely hard to spot on a phone. If a glowing object needs to be *found*
     rather than just seen, give it a near-white inner dot as well; Live Wire's
     food does.
+  - **Additive compositing cannot darken.** `glowStroke` and `glowDot` are
+    additive, so a dark colour passed to either *brightens* what is underneath.
+    Anything meant to be darker than its surroundings — a recessed channel, a
+    shadow, a pupil — must be painted with the normal composite (`inkDot`, or a
+    plain stroke/fill). Circuit Breaker's path glowed like a lit ribbon until
+    this was understood, and Live Wire's pupils are `inkDot` for the same reason.
 
 Deliberately *not* shared: the banner show/hide logic. It looked like a
 duplicate, but Serpent Battery's variant hides a legend and two hint

@@ -85,6 +85,7 @@
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
+import { glowStroke, glowDot, inkDot, extrudeDisc, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
@@ -434,6 +435,13 @@ function syncPopup() {
 /* ---------- draw ---------- */
 const C = () => world.L.CELL;
 
+/* Circuit Breaker gets the glow and the extrusion but NOT the phosphor trails
+   the other games use. A tower-defense puts many small moving objects on screen
+   whose exact position and type you have to read at a glance — smearing them
+   would fight the enemy trait cues directly, and those cues are the whole
+   reason a mix of towers is needed. Clean frame, no fade. It also means static
+   alphas here are literal, with none of the accumulation Live Wire compensates
+   for. */
 function draw() {
   ctx.clearRect(0, 0, W, H);
   drawGrid();
@@ -455,53 +463,83 @@ function drawGrid() {
   for (let c = 1; c < world.L.COLS; c++) { ctx.moveTo(c * cell + .5, 0); ctx.lineTo(c * cell + .5, H); }
   for (let r = 1; r < world.L.ROWS; r++) { ctx.moveTo(0, r * cell + .5); ctx.lineTo(W, r * cell + .5); }
   ctx.stroke();
-  ctx.strokeStyle = 'rgba(99,121,127,.4)'; ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, W - 2, H - 2);
+  glowStroke(ctx, c => c.rect(1.5, 1.5, W - 3, H - 3), '#2b4d70', 1, GLOW_PASSES_CHEAP, .6);
 }
 
+/* The circuit itself: a dark trace with lit edges, so it reads as an etched
+   channel the surges run along rather than as a painted stripe. Kept dim on
+   purpose — it is the largest thing on the board and must not compete with the
+   towers and enemies, which are what you actually look at. */
 function drawPath() {
   const p = world.path;
-  ctx.strokeStyle = 'rgba(77,127,179,.35)';
-  ctx.lineWidth = C() * .7;
+  const trace = (c) => {
+    c.moveTo(p[0].x, p[0].y);
+    for (let i = 1; i < p.length; i++) c.lineTo(p[i].x, p[i].y);
+  };
+  ctx.save();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(p[0].x, p[0].y);
-  for (let i = 1; i < p.length; i++) ctx.lineTo(p[i].x, p[i].y);
-  ctx.stroke();
-  // dashed centre line, so direction of flow reads
-  ctx.strokeStyle = 'rgba(111,183,232,.5)'; ctx.lineWidth = 2; ctx.setLineDash([7, 9]);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // a wide additive band first — this becomes the lit fringe once the channel
+  // is painted back over the middle of it
+  glowStroke(ctx, trace, '#2f5f8c', C() * .74, [[1, .22]]);
+  /* ...and the channel itself painted NORMALLY on top. It has to be
+     source-over: additive compositing cannot darken, so an earlier attempt to
+     lay a dark inner stroke additively brightened the channel instead and left
+     the path glowing like a lit ribbon — the largest, loudest thing on a board
+     where it should be the quietest. */
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = '#0d1e29';
+  ctx.lineWidth = C() * .6;
+  ctx.beginPath(); trace(ctx); ctx.stroke();
+  ctx.restore();
+  // dashed centre line, so direction of flow still reads
+  ctx.save();
+  ctx.setLineDash([7, 9]);
+  glowStroke(ctx, trace, '#6fb7e8', 1.4, GLOW_PASSES_CHEAP, .55);
+  ctx.restore();
 }
 
 function drawCore() {
   const e = world.path[world.path.length - 1];
-  ctx.fillStyle = '#e0503c';
-  ctx.globalAlpha = .25 + .2 * Math.abs(Math.sin(performance.now() / 400));
-  ctx.beginPath(); ctx.arc(e.x, e.y, C() * .5, 0, TAU); ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = '#e0503c';
-  ctx.beginPath(); ctx.arc(e.x, e.y, C() * .26, 0, TAU); ctx.fill();
+  const pulse = reduce ? .6 : .45 + .35 * Math.abs(Math.sin(performance.now() / 400));
+  // the thing you are defending, so it gets to be the hottest point on the board
+  glowStroke(ctx, c => c.arc(e.x, e.y, C() * .48, 0, TAU), '#e0503c', 2, undefined, pulse);
+  glowDot(ctx, e.x, e.y, C() * .24, '#e0503c');
+  glowDot(ctx, e.x, e.y, C() * .10, '#ffd8ce');
 }
 
+/* Towers are exactly what `extrude` is for: discrete objects sitting on a dark
+   board, where a dark body with a lit rim and a face offset behind reads as a
+   solid installation bolted to the grid. (Contrast Live Wire's head, where the
+   same treatment punched a hole in a glowing tube.) */
 function drawTower(t) {
   const cell = C();
   const cx = (t.c + .5) * cell, cy = (t.r + .5) * cell;
   const col = E.TOWER_TYPES[t.type].col;
   const rr = cell * .32;
-  ctx.fillStyle = '#0f2027';
-  ctx.strokeStyle = col; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.fill(); ctx.stroke();
-  // a little barrel toward the current target
+
+  // The body is lifted well above the board colour on purpose. At the default
+  // near-black it vanished into the background and the tower read as a hollow
+  // ring rather than as a solid object bolted to the grid.
+  extrudeDisc(ctx, cx, cy, rr, col, {
+    depth: Math.max(4, cell * .10), width: 2,
+    body: 'rgba(24,44,56,.98)', back: 'rgba(13,26,34,.98)',
+  });
+
+  // the barrel, aimed at whatever it is tracking
   if (t.aim && world.enemies.includes(t.aim)) {
     const p = E.enemyPos(world, t.aim);
     const a = Math.atan2(p.y - cy, p.x - cx);
-    ctx.strokeStyle = col; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * rr * 1.4, cy + Math.sin(a) * rr * 1.4); ctx.stroke();
+    glowStroke(ctx, c => {
+      c.moveTo(cx + Math.cos(a) * rr * .3, cy + Math.sin(a) * rr * .3);
+      c.lineTo(cx + Math.cos(a) * rr * 1.5, cy + Math.sin(a) * rr * 1.5);
+    }, col, 2.6);
   }
-  // tier pips
-  ctx.fillStyle = col;
-  for (let i = 0; i <= t.tier; i++) ctx.fillRect(cx - rr + 2 + i * 5, cy + rr - 3, 3, 3);
+
+  // tier pips, kept as hard little marks rather than glows — they are counted,
+  // not admired, and a halo would blur one into the next
+  for (let i = 0; i <= t.tier; i++) {
+    glowDot(ctx, cx - rr + 3 + i * 6, cy + rr - 2, 1.9, col);
+  }
 }
 
 function drawEnemy(e) {
@@ -522,6 +560,12 @@ function drawEnemy(e) {
      in a flat blue that is almost exactly Shell's own colour, so "held up" and
      "plated" were indistinguishable — and which of the two you're looking at
      changes what you should build. */
+  /* A halo AROUND a full-strength body, never instead of one. Live Wire's food
+     shipped with a shrunken opaque core wrapped in haze and became genuinely
+     hard to find; these are smaller, there are more of them, and they have to
+     be told apart, so the solid disc stays exactly the size it was and only
+     gains a glow outside it. */
+  glowStroke(ctx, c => c.arc(p.x, p.y, e.r, 0, TAU), col, 3, [[1.6, .10], [1, .22]]);
   ctx.fillStyle = col;
   ctx.beginPath(); ctx.arc(p.x, p.y, e.r, 0, TAU); ctx.fill();
   if (e.slow > 0) {
@@ -532,7 +576,10 @@ function drawEnemy(e) {
   /* Traits have to be legible at a glance or "my towers aren't working" reads
      as a bug rather than as the wrong tool for this enemy. Each gets a distinct
      silhouette cue rather than only a colour, since colour alone is already
-     doing the job of naming the type. */
+     doing the job of naming the type.
+     These are drawn hard-edged and unglowed on purpose: a halo on a 3px chevron
+     turns it into a smudge, and telling Shell from Phase from Patch is the
+     single most load-bearing readability job on this board. */
   if (T.armor) {
     // plating: a heavy ring, suggesting something to punch through
     ctx.strokeStyle = '#bcd8f0'; ctx.lineWidth = 2.5;
@@ -574,13 +621,18 @@ function drawEnemy(e) {
   ctx.fillRect(p.x - w / 2, p.y - e.r - 7, w * frac, 3);
 }
 
+/* The beams are where this style pays off most: a hitscan zap is a line of
+   light, which is precisely what an emissive stroke is. A white-hot core inside
+   the tower's own colour sells it as discharge rather than as a drawn line. */
 function drawBeams() {
   for (const b of beams) {
-    ctx.globalAlpha = Math.min(1, b.life * 12);
-    ctx.strokeStyle = b.col; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+    const fade = Math.min(1, b.life * 12);
+    const line = (c) => { c.moveTo(b.x1, b.y1); c.lineTo(b.x2, b.y2); };
+    glowStroke(ctx, line, b.col, 2.4, undefined, fade);
+    glowStroke(ctx, line, '#ffffff', 0.9, [[1, .85]], fade);
+    // a flare where it lands, so a hit registers even when the target survives
+    glowDot(ctx, b.x2, b.y2, 3, b.col, fade);
   }
-  ctx.globalAlpha = 1;
 }
 
 let hoverCell = null;

@@ -55,6 +55,23 @@ if (grow && g.world && 'grow' in g.world) g.world.grow = grow;
 let t = 1000;
 for (let i = 0; i < frames; i++) { t += 1000 / 60; g.frame(t); }
 
+/* Composite onto the board colour before saving. Most shells clear to
+   transparent and let the page background show through, so a raw capture has an
+   alpha channel — which renders as WHITE in most viewers and makes a dark game
+   look like a blown-out negative. Live Wire happens to escape this because its
+   phosphor fade paints an opaque background every frame.
+
+   Painted *underneath* with `destination-over` rather than onto a second
+   canvas, which also sidesteps `drawImage` rejecting a canvas that came from a
+   different copy of the node-canvas module. */
+const bg = flag('bg', '#0b1418');
+const sctx = g.surface.getContext('2d');
+sctx.save();
+sctx.globalCompositeOperation = 'destination-over';
+sctx.fillStyle = bg;
+sctx.fillRect(0, 0, width, height);
+sctx.restore();
+
 writeFileSync(resolve(out), g.surface.toBuffer('image/png'));
 console.log(`wrote ${out} (${width}x${height}, ${frames} frames)` +
   (g.errors.length ? ` — ${g.errors.length} error(s): ${g.errors[0]}` : ''));
