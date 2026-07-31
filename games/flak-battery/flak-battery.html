@@ -125,6 +125,7 @@
 <script type="module">
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
+import { glowStroke, glowDot, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
@@ -561,45 +562,24 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
 
   const base = seg.flash > 0 ? '#ffffff' : K.col;
 
-  // drop shadow, offset down-right from a top-left light
-  ctx.save();
-  ctx.translate(1.5, 2.2);
-  roundRectPath(long, wide, corner);
-  ctx.fillStyle = 'rgba(5,10,12,.55)';
-  ctx.fill();
-  ctx.restore();
+  /* A dark body with a lit rim, not a gradient-filled plate. Each craft in the
+     column reads as a cube with its running lights on, which is what the other
+     three games do and what the setting asks for. Damage dims the rim rather
+     than fading the body: a hurt craft should look like its lights are going
+     out, not like it is turning transparent. */
+  const lit = 1 - dmgT * 0.55;
 
-  // body with a lengthwise gradient: lit top edge, shadowed bottom
-  const grad = ctx.createLinearGradient(0, -wide / 2, 0, wide / 2);
+  roundRectPath(long, wide, corner);
+  ctx.fillStyle = 'rgba(9,19,24,.96)';
+  ctx.fill();
+
   if (seg.flash > 0) {
-    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#e8e8e8');
-  } else {
-    grad.addColorStop(0, shade(base, 34));
-    grad.addColorStop(0.5, base);
-    grad.addColorStop(1, shade(base, -40));
+    glowStroke(ctx, () => roundRectPath(long, wide, corner), '#ffffff', 2.4,
+      GLOW_PASSES_CHEAP, Math.min(1, seg.flash * 8));
   }
-  roundRectPath(long, wide, corner);
-  ctx.fillStyle = grad;
-  ctx.globalAlpha = 0.96 - dmgT * 0.22;
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  glowStroke(ctx, () => roundRectPath(long, wide, corner), base, 1.8,
+    GLOW_PASSES_CHEAP, lit);
 
-  // bevel: bright top-left inner stroke, dark bottom-right
-  ctx.save();
-  roundRectPath(long, wide, corner);
-  ctx.clip();
-  ctx.lineWidth = 2.4;
-  ctx.strokeStyle = seg.flash > 0 ? '#ffffff' : shade(base, 55);
-  ctx.beginPath();
-  ctx.moveTo(-long / 2 + corner, -wide / 2 + 1);
-  ctx.lineTo(long / 2 - corner, -wide / 2 + 1);
-  ctx.stroke();
-  ctx.strokeStyle = shade(base, -55);
-  ctx.beginPath();
-  ctx.moveTo(-long / 2 + corner, wide / 2 - 1);
-  ctx.lineTo(long / 2 - corner, wide / 2 - 1);
-  ctx.stroke();
-  ctx.restore();
 
   // outer rim
   roundRectPath(long, wide, corner);
@@ -612,7 +592,7 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
 
   // damage: hairline cracks that deepen as HP drops
   if (dmgT > 0.35 && seg.flash <= 0) {
-    ctx.strokeStyle = `rgba(5,10,12,${Math.min(0.6, dmgT)})`;
+    ctx.strokeStyle = `rgba(255,180,150,${Math.min(0.7, dmgT)})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(-long * 0.15, -wide * 0.3);
@@ -631,16 +611,19 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
     const prot = 1 - E.headDamageFactor(bodyLeft);      // 0 = exposed, →1 = sealed
     const hit = seg.deflect > 0;
     const pulse = reduce ? 0 : Math.sin(performance.now() / 260) * 1.6;
-    ctx.strokeStyle = hit ? '#ffffff' : `rgba(201,162,39,${0.18 + prot * 0.5})`;
-    ctx.lineWidth = hit ? 3 : 1 + prot * 2;
-    ctx.beginPath();
-    ctx.arc(sp.x, sp.y, seg.r * 1.55 + (1 - prot) * 6 + pulse, 0, TAU);
-    ctx.stroke();
+    const rr = seg.r * 1.55 + (1 - prot) * 6 + pulse;
+    glowStroke(ctx, c => c.arc(sp.x, sp.y, rr, 0, TAU),
+      hit ? '#ffffff' : '#c9a227', hit ? 2.6 : 1 + prot * 1.6,
+      GLOW_PASSES_CHEAP, hit ? 1 : 0.35 + prot * 0.6);
   }
 
-  // HP readout for tough segments, upright (outside the rotation)
+  /* HP readout for tough segments, upright (outside the rotation). Light on
+     dark now: the body used to be a bright gradient so this was drawn dark, and
+     the glow pass inverted that contrast and made it invisible. The same trap
+     caught the damage cracks and the head's eye sockets — anything drawn dark
+     on top of what is now a dark body simply disappeared. */
   if (seg.maxhp > 3) {
-    ctx.fillStyle = 'rgba(5,10,12,.8)';
+    ctx.fillStyle = 'rgba(235,244,240,.92)';
     ctx.font = '700 9px "Chivo Mono",monospace'; ctx.textAlign = 'center';
     ctx.fillText(Math.ceil(seg.hp), sp.x, sp.y + 3.4);
     ctx.textAlign = 'left';
@@ -658,7 +641,7 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
     ctx.moveTo(-long * 0.3, 0); ctx.lineTo(long * 0.42, 0);
     ctx.stroke();
     // sensor eyes near the leading edge
-    ctx.fillStyle = 'rgba(5,10,12,.9)';
+    ctx.fillStyle = 'rgba(210,225,220,.55)';
     ctx.beginPath(); ctx.arc(long * 0.26, -wide * 0.24, 2.8, 0, TAU); ctx.fill();
     ctx.beginPath(); ctx.arc(long * 0.26, wide * 0.24, 2.8, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(224,80,60,.95)';
@@ -676,7 +659,7 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
     ctx.strokeStyle = seg.deflect > 0 ? '#ffffff' : '#bcd8f0';
     ctx.lineWidth = 1.5; ctx.stroke();
     // rivets
-    ctx.fillStyle = 'rgba(5,10,12,.6)';
+    ctx.fillStyle = 'rgba(11,26,34,.9)';
     for (const yy of [-wide * 0.28, wide * 0.28]) {
       ctx.beginPath(); ctx.arc(long * 0.32, yy, 1.2, 0, TAU); ctx.fill();
     }
@@ -867,9 +850,13 @@ function draw() {
   }
 
   const T = E.OD_TIERS[world.cannon.od];
+  // your ordnance is spherical, like everything on the defenders' side, and
+  // it is the brightest thing on the board because it is the thing you aim
   for (const p of world.shots) {
-    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU);
-    ctx.fillStyle = T.col; ctx.fill();
+    ctx.fillStyle = T.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+    glowDot(ctx, p.x, p.y, p.r, T.col);
+    glowDot(ctx, p.x, p.y, p.r * .5, '#ffffff');
   }
   for (const b of world.bits) {
     ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2));

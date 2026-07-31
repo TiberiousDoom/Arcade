@@ -519,3 +519,17 @@ The rule is absolute on purpose. Shape alone telling you which side something is
 - **Hull Breach** — deliberately unchanged. Its ball was already a sphere and its bricks are hull *plating*, not craft; forcing them square would have confused armour with units. The exception that proves the rule.
 
 Still outstanding: the glow pass for Flak Battery and Hull Breach. Both now have the right shapes but are still on flat fills, so they look out of step with the two games that have been converted.
+
+## 2026-07-31 — Glow pass finished: Hull Breach and Flak Battery
+
+The last two games onto the vector look, which completes the art direction across all four.
+
+**Neither game gets phosphor trails.** Hull Breach's board is mostly static plating and Flak Battery's is a fixed path — anything static accumulates under a fade until it washes out, which Drift Net has to compensate for with deliberately-thin alphas. Hull Breach instead gives *the ball alone* a trail, tracked as recent positions in the shell, so exactly one thing smears and the plating stays crisp. That is a better pattern than a full-frame fade wherever most of the screen is stationary.
+
+**Hull Breach's plates are not extruded**, even though they are rectangles on a dark board, which is normally exactly the `extrudeRect` case. Tiled edge to edge at this size the offset back faces overlap their neighbours and the whole field turns to mush. Extrusion needs empty space around an object to read as depth; a dense grid does not have any.
+
+**Damage now dims the rim rather than fading the body**, in both games. A half-broken plate should look like its lights are going out, not like it is becoming transparent — and on an emissive style, fading toward the background is indistinguishable from being destroyed.
+
+**The trap this pass sprang, again in a new form: contrast inversion.** Flak Battery's segment bodies used to be bright gradient plates, so the hp numbers, the damage cracks, the head's eye sockets and the shielded plate's rivets were all drawn *dark on top*. Making the body dark inverted every one of those, and they vanished — the numbers most visibly, since they are load-bearing information rather than decoration. Nothing failed; no test could have caught it; the pixels were all drawn exactly as instructed, in a colour now identical to what was underneath.
+
+That is the third distinct version of the same underlying mistake this week (glow instead of mass; additive cannot darken; now dark-on-dark after a body flip). The general rule, worth stating once: **converting to an emissive style inverts the background, so every foreground colour chosen against the old background has to be re-checked.** It is not enough to convert the shapes.

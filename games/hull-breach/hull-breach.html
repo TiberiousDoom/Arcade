@@ -51,6 +51,7 @@
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
+import { glowStroke, glowDot, extrudeRect, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
@@ -248,6 +249,7 @@ function frame(now) {
     if (kb) E.nudgePaddle(world, kb * 620 * dt);
 
     E.step(world, dt);
+    pushTrail();
 
     if (world.over) {
       clearRun(GAME_ID);          // a finished run is not one to come back to
@@ -292,21 +294,22 @@ function draw() {
   const L = world.L;
   ctx.clearRect(0, 0, W, H);
 
+  /* No phosphor fade here, for the same reason as Choke Point: most of this
+     board is static plating, and anything static accumulates under a fade until
+     it washes out. The ball gets its own trail instead — tracked in the shell,
+     so exactly one thing smears and the rest stays crisp. */
+
   // playfield border — down to the floor, not the canvas bottom, so on a
   // portrait board the thumb band reads as being outside the court
-  ctx.strokeStyle = 'rgba(99,121,127,.35)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(L.WALL, L.WALL, W - 2 * L.WALL, L.FLOOR - L.WALL);
+  glowStroke(ctx, c => c.rect(L.WALL, L.WALL, W - 2 * L.WALL, L.FLOOR - L.WALL),
+    '#4a6b74', 1, GLOW_PASSES_CHEAP, .7);
 
   // the open floor, marked so the losing edge is visible
-  ctx.strokeStyle = 'rgba(224,80,60,.3)';
-  ctx.lineWidth = 1;
+  ctx.save();
   ctx.setLineDash([6, 8]);
-  ctx.beginPath();
-  ctx.moveTo(L.WALL, L.FLOOR - 1.5);
-  ctx.lineTo(W - L.WALL, L.FLOOR - 1.5);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  glowStroke(ctx, c => { c.moveTo(L.WALL, L.FLOOR - 1.5); c.lineTo(W - L.WALL, L.FLOOR - 1.5); },
+    '#e0503c', 1.2, GLOW_PASSES_CHEAP, .8);
+  ctx.restore();
 
   // a lost-ball flash tints the floor red
   if (gfx.flash > 0) {
@@ -314,22 +317,27 @@ function draw() {
     ctx.fillRect(0, L.FLOOR - 60, W, 60);
   }
 
-  // bricks
+  /* Hull plating: a dark body with a lit rim, so each plate reads as a panel
+     bolted to a ship rather than as a painted rectangle. Damage dims the rim
+     rather than the body — a half-broken plate should look like its lights are
+     going out, not like it is becoming transparent.
+
+     Deliberately NOT `extrudeRect`: at this size, with a full field of them
+     tiled edge to edge, the offset back faces overlap their neighbours and the
+     grid turns to mush. Extrusion needs space around an object to read. */
   for (const b of world.bricks) {
     if (!b.alive) continue;
     const col = brickFace(b);
-    ctx.fillStyle = col;
-    ctx.globalAlpha = b.hp < b.maxhp ? 0.45 + 0.55 * (b.hp / b.maxhp) : 1;
-    ctx.fillRect(b.x, b.y, b.w, b.h);
+    const lit = b.hp < b.maxhp ? 0.35 + 0.65 * (b.hp / b.maxhp) : 1;
+    const face = (c) => c.rect(b.x + .5, b.y + .5, b.w - 1, b.h - 1);
+
+    ctx.fillStyle = 'rgba(10,22,27,.96)';
+    ctx.beginPath(); face(ctx); ctx.fill();
+
     if (b.flash > 0) {
-      ctx.globalAlpha = Math.min(1, b.flash * 6);
-      ctx.fillStyle = '#e6e9e2';
-      ctx.fillRect(b.x, b.y, b.w, b.h);
+      glowStroke(ctx, face, '#ffffff', 2, GLOW_PASSES_CHEAP, Math.min(1, b.flash * 6));
     }
-    ctx.globalAlpha = 1;
-    // a darker inner edge so tiled bricks stay distinct
-    ctx.strokeStyle = 'rgba(11,20,24,.5)'; ctx.lineWidth = 1;
-    ctx.strokeRect(b.x + .5, b.y + .5, b.w - 1, b.h - 1);
+    glowStroke(ctx, face, col, 1.6, GLOW_PASSES_CHEAP, lit);
   }
 
   // falling powerup capsules, drawn under the paddle layer so a catch reads as
@@ -338,23 +346,29 @@ function draw() {
 
   // paddle. It glows while `wide` is up, so the effect is visible on the thing
   // it actually changed rather than only in the HUD.
+  // The deflector, extruded: it is a solid piece of your own hardware, and the
+  // one defender-side object big enough for the thickness to actually read.
   const p = world.paddle;
   const wide = world.effects.wide > 0;
-  if (wide) {
-    ctx.fillStyle = E.POWERUPS.wide.col;
-    ctx.globalAlpha = .25;
-    ctx.fillRect(p.x - p.w / 2 - 3, L.PADDLE_Y - 3, p.w + 6, L.PADDLE_H + 6);
-    ctx.globalAlpha = 1;
-  }
-  ctx.fillStyle = wide ? E.POWERUPS.wide.col : '#c9a227';
-  ctx.fillRect(p.x - p.w / 2, L.PADDLE_Y, p.w, L.PADDLE_H);
-  ctx.fillStyle = 'rgba(230,233,226,.25)';
-  ctx.fillRect(p.x - p.w / 2, L.PADDLE_Y, p.w, 3);
+  const pcol = wide ? E.POWERUPS.wide.col : '#c9a227';
+  extrudeRect(ctx, p.x - p.w / 2, L.PADDLE_Y, p.w, L.PADDLE_H, pcol,
+    { depth: 5, width: 2, body: 'rgba(28,26,12,.97)' });
+  // a lit upper face, so the surface the ball bounces off is the bright one
+  glowStroke(ctx, c => {
+    c.moveTo(p.x - p.w / 2 + 2, L.PADDLE_Y + 1.5);
+    c.lineTo(p.x + p.w / 2 - 2, L.PADDLE_Y + 1.5);
+  }, '#fff2c8', 1.4, GLOW_PASSES_CHEAP);
 
   gfx.draw(ctx);
 
-  // balls — either the live ones, or the racked ball waiting on the paddle
-  ctx.fillStyle = '#e6e9e2';
+  /* The interceptor is a sphere, and the only thing here that trails. Recent
+     positions are kept in the shell rather than smearing the whole frame,
+     because the plating behind it must stay crisp. */
+  for (let i = 0; i < trail.length; i++) {
+    const g = trail[i];
+    glowDot(ctx, g.x, g.y, g.r * (0.35 + 0.45 * (i / trail.length)), '#8fd8ff',
+      0.28 * (i / trail.length));
+  }
   if (world.held) {
     const hp = E.heldBallPos(world);
     ball(hp.x, hp.y, L.BALL_R);
@@ -364,10 +378,19 @@ function draw() {
   drawEffects();
 }
 
+/* Recent ball positions, oldest first. Capped hard: this is a decorative tail,
+   and multiball can put six of them on screen at once. */
+const trail = [];
+const TRAIL_MAX = 10;
+function pushTrail() {
+  if (reduce) return;                     // motion trails are exactly what this flag is for
+  for (const b of world.balls) trail.push({ x: b.x, y: b.y, r: b.r });
+  while (trail.length > TRAIL_MAX * Math.max(1, world.balls.length)) trail.shift();
+}
+
 function ball(x, y, r) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, TAU);
-  ctx.fill();
+  glowDot(ctx, x, y, r, '#e6e9e2');
+  glowDot(ctx, x, y, r * .45, '#ffffff');
 }
 
 /* A capsule: a rounded pill in the powerup's colour with a one-letter glyph.
@@ -376,11 +399,10 @@ const DROP_GLYPH = { multi: '3', wide: '↔', slow: '▼', life: '+' };
 
 function drawDrop(d) {
   const P = E.POWERUPS[d.kind], r = E.DROP_R;
+  // solid body first, glow over it — a capsule you miss is a capsule wasted
   ctx.fillStyle = P.col;
-  ctx.globalAlpha = .22;
-  ctx.beginPath(); ctx.arc(d.x, d.y, r + 4, 0, TAU); ctx.fill();
-  ctx.globalAlpha = 1;
   ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, TAU); ctx.fill();
+  glowDot(ctx, d.x, d.y, r, P.col);
   ctx.fillStyle = '#0b1418';
   ctx.font = "700 13px 'Chivo Mono', monospace";
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

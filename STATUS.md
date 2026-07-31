@@ -183,7 +183,7 @@ The fiction was chosen to fit mechanics that already existed rather than the oth
 
 **The visual half landed in v20**, once the v17 trait cues were confirmed readable on device. Invaders are cubes, defenders are spheres, absolutely — Drift Net is a chain of cubes on a tether, Flak Battery a column of square craft, Choke Point square ground units against round emplacements. Hull Breach needed no change: its ball was already a sphere, and its bricks stay rectangular *plates* because they are hull armour rather than craft.
 
-**Still to do:** the glow pass for Flak Battery and Hull Breach. Both have the right shapes now but are still on the old flat fills, so they look out of step with Drift Net and Choke Point.
+**The art direction is complete across all four games** as of v22. Flak Battery is a column of lit cube craft with glowing spherical ordnance; Hull Breach is lit hull plating with a trailing interceptor. Neither takes phosphor trails — both boards are mostly static, and static content accumulates under a fade; Hull Breach trails only the ball instead, tracked in the shell.
 
 ## Open decisions (not yet settled)
 

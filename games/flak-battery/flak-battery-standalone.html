@@ -1670,7 +1670,245 @@ function makeFit({ canvas, stage, board, extra }) {
 
 return { GAP_AND_PADDING, makeFit };
 })();
-const __mod_3 = (() => {
+const __mod_2 = (() => {
+/* The vector/CRT look, as Canvas 2D primitives.
+
+   The reference is vector-arcade hardware — Asteroids, Tempest, Battlezone —
+   where a beam draws lines onto phosphor rather than filling pixels. Three
+   ideas do all the work:
+
+   1. An emissive stroke is the SAME path drawn several times, widest and
+      dimmest first, narrowest and brightest last, composited with 'lighter' so
+      the passes accumulate. That stacking is what makes a line read as
+      emitting light rather than as being painted.
+   2. Volume comes from a dark opaque body with a glowing rim and a second face
+      offset behind it — not from shading, which emissive line art cannot do.
+      See `extrude`.
+   3. Phosphor persistence is a frame that is faded rather than cleared.
+
+   Deliberately NOT using `shadowBlur`, which is the obvious API for glow and is
+   brutally slow — measurably so on a phone. Multi-pass strokes get the same
+   look for a fraction of the cost and give control over the falloff.
+
+   Deliberately NOT using WebGL either, which would make real bloom cheap. The
+   render tests boot every shell against node-canvas, which is 2D only, so
+   moving to WebGL would throw away the draw-path safety net across all four
+   games. That trade is not worth it for a look this achieves anyway. */
+
+/** Default falloff: [widthMultiplier, alpha] per pass, dim-and-wide first. */
+const GLOW_PASSES = [[6, 0.10], [3.5, 0.20], [2, 0.45], [1, 1]];
+/** A cheaper two-pass falloff for things drawn many times per frame. */
+const GLOW_PASSES_CHEAP = [[3.5, 0.16], [1, 0.9]];
+
+/**
+ * Stroke a path so it glows.
+ * @param ctx    canvas context
+ * @param path   (ctx) => void — issues the path commands, no stroke/fill
+ * @param col    CSS colour
+ * @param width  width of the bright core
+ * @param passes falloff table; use GLOW_PASSES_CHEAP in hot loops
+ * @param intensity 0..1 dimmer. Has to be a parameter rather than an outer
+ *        `globalAlpha`, because each pass sets its own alpha and would
+ *        overwrite it — a caller wrapping this in save/globalAlpha/restore
+ *        silently gets no effect at all.
+ */
+function glowStroke(ctx, path, col, width = 2, passes = GLOW_PASSES, intensity = 1) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = col;
+  for (const [mult, alpha] of passes) {
+    ctx.globalAlpha = alpha * intensity;
+    ctx.lineWidth = width * mult;
+    ctx.beginPath();
+    path(ctx);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** A solid emissive dot of radius `r`, with the glow spreading *outside* it —
+ *  for sparks, food, impact flashes.
+ *
+ *  `r` is the size of the opaque core, not the outer extent of the haze, and
+ *  that matters: an earlier version put the only full-alpha pass at r * 0.5, so
+ *  a caller asking for a 7px pellet got a 3px core wrapped in a soft smudge.
+ *  It rendered — it just read as a faint blur rather than an object, and Live
+ *  Wire's food became genuinely hard to spot on a phone. A dot should be as
+ *  solid as the flat art it replaces, and merely gain a halo.
+ *
+ *  Stacked filled discs rather than a stroked circle, because a stroked circle
+ *  is an annulus and comes out as a donut at small radii. */
+function glowDot(ctx, x, y, r, col, intensity = 1) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = col;
+  for (const [mult, alpha] of [[2.2, 0.08], [1.6, 0.16], [1.2, 0.30], [1, 1]]) {
+    ctx.globalAlpha = alpha * intensity;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(0.4, r * mult), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Paint over an emissive shape in a dark colour — pupils, vents, panel lines.
+ *  Additive compositing cannot darken, so detail *inside* a glowing object has
+ *  to be drawn normally, on top. */
+function inkDot(ctx, x, y, r, col = 'rgba(6,20,17,.92)') {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * Draw a shape as a solid object with thickness: a dark face offset behind,
+ * the connecting edges, then a dark body in front with a glowing rim.
+ *
+ * The body fill matters as much as the glow — it occludes whatever is behind,
+ * which is what stops a screen full of emissive line art turning into soup.
+ *
+ * @param path   (ctx, dx, dy) => void — the outline, offset by (dx, dy)
+ * @param opts.depth  how far the back face sits down-right
+ * @param opts.body   fill for the front face
+ */
+function extrude(ctx, path, col, {
+  depth = 7, width = 1.8, body = 'rgba(8,18,22,.97)', back = 'rgba(6,14,17,.95)',
+  edges = null,
+} = {}) {
+  const dx = depth * 0.55, dy = depth;
+
+  // back face, filled dark then rimmed very faintly so it reads as *behind*
+  ctx.save();
+  ctx.fillStyle = back;
+  ctx.beginPath(); path(ctx, dx, dy); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c => path(c, dx, dy), col, 1, [[4, 0.05], [2, 0.10]]);
+
+  // the side edges connecting the faces — this is what says "extruded" rather
+  // than "two copies". Supplied per-shape because only the caller knows which
+  // points are on the silhouette.
+  if (edges) glowStroke(ctx, c => edges(c, dx, dy), col, 1, [[3, 0.07], [1.2, 0.18]]);
+
+  // front face: opaque body, then the bright rim
+  ctx.save();
+  ctx.fillStyle = body;
+  ctx.beginPath(); path(ctx, 0, 0); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c => path(c, 0, 0), col, width);
+}
+
+/** Convenience: an extruded disc, with the specular arc that reads as curvature. */
+function extrudeDisc(ctx, x, y, r, col, opts = {}) {
+  const depth = opts.depth ?? 7;
+  extrude(ctx, (c, dx, dy) => c.arc(x + dx, y + dy, r, 0, Math.PI * 2), col, opts);
+  // a short highlight on the lit side. Small, but it is the single cue that
+  // makes a flat disc read as a domed one.
+  glowStroke(ctx, c => c.arc(x, y, r * 0.62, Math.PI * 1.15, Math.PI * 1.75),
+    '#ffffff', 1, [[3, 0.08], [1.4, 0.22]]);
+}
+
+/** The invaders' shape.
+ *
+ *  A square face with a second face offset behind it and the silhouette corners
+ *  joined, which reads as a cube without needing a projection matrix. `rot`
+ *  tumbles it — worth using for things in flight, wrong for things marching in
+ *  formation on the ground.
+ *
+ *  This is the whole visual half of the setting: everything the invaders are
+ *  made of is a cube, everything the defenders are made of is a sphere. Keeping
+ *  that rule absolute is what makes a board readable at a glance, so resist
+ *  drawing a "sort of rounded" anything. */
+function cube(ctx, x, y, size, col, {
+  depth = size * 0.34, rot = 0, width = 2,
+  body = 'rgba(10,20,26,.97)', back = 'rgba(7,14,18,.95)',
+} = {}) {
+  const h = size / 2;
+  const c = Math.cos(rot), s = Math.sin(rot);
+  // corners of the front face, rotated about the centre
+  const pt = (sx, sy) => ({ x: x + (sx * h * c - sy * h * s), y: y + (sx * h * s + sy * h * c) });
+  const F = [pt(-1, -1), pt(1, -1), pt(1, 1), pt(-1, 1)];
+  const dx = depth * 0.55, dy = depth;
+
+  const face = (c2, ox, oy) => {
+    c2.moveTo(F[0].x + ox, F[0].y + oy);
+    for (let i = 1; i < 4; i++) c2.lineTo(F[i].x + ox, F[i].y + oy);
+    c2.closePath();
+  };
+
+  ctx.save();
+  ctx.fillStyle = back;
+  ctx.beginPath(); face(ctx, dx, dy); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c2 => face(c2, dx, dy), col, 1, [[4, 0.05], [2, 0.10]]);
+
+  // the joining edges are what say "solid", not "two squares"
+  glowStroke(ctx, c2 => {
+    for (const p of F) { c2.moveTo(p.x, p.y); c2.lineTo(p.x + dx, p.y + dy); }
+  }, col, 1, [[3, 0.07], [1.2, 0.18]]);
+
+  ctx.save();
+  ctx.fillStyle = body;
+  ctx.beginPath(); face(ctx, 0, 0); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c2 => face(c2, 0, 0), col, width);
+}
+
+/** Convenience: an extruded axis-aligned rectangle. */
+function extrudeRect(ctx, x, y, w, h, col, opts = {}) {
+  const depth = opts.depth ?? 6;
+  extrude(ctx, (c, dx, dy) => c.rect(x + dx, y + dy, w, h), col, {
+    ...opts, depth,
+    edges: (c, dx, dy) => {
+      // only the two silhouette corners need connecting for an axis-aligned box
+      c.moveTo(x + w, y);         c.lineTo(x + w + dx, y + dy);
+      c.moveTo(x + w, y + h);     c.lineTo(x + w + dx, y + h + dy);
+      c.moveTo(x, y + h);         c.lineTo(x + dx, y + h + dy);
+    },
+  });
+}
+
+/**
+ * Phosphor persistence: fade the frame instead of clearing it, so moving
+ * objects leave a decaying trail.
+ *
+ * `reduce` short-circuits to a hard clear — trails are exactly the kind of
+ * motion `prefers-reduced-motion` exists to suppress, and a game that ignores
+ * it is worse than one that never had the effect.
+ */
+function fadeFrame(ctx, w, h, { amount = 0.28, bg = '#050b0d', reduce = false } = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  if (reduce) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    // the alpha is applied to the background colour, so the trail decays
+    // toward the board colour rather than toward transparent
+    ctx.globalAlpha = amount;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+  }
+  ctx.restore();
+}
+
+/** Horizontal scanlines. Cheap, and the thing that most says "CRT". */
+function scanlines(ctx, w, h, { gap = 3, strength = 0.28 } = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = `rgba(0,0,0,${strength})`;
+  for (let y = 0; y < h; y += gap) ctx.fillRect(0, y, w, 1);
+  ctx.restore();
+}
+
+return { GLOW_PASSES, GLOW_PASSES_CHEAP, glowStroke, glowDot, inkDot, extrude, extrudeDisc, cube, extrudeRect, fadeFrame, scanlines };
+})();
+const __mod_4 = (() => {
 /* The single source of truth for "which build is this?".
 
    This exists because of a real problem, not for decoration: the service worker
@@ -1689,14 +1927,14 @@ const __mod_3 = (() => {
    can see and a cache they can't must never disagree. `version.test.js` reads
    sw.js and fails if the two drift, so this is enforced rather than hoped for —
    bump both together. */
-const BUILD = 'v19';
+const BUILD = 'v21';
 
-/** Short human label, e.g. "Arcade v19". */
+/** Short human label, e.g. "Arcade v21". */
 const BUILD_LABEL = `Arcade ${BUILD}`;
 
 return { BUILD, BUILD_LABEL };
 })();
-const __mod_2 = (() => {
+const __mod_3 = (() => {
 /* A "?" button in the corner of the board that opens the instructions.
 
    Instructions used to live in the opening banner, which meant they were long,
@@ -1704,7 +1942,7 @@ const __mod_2 = (() => {
    bottom of the screen. Behind a button they can be as detailed as they like
    and cost no space until asked for. */
 
-const { BUILD_LABEL } = __mod_3;
+const { BUILD_LABEL } = __mod_4;
 
 /**
  * @param stage    the positioned element the button and panel are placed in
@@ -1759,7 +1997,7 @@ function makeHelp({ stage, title, rows = [], notes = [], lore = '' }) {
 
 return { makeHelp };
 })();
-const __mod_4 = (() => {
+const __mod_5 = (() => {
 /* Personal bests, kept in localStorage.
 
    Deliberately local-only: no account, no server, no identifier of any kind.
@@ -1828,7 +2066,7 @@ function clear(game) {
 
 return { KEY, memory, warned, readRaw, writeRaw, best, submit, clear };
 })();
-const __mod_5 = (() => {
+const __mod_6 = (() => {
 /* Mid-run saves — "continue where you left off".
 
    Scores were easy: one number, write it when a run ends. A run in progress is
@@ -1847,7 +2085,7 @@ const __mod_5 = (() => {
    localStorage is allowed to fail. Same split, and the same defensive posture,
    as shared/scores.js. */
 
-const { BUILD } = __mod_3;
+const { BUILD } = __mod_4;
 
 const KEY = (gameId) => `arcade:run:${gameId}`;
 
@@ -1907,7 +2145,7 @@ function hasRun(gameId) { return loadRun(gameId) !== null; }
 
 return { KEY, read, write, remove, saveRun, loadRun, clearRun, hasRun };
 })();
-const __mod_6 = (() => {
+const __mod_7 = (() => {
 /* Sound effects, synthesized on the fly with WebAudio.
 
    No audio files ship. Every blip is a few oscillators and an envelope, which
@@ -2051,13 +2289,15 @@ const E = __mod_0;
 
 const { makeFit } = __mod_1;
 
-const { makeHelp } = __mod_2;
+const { glowStroke, glowDot, GLOW_PASSES_CHEAP } = __mod_2;
 
-const { best, submit } = __mod_4;
+const { makeHelp } = __mod_3;
 
-const { saveRun, loadRun, clearRun } = __mod_5;
+const { best, submit } = __mod_5;
 
-const { makeAudio, mountAudioToggle } = __mod_6;
+const { saveRun, loadRun, clearRun } = __mod_6;
+
+const { makeAudio, mountAudioToggle } = __mod_7;
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -2490,45 +2730,24 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
 
   const base = seg.flash > 0 ? '#ffffff' : K.col;
 
-  // drop shadow, offset down-right from a top-left light
-  ctx.save();
-  ctx.translate(1.5, 2.2);
-  roundRectPath(long, wide, corner);
-  ctx.fillStyle = 'rgba(5,10,12,.55)';
-  ctx.fill();
-  ctx.restore();
+  /* A dark body with a lit rim, not a gradient-filled plate. Each craft in the
+     column reads as a cube with its running lights on, which is what the other
+     three games do and what the setting asks for. Damage dims the rim rather
+     than fading the body: a hurt craft should look like its lights are going
+     out, not like it is turning transparent. */
+  const lit = 1 - dmgT * 0.55;
 
-  // body with a lengthwise gradient: lit top edge, shadowed bottom
-  const grad = ctx.createLinearGradient(0, -wide / 2, 0, wide / 2);
+  roundRectPath(long, wide, corner);
+  ctx.fillStyle = 'rgba(9,19,24,.96)';
+  ctx.fill();
+
   if (seg.flash > 0) {
-    grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#e8e8e8');
-  } else {
-    grad.addColorStop(0, shade(base, 34));
-    grad.addColorStop(0.5, base);
-    grad.addColorStop(1, shade(base, -40));
+    glowStroke(ctx, () => roundRectPath(long, wide, corner), '#ffffff', 2.4,
+      GLOW_PASSES_CHEAP, Math.min(1, seg.flash * 8));
   }
-  roundRectPath(long, wide, corner);
-  ctx.fillStyle = grad;
-  ctx.globalAlpha = 0.96 - dmgT * 0.22;
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  glowStroke(ctx, () => roundRectPath(long, wide, corner), base, 1.8,
+    GLOW_PASSES_CHEAP, lit);
 
-  // bevel: bright top-left inner stroke, dark bottom-right
-  ctx.save();
-  roundRectPath(long, wide, corner);
-  ctx.clip();
-  ctx.lineWidth = 2.4;
-  ctx.strokeStyle = seg.flash > 0 ? '#ffffff' : shade(base, 55);
-  ctx.beginPath();
-  ctx.moveTo(-long / 2 + corner, -wide / 2 + 1);
-  ctx.lineTo(long / 2 - corner, -wide / 2 + 1);
-  ctx.stroke();
-  ctx.strokeStyle = shade(base, -55);
-  ctx.beginPath();
-  ctx.moveTo(-long / 2 + corner, wide / 2 - 1);
-  ctx.lineTo(long / 2 - corner, wide / 2 - 1);
-  ctx.stroke();
-  ctx.restore();
 
   // outer rim
   roundRectPath(long, wide, corner);
@@ -2541,7 +2760,7 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
 
   // damage: hairline cracks that deepen as HP drops
   if (dmgT > 0.35 && seg.flash <= 0) {
-    ctx.strokeStyle = `rgba(5,10,12,${Math.min(0.6, dmgT)})`;
+    ctx.strokeStyle = `rgba(255,180,150,${Math.min(0.7, dmgT)})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(-long * 0.15, -wide * 0.3);
@@ -2560,16 +2779,19 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
     const prot = 1 - E.headDamageFactor(bodyLeft);      // 0 = exposed, →1 = sealed
     const hit = seg.deflect > 0;
     const pulse = reduce ? 0 : Math.sin(performance.now() / 260) * 1.6;
-    ctx.strokeStyle = hit ? '#ffffff' : `rgba(201,162,39,${0.18 + prot * 0.5})`;
-    ctx.lineWidth = hit ? 3 : 1 + prot * 2;
-    ctx.beginPath();
-    ctx.arc(sp.x, sp.y, seg.r * 1.55 + (1 - prot) * 6 + pulse, 0, TAU);
-    ctx.stroke();
+    const rr = seg.r * 1.55 + (1 - prot) * 6 + pulse;
+    glowStroke(ctx, c => c.arc(sp.x, sp.y, rr, 0, TAU),
+      hit ? '#ffffff' : '#c9a227', hit ? 2.6 : 1 + prot * 1.6,
+      GLOW_PASSES_CHEAP, hit ? 1 : 0.35 + prot * 0.6);
   }
 
-  // HP readout for tough segments, upright (outside the rotation)
+  /* HP readout for tough segments, upright (outside the rotation). Light on
+     dark now: the body used to be a bright gradient so this was drawn dark, and
+     the glow pass inverted that contrast and made it invisible. The same trap
+     caught the damage cracks and the head's eye sockets — anything drawn dark
+     on top of what is now a dark body simply disappeared. */
   if (seg.maxhp > 3) {
-    ctx.fillStyle = 'rgba(5,10,12,.8)';
+    ctx.fillStyle = 'rgba(235,244,240,.92)';
     ctx.font = '700 9px "Chivo Mono",monospace'; ctx.textAlign = 'center';
     ctx.fillText(Math.ceil(seg.hp), sp.x, sp.y + 3.4);
     ctx.textAlign = 'left';
@@ -2587,7 +2809,7 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
     ctx.moveTo(-long * 0.3, 0); ctx.lineTo(long * 0.42, 0);
     ctx.stroke();
     // sensor eyes near the leading edge
-    ctx.fillStyle = 'rgba(5,10,12,.9)';
+    ctx.fillStyle = 'rgba(210,225,220,.55)';
     ctx.beginPath(); ctx.arc(long * 0.26, -wide * 0.24, 2.8, 0, TAU); ctx.fill();
     ctx.beginPath(); ctx.arc(long * 0.26, wide * 0.24, 2.8, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(224,80,60,.95)';
@@ -2605,7 +2827,7 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
     ctx.strokeStyle = seg.deflect > 0 ? '#ffffff' : '#bcd8f0';
     ctx.lineWidth = 1.5; ctx.stroke();
     // rivets
-    ctx.fillStyle = 'rgba(5,10,12,.6)';
+    ctx.fillStyle = 'rgba(11,26,34,.9)';
     for (const yy of [-wide * 0.28, wide * 0.28]) {
       ctx.beginPath(); ctx.arc(long * 0.32, yy, 1.2, 0, TAU); ctx.fill();
     }
@@ -2796,9 +3018,13 @@ function draw() {
   }
 
   const T = E.OD_TIERS[world.cannon.od];
+  // your ordnance is spherical, like everything on the defenders' side, and
+  // it is the brightest thing on the board because it is the thing you aim
   for (const p of world.shots) {
-    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU);
-    ctx.fillStyle = T.col; ctx.fill();
+    ctx.fillStyle = T.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+    glowDot(ctx, p.x, p.y, p.r, T.col);
+    glowDot(ctx, p.x, p.y, p.r * .5, '#ffffff');
   }
   for (const b of world.bits) {
     ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2));
