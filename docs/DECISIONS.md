@@ -2,10 +2,21 @@
 
 Append-only log of choices worth remembering, and *why*. Newest at the bottom. Keep entries short — a sentence or two of reasoning is enough for future us to avoid re-litigating this cold. See [STATUS.md](../STATUS.md) for current state and [CLAUDE.md](../CLAUDE.md) for architecture.
 
-> **Note on names.** Two games were renamed on 2026-07-22 (see the entry at the
-> bottom): **Breakout → Angle Iron**, **Snake → Live Wire**. Entries written
-> before then use the old names; they're left as written, because rewriting an
-> append-only log would misrepresent what was actually decided at the time.
+> **Note on names.** The games have been renamed twice. Entries always use the
+> name that was current when they were written, and are never rewritten — this
+> is an append-only log of what was decided *at the time*, and back-dating names
+> would make past entries claim things that were not true when written.
+>
+> **2026-07-22:** Breakout → Angle Iron, Snake → Live Wire.
+>
+> **2026-07-30:** all four renamed to fit the shared setting.
+>
+> | originally | then | now |
+> |---|---|---|
+> | Snake | Live Wire | **Drift Net** |
+> | — | Serpent Battery | **Flak Battery** |
+> | — | Circuit Breaker | **Choke Point** |
+> | Breakout | Angle Iron | **Hull Breach** |
 
 ## 2026-07-22 — Phone app path: PWA first, native later
 
@@ -468,3 +479,30 @@ Third game onto the vector look, and the one flagged from the start as needing t
 Beams get the biggest payoff, unsurprisingly — a hitscan zap is literally a line of light. Tower colour with a white-hot core, plus a flare where it lands so a hit registers even when the target survives.
 
 Also fixed `tools/screenshot.mjs`, which had been quietly lying: most shells clear to transparent and let the page background show through, so a raw capture carries an alpha channel that renders as white and makes a dark game look like a blown-out negative. It now paints the board colour underneath with `destination-over` — which also avoids `drawImage` rejecting a canvas from a different copy of the node-canvas module.
+
+## 2026-07-30 — The four games are one story, and were renamed to match
+
+The games were four unrelated toys that happened to share a look. They are now one arc: **you play the invasion first, then defend against it twice, then answer it.**
+
+| # | now | was | you are |
+|---|---|---|---|
+| 1 | Drift Net | Live Wire | the invader — a connected body that grows by taking worlds |
+| 2 | Flak Battery | Serpent Battery | planetary anti-air as the fleet descends |
+| 3 | Choke Point | Circuit Breaker | ground defence once they have landed |
+| 4 | Hull Breach | Angle Iron | the counter-attack against their hull |
+
+**The fiction was fitted to mechanics that already existed, not the reverse**, which is the whole reason it works. Drift Net already grows and wins by covering the board. Flak Battery already faces a single descending chain. Choke Point already funnels a column along a fixed route toward a core you defend. Hull Breach was already a sphere against rectangular plates. Nothing had to be built to make the story true.
+
+Two mechanics gained a meaning for free: killing Flak Battery's head ending the whole formation is now a command ship (and the body-armours-the-head rule reads as escorts screening it), and Choke Point's Patch healing its neighbours is a repair drone.
+
+**Names keep the existing convention** — real compound terms that mean two things at once, as Live Wire, Angle Iron, Circuit Breaker and a *battery* of guns all did. Flak Battery is an anti-aircraft emplacement. A drift net is a long connected thing that sweeps up everything it touches. A choke point is where a small force holds a larger one. A hull breach is both the act and the result.
+
+**The invaders are never named.** Colder, and it keeps the collection from sounding like it wants to be a franchise. The shapes carry the identity instead.
+
+**Told in one line per game**, on the cabinet card and at the top of the help panel (`makeHelp({ lore })`). No cutscenes and no text screens: the games stay pick-up-and-play and anyone who doesn't care never reads a word of it. The cabinet also orders the cards by the story rather than by build date, and numbers them.
+
+**Game IDs and directories were renamed too.** This was raised as a cost — `shared/scores.js` and `shared/resume.js` key off the game id, and the cabinet derives it from a CSS class, so renaming silently discards every personal best and every saved run. The owner accepted that knowingly: one player, and he did not mind. Recorded because the *next* rename may not be so cheap, and would want a migration with a fallback read of the old key.
+
+One thing the rename nearly got wrong: each game's `<h1>` is split across a span — `<h1>Live <span>Wire</span></h1>` — so a bulk replacement of the literal string missed all four titles while changing everything else. Every page still said its old name in the largest text on screen, and every test passed. Caught by loading the games and reading the DOM rather than by trusting the replacement count.
+
+**Deliberately deferred:** the visual half — spheres for defenders, cubes for invaders. Changing every enemy from a disc to a cube at the same moment as finding out whether the v17 trait cues read on a device would make both answers unreadable.

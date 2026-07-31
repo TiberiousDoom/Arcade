@@ -1,6 +1,6 @@
 /* Arcade — shared cabinet styling.
    Every game shell links this and then adds only its own game-specific rules
-   (Serpent Battery's shop and heat gauge, Breakout's nothing, Snake's nothing).
+   (Flak Battery's shop and heat gauge, Breakout's nothing, Snake's nothing).
 
    Per-game variation goes through the custom properties below rather than
    redeclaring rules: set them in a small :root block in the shell.
@@ -182,6 +182,12 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 }
 #helpPanel li::before{content:'—';position:absolute;left:0;color:var(--line)}
 #helpClose{align-self:flex-start;margin-top:auto;padding:10px 20px}
+/* one line of setting under the panel title — present, but clearly not
+   instructions, so it can be skipped without missing anything playable */
+#helpPanel .lore{
+  font-size:11px;line-height:1.6;color:var(--dim);font-style:italic;
+  border-left:2px solid var(--line);padding-left:10px;margin:-2px 0 4px;
+}
 /* the build string, deliberately the quietest thing in the panel */
 #helpPanel .build{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--line);margin-top:10px}
 

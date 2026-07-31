@@ -7,14 +7,14 @@
    restores rather than starting fresh.
 
    Needs `npm install --no-save jsdom canvas`.
-   Run: node --test games/circuit-breaker/resume-test.mjs
+   Run: node --test games/choke-point/resume-test.mjs
 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { bootAndStart, wait } from '../../tools/render-harness.mjs';
 
-const SHELL = fileURLToPath(new URL('./circuit-breaker.html', import.meta.url));
+const SHELL = fileURLToPath(new URL('./choke-point.html', import.meta.url));
 
 /** Play far enough in that there is something worth saving. */
 async function playAWhile(g, frames = 260) {
@@ -51,13 +51,13 @@ test('backgrounding the app writes a save, and it survives a reload', async () =
   Object.defineProperty(doc, 'hidden', { value: true, configurable: true });
   doc.dispatchEvent(new first.window.Event('visibilitychange', { bubbles: true }));
 
-  const stored = first.window.localStorage.getItem('arcade:run:circuit-breaker');
+  const stored = first.window.localStorage.getItem('arcade:run:choke-point');
   assert.ok(stored, 'a save was written');
   const parsed = JSON.parse(stored);
   assert.ok(parsed.label.includes('Wave'), `label reads "${parsed.label}"`);
 
   // a fresh boot with that storage carried over is what a reload looks like
-  const second = await bootAndStart(SHELL, { storage: { 'arcade:run:circuit-breaker': stored } });
+  const second = await bootAndStart(SHELL, { storage: { 'arcade:run:choke-point': stored } });
   assert.deepEqual(second.errors, [], 'second boot threw');
   assert.equal(second.world.wave, before.wave, 'wave came back');
   assert.equal(second.world.score, before.score, 'score came back');
@@ -74,7 +74,7 @@ test('a finished run leaves nothing to resume', async () => {
   const doc = g.window.document;
   Object.defineProperty(doc, 'hidden', { value: true, configurable: true });
   doc.dispatchEvent(new g.window.Event('visibilitychange', { bubbles: true }));
-  assert.equal(g.window.localStorage.getItem('arcade:run:circuit-breaker'), null,
+  assert.equal(g.window.localStorage.getItem('arcade:run:choke-point'), null,
     'a game over is not something to come back to');
 });
 
@@ -83,14 +83,14 @@ test('a save from another build is discarded rather than restored', async () => 
     build: 'v0-ancient', at: Date.now(), label: 'Wave 9 · 5000',
     snap: { routeIndex: 0, towers: [], enemies: [], wave: 9, score: 5000 },
   });
-  const g = await bootAndStart(SHELL, { storage: { 'arcade:run:circuit-breaker': stale } });
+  const g = await bootAndStart(SHELL, { storage: { 'arcade:run:choke-point': stale } });
   assert.deepEqual(g.errors, [], 'boot threw on a stale save');
   assert.equal(g.world.wave, 0, 'started fresh instead of restoring across builds');
-  assert.equal(g.window.localStorage.getItem('arcade:run:circuit-breaker'), null, 'and cleared it');
+  assert.equal(g.window.localStorage.getItem('arcade:run:choke-point'), null, 'and cleared it');
 });
 
 test('a corrupt save does not stop the game loading', async () => {
-  const g = await bootAndStart(SHELL, { storage: { 'arcade:run:circuit-breaker': '{ not json' } });
+  const g = await bootAndStart(SHELL, { storage: { 'arcade:run:choke-point': '{ not json' } });
   assert.deepEqual(g.errors, [], 'boot threw on a corrupt save');
   assert.ok(g.world, 'the game still came up');
   assert.equal(g.world.wave, 0, 'as a fresh run');

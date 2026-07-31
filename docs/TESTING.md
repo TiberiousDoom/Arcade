@@ -9,8 +9,8 @@ Updated 2026-07-30 for build v17. When a section is settled, record the outcome
 in STATUS.md's open decisions and delete the section rather than leaving it to
 rot.
 
-**Already settled, do not re-test:** Serpent Battery's aim (confirmed good on
-device, `AIM_ASSIST_R` 9 / `TRAVERSE_MAX` 5.6 stand), and Live Wire's food
+**Already settled, do not re-test:** Flak Battery's aim (confirmed good on
+device, `AIM_ASSIST_R` 9 / `TRAVERSE_MAX` 5.6 stand), and Drift Net's food
 visibility (fixed in v16, confirmed).
 
 ---
@@ -29,7 +29,7 @@ old build and every symptom below would then be meaningless.
 
 ---
 
-## 1. Circuit Breaker — the new art (v17)
+## 1. Choke Point — the new art (v17)
 
 Taken onto the vector look most conservatively of all the games, because its
 enemy trait cues depend on crisp silhouettes. **This is the section I'd most
@@ -49,7 +49,7 @@ like results from.**
       may have been overcorrected.
 - [ ] Towers should read as solid objects with thickness, not hollow rings.
 
-## 2. Circuit Breaker — depth (still outstanding from v11)
+## 2. Choke Point — depth (still outstanding from v11)
 
 Never yet reported on. Needs a run to **at least wave 11**.
 
@@ -72,7 +72,7 @@ Never yet reported on. Needs a run to **at least wave 11**.
 
 ## 3. Mid-run saves (new in v12/v13)
 
-Circuit Breaker, Serpent Battery and Angle Iron only. Live Wire is deliberately
+Choke Point, Flak Battery and Hull Breach only. Drift Net is deliberately
 excluded — it's one-life score-attack.
 
 - [ ] Start a run, get a few waves/levels in, then **switch apps** (don't just
@@ -85,7 +85,7 @@ excluded — it's one-life score-attack.
       afterwards.
 - [ ] Repeat for all three games.
 
-## 4. Serpent Battery — difficulty rework (still outstanding from v11)
+## 4. Flak Battery — difficulty rework (still outstanding from v11)
 
 Aim is settled; this is about the difficulty changes.
 
@@ -105,7 +105,7 @@ Aim is settled; this is about the difficulty changes.
       read clearly, and look different from "Maxed"?
 - [ ] HUD: values are larger and labels smaller. Easier to read mid-fight?
 
-## 5. Angle Iron — powerups (still outstanding from v11)
+## 5. Hull Breach — powerups (still outstanding from v11)
 
 - [ ] Capsules drop from bricks and are catchable with the paddle.
 - [ ] Glyphs legible at phone size: **3** split · **↔** wide · **▼** slow ·
@@ -115,7 +115,7 @@ Aim is settled; this is about the difficulty changes.
 - [ ] Drop rate (~1 brick in 7) — treat or torrent?
 - [ ] Does multiball become fun or chaos?
 
-## 6. Live Wire — the art pilot (v14–v16)
+## 6. Drift Net — the art pilot (v14–v16)
 
 Mostly confirmed already; only the leftovers.
 

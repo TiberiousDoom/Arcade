@@ -53,6 +53,16 @@
     font-size:15px;text-transform:uppercase;letter-spacing:-.01em;
   }
   .card p{font-size:11px;line-height:1.6;color:var(--dim)}
+  /* The cards are ordered as the story runs, not by when the games were built:
+     you play the invasion first, then defend against it twice, then answer it.
+     The lore line says which part of that this is; the step marker says where
+     you are in it. Both are skippable — the mechanical description below is
+     still what tells you how the game works. */
+  .card .lore{
+    font-size:11px;line-height:1.6;color:var(--bone);font-style:italic;
+    border-left:2px solid var(--pip);padding-left:10px;
+  }
+  .card .step{color:var(--pip);opacity:.75;letter-spacing:.14em}
   .card .how{
     font-size:9px;letter-spacing:.14em;text-transform:uppercase;
     color:var(--pip);margin-top:auto;padding-top:4px;
@@ -62,10 +72,10 @@
   .card .best b{color:var(--bone);font-weight:600}
 
   /* each card tints itself with the accent of the game it opens */
-  .card.serpent-battery{--pip:#c9a227}
-  .card.angle-iron{--pip:#3fae8f}
-  .card.live-wire{--pip:#5fc9a4}
-  .card.circuit-breaker{--pip:#6fb7e8}
+  .card.flak-battery{--pip:#c9a227}
+  .card.hull-breach{--pip:#3fae8f}
+  .card.drift-net{--pip:#5fc9a4}
+  .card.choke-point{--pip:#6fb7e8}
 
   footer{display:flex;flex-direction:column;gap:6px;text-transform:none;letter-spacing:.04em}
   footer b{color:var(--dim);font-weight:400}
@@ -74,14 +84,27 @@
 <div id="shell">
   <header>
     <h1>Ar<span>cade</span></h1>
-    <div class="tag">Four games</div>
+    <div class="tag">Four games · one invasion</div>
 
   </header>
 
   <nav>
     <ul id="games">
       <li>
-        <a class="card serpent-battery" href="games/serpent-battery/serpent-battery.html">
+        <a class="card drift-net" href="games/drift-net/drift-net.html">
+          <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M14 30h18v-14h18v14h18v-8h14" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="80" y="16" width="9" height="9" fill="currentColor" stroke="none"/>
+            <circle cx="102" cy="12" r="4" fill="currentColor" stroke="none"/>
+          </svg>
+          <h2>Drift Net</h2>
+          <p class="lore">You are the thing that arrived. Every world you touch becomes part of you, and you do not stop.</p>
+          <p>Longer every meal, faster every meal. You may cross where your tail is leaving — the gold bonus won't wait.</p>
+          <span class="how"><span class="step">1 / 4</span>Swipe or arrows</span>
+        </a>
+      </li>
+      <li>
+        <a class="card flak-battery" href="games/flak-battery/flak-battery.html">
           <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
             <circle cx="16" cy="12" r="6"/><circle cx="34" cy="12" r="5"/>
             <circle cx="50" cy="12" r="5"/><circle cx="66" cy="12" r="5"/>
@@ -89,13 +112,28 @@
             <path d="M60 36v-8" stroke-linecap="round"/>
             <path d="M52 36h16" stroke-linecap="round"/>
           </svg>
-          <h2>Serpent Battery</h2>
+          <h2>Flak Battery</h2>
+          <p class="lore">They came down in one unbroken column. This is the last emplacement still firing.</p>
           <p>Cut the chain before it reaches the floor. Bank hits into Overdrive, then spend scrap on the battery.</p>
-          <span class="how">Aim &amp; fire</span>
+          <span class="how"><span class="step">2 / 4</span>Aim &amp; fire</span>
         </a>
       </li>
       <li>
-        <a class="card angle-iron" href="games/angle-iron/angle-iron.html">
+        <a class="card choke-point" href="games/choke-point/choke-point.html">
+          <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M6 30h28v-16h34v16h20" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="28" y="8" width="12" height="12" rx="2"/>
+            <rect x="62" y="20" width="12" height="12" rx="2"/>
+            <circle cx="108" cy="30" r="6" fill="currentColor" stroke="none"/>
+          </svg>
+          <h2>Choke Point</h2>
+          <p class="lore">They are on the ground now, and they only advance one way. Make that one way expensive.</p>
+          <p>Surges flow toward your core. Build towers on the grid to break them before they land — endless, escalating.</p>
+          <span class="how"><span class="step">3 / 4</span>Tap to build</span>
+        </a>
+      </li>
+      <li>
+        <a class="card hull-breach" href="games/hull-breach/hull-breach.html">
           <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
             <rect x="12" y="6" width="22" height="7"/><rect x="38" y="6" width="22" height="7"/>
             <rect x="64" y="6" width="22" height="7"/><rect x="90" y="6" width="18" height="7"/>
@@ -104,34 +142,10 @@
             <circle cx="74" cy="31" r="3" fill="currentColor"/>
             <path d="M40 36h20" stroke-linecap="round" stroke-width="4"/>
           </svg>
-          <h2>Angle Iron</h2>
+          <h2>Hull Breach</h2>
+          <p class="lore">You have held them long enough to answer. Their hull is layered, and it does not grow back.</p>
           <p>The paddle is your aim — where the ball lands decides the angle it leaves. Back rows take three hits.</p>
-          <span class="how">Slide to steer</span>
-        </a>
-      </li>
-      <li>
-        <a class="card live-wire" href="games/live-wire/live-wire.html">
-          <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M14 30h18v-14h18v14h18v-8h14" stroke-linecap="round" stroke-linejoin="round"/>
-            <rect x="80" y="16" width="9" height="9" fill="currentColor" stroke="none"/>
-            <circle cx="102" cy="12" r="4" fill="currentColor" stroke="none"/>
-          </svg>
-          <h2>Live Wire</h2>
-          <p>Longer every meal, faster every meal. You may cross where your tail is leaving — the gold bonus won't wait.</p>
-          <span class="how">Swipe or arrows</span>
-        </a>
-      </li>
-      <li>
-        <a class="card circuit-breaker" href="games/circuit-breaker/circuit-breaker.html">
-          <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M6 30h28v-16h34v16h20" stroke-linecap="round" stroke-linejoin="round"/>
-            <rect x="28" y="8" width="12" height="12" rx="2"/>
-            <rect x="62" y="20" width="12" height="12" rx="2"/>
-            <circle cx="108" cy="30" r="6" fill="currentColor" stroke="none"/>
-          </svg>
-          <h2>Circuit Breaker</h2>
-          <p>Surges flow toward your core. Build towers on the grid to break them before they land — endless, escalating.</p>
-          <span class="how">Tap to build</span>
+          <span class="how"><span class="step">4 / 4</span>Slide to steer</span>
         </a>
       </li>
     </ul>

@@ -32,20 +32,20 @@
   ],
   "shortcuts": [
     {
-      "name": "Serpent Battery",
-      "url": "games/serpent-battery/serpent-battery.html"
+      "name": "Flak Battery",
+      "url": "games/flak-battery/flak-battery.html"
     },
     {
-      "name": "Angle Iron",
-      "url": "games/angle-iron/angle-iron.html"
+      "name": "Hull Breach",
+      "url": "games/hull-breach/hull-breach.html"
     },
     {
-      "name": "Live Wire",
-      "url": "games/live-wire/live-wire.html"
+      "name": "Drift Net",
+      "url": "games/drift-net/drift-net.html"
     },
     {
-      "name": "Circuit Breaker",
-      "url": "games/circuit-breaker/circuit-breaker.html"
+      "name": "Choke Point",
+      "url": "games/choke-point/choke-point.html"
     }
   ]
 }

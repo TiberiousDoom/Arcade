@@ -1,4 +1,4 @@
-/* Serpent Battery — pure logic core.
+/* Flak Battery — pure logic core.
    No DOM, no canvas, no timers. Everything here is deterministic and testable. */
 
 export const TAU = Math.PI * 2;
@@ -144,7 +144,7 @@ export function kindForIndex(i, count = Infinity, wave = Infinity) {
 
 /** Per-segment hp multiplier for a wave. Until now `KIND` hp values were fixed
  *  constants and nothing scaled them, so late waves were only *longer and
- *  faster* — never tougher to chew through. Same shape as Circuit Breaker's
+ *  faster* — never tougher to chew through. Same shape as Choke Point's
  *  `hpScale`, and capped so a very long run doesn't turn every segment into a
  *  sponge that outlasts the wave timer. */
 export const HP_PER_WAVE = 0.14;

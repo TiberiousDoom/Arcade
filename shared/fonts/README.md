@@ -32,6 +32,6 @@ the OFL requires:
 ## Updating
 
 `@font-face` rules live in [`../theme.css`](../theme.css). If you replace or add
-a font file, re-run `node games/serpent-battery/build.mjs` — the standalone build
+a font file, re-run `node games/flak-battery/build.mjs` — the standalone build
 embeds these as base64 data URIs, and its embedder throws rather than silently
 shipping a build that renders in a fallback face.

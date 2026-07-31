@@ -1,4 +1,4 @@
-/* Angle Iron — pure logic core.
+/* Hull Breach — pure logic core.
    A brick-breaker: the paddle sets the ball's outgoing angle.
    No DOM, no canvas, no timers, no randomness. Everything here is deterministic
    and testable; the HTML shell owns rendering, input, and the frame loop. */
@@ -76,7 +76,7 @@ export const REF_FLOOR = LAYOUT.FLOOR;
  *
  *  Scaled by the board's playable height so a ball crosses it in the same time
  *  on any layout: absolute px/s would make the taller portrait board play
- *  noticeably slower and easier. Serpent Battery does the same thing by
+ *  noticeably slower and easier. Flak Battery does the same thing by
  *  deriving wave speed from path length. */
 export function levelSpeed(level, L = LAYOUT) {
   const base = Math.min(BALL_SPEED_MAX, BALL_SPEED * (1 + (level - 1) * SPEED_PER_LEVEL));
@@ -246,7 +246,7 @@ export function applyPowerup(w, kind) {
       break;
     default: return false;
   }
-  // optional-chained like Serpent Battery's fx hooks: worlds built without a
+  // optional-chained like Flak Battery's fx hooks: worlds built without a
   // `power` hook (every older caller, and most tests) must not throw
   w.fx.power?.(kind);
   return true;

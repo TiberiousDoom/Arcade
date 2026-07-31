@@ -3,14 +3,14 @@
    proves the game can be looked at.
 
    Needs `npm install --no-save jsdom canvas`.
-   Run: node --test games/live-wire/render-test.mjs
+   Run: node --test games/drift-net/render-test.mjs
 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { bootAndStart } from '../../tools/render-harness.mjs';
 
-const SHELL = fileURLToPath(new URL('./live-wire.html', import.meta.url));
+const SHELL = fileURLToPath(new URL('./drift-net.html', import.meta.url));
 
 test('the shell boots without throwing', async () => {
   const g = await bootAndStart(SHELL);

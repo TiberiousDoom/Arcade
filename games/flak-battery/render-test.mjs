@@ -9,7 +9,7 @@ import { createCanvas } from 'canvas';
 
 // fileURLToPath, not .pathname — on Windows the latter yields a leading slash
 // and percent-encoded spaces ("/C:/Users/Thulsa%20Doom/..."), which fs rejects.
-const OUT = fileURLToPath(new URL('./serpent-battery-standalone.html', import.meta.url));
+const OUT = fileURLToPath(new URL('./flak-battery-standalone.html', import.meta.url));
 
 function bootReal() {
   let html = readFileSync(OUT, 'utf8')

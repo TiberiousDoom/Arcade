@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Serpent Battery</title>
+<title>Flak Battery</title>
 <link rel="manifest" href="../../manifest.webmanifest">
 <meta name="theme-color" content="#0b1418">
 <link rel="icon" href="../../shared/icons/favicon-32.png" sizes="32x32" type="image/png">
@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="../../shared/theme.css">
 <script type="module" src="../../shared/pwa.js"></script>
 <style>
-  /* Serpent Battery keeps the default brass accent on an 880-wide board, and
+  /* Flak Battery keeps the default brass accent on an 880-wide board, and
      adds the heat gauge, shop, and segment legend that only it has. */
   :root{
     --board-max:880px;
@@ -75,7 +75,7 @@
   <header>
     <div class="titles">
       <a class="back" href="../../index.html">&larr; Arcade</a>
-      <h1>Serpent <span>Battery</span></h1>
+      <h1>Flak <span>Battery</span></h1>
     </div>
     <div class="meta">
       <div>Wave <b id="uiWave">1</b></div>
@@ -109,7 +109,7 @@
     </div>
     <div id="fxbar"></div>
     <div id="banner">
-      <h2>Serpent Battery</h2>
+      <h2>Flak Battery</h2>
       <p id="hint">Drag to aim, hold to fire.</p>
       <button id="go">Begin</button>
     </div>
@@ -290,7 +290,8 @@ mountAudioToggle({ stage: $('stage'), audio });
 
 makeHelp({
   stage: $('stage'),
-  title: 'Serpent Battery',
+  title: 'Flak Battery',
+  lore: 'They came down in one unbroken column. This is the last emplacement still firing.',
   rows: [
     ['Aim', 'Press and drag anywhere. Flick to swing across.'],
     ['Fire', 'Hold to keep firing. Too much and the barrel overheats.'],
@@ -965,7 +966,7 @@ function draw() {
 }
 
 /* ---------- ui ---------- */
-const GAME_ID = 'serpent-battery';
+const GAME_ID = 'flak-battery';
 
 function syncBest() {
   const b = best(GAME_ID);
@@ -1056,7 +1057,7 @@ addEventListener('pagehide', saveNow);
     clearRun(GAME_ID);
     fresh.remove();
     resumeOffered = false;
-    showBanner('Serpent Battery', 'Hold to fire. Drag to aim.', 'Begin');
+    showBanner('Flak Battery', 'Hold to fire. Drag to aim.', 'Begin');
   });
   $('go').after(fresh);
 

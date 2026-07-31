@@ -3,7 +3,7 @@
    proves the game can be looked at.
 
    Needs `npm install --no-save jsdom canvas`.
-   Run: node --test games/circuit-breaker/render-test.mjs
+   Run: node --test games/choke-point/render-test.mjs
 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +12,7 @@ import { bootAndStart, wait } from '../../tools/render-harness.mjs';
 
 // fileURLToPath, not .pathname — on Windows the latter yields a leading slash
 // and percent-encoded spaces, which fs rejects.
-const SHELL = fileURLToPath(new URL('./circuit-breaker.html', import.meta.url));
+const SHELL = fileURLToPath(new URL('./choke-point.html', import.meta.url));
 
 test('the shell boots without throwing', async () => {
   const g = await bootAndStart(SHELL);

@@ -11,7 +11,7 @@
    static, versioned by hand, and the whole point is offline play. Stale-while-
    revalidate would spare the version bump but would also serve one stale run
    after every update, which is worse for a game than a manual discipline. */
-const CACHE_VERSION = 'arcade-v17';
+const CACHE_VERSION = 'arcade-v19';
 
 /* Relative URLs, resolved against this file's location — so the app still
    works when served from a subpath (a GitHub Pages project site, say) rather
@@ -41,16 +41,16 @@ const PRECACHE = [
   './shared/icons/apple-touch-icon.png',
   './shared/icons/favicon-32.png',
 
-  './games/serpent-battery/serpent-battery.html',
-  './games/serpent-battery/engine.js',
-  './games/angle-iron/angle-iron.html',
-  './games/angle-iron/engine.js',
-  './games/live-wire/live-wire.html',
-  './games/live-wire/engine.js',
-  './games/circuit-breaker/circuit-breaker.html',
-  './games/circuit-breaker/engine.js',
+  './games/flak-battery/flak-battery.html',
+  './games/flak-battery/engine.js',
+  './games/hull-breach/hull-breach.html',
+  './games/hull-breach/engine.js',
+  './games/drift-net/drift-net.html',
+  './games/drift-net/engine.js',
+  './games/choke-point/choke-point.html',
+  './games/choke-point/engine.js',
 ];
-/* Deliberately absent: serpent-battery-standalone.html. It is a distribution
+/* Deliberately absent: flak-battery-standalone.html. It is a distribution
    artifact that carries its own inlined copy of everything — caching it would
    add ~136 KB for a file the app never navigates to. */
 

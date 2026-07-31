@@ -84,21 +84,21 @@ export function makeAudio() {
 
     /* --- the named library, one method per game event --- */
 
-    // Angle Iron
+    // Hull Breach
     bounce() { tone(210, 170, 0.05, { type: 'triangle', gain: 0.16 }); },
     brick(row = 0) {
       tone(360 + row * 70, 260 + row * 60, 0.06, { type: 'square', gain: 0.2 });
       noise(0.05, { f: 1800, gain: 0.12 });
     },
 
-    // Live Wire
+    // Drift Net
     eat() { tone(520, 700, 0.07, { type: 'square', gain: 0.2 }); },
     bonus() {
       tone(660, 660, 0.08, { type: 'triangle', gain: 0.22 });
       tone(990, 990, 0.1, { type: 'triangle', gain: 0.22, delay: 0.07 });
     },
 
-    // Serpent Battery
+    // Flak Battery
     fire() { tone(680, 300, 0.05, { type: 'sawtooth', gain: 0.12 }); },
     hit() { tone(300, 220, 0.045, { type: 'square', gain: 0.16 }); noise(0.04, { f: 900, gain: 0.1 }); },
     overdrive() { tone(500, 820, 0.12, { type: 'triangle', gain: 0.22 }); },

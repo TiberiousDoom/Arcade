@@ -51,7 +51,7 @@ test('the portrait grid is taller than wide, at the same cell size', () => {
 });
 
 test('pace is identical on both grids — the tick rate is per cell', () => {
-  // this is why Live Wire needs no speed rescaling, unlike Angle Iron
+  // this is why Drift Net needs no speed rescaling, unlike Hull Breach
   const a = E.createWorld({ layout: L });
   const b = E.createWorld({ layout: TALL });
   a.eaten = b.eaten = 7;

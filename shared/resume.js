@@ -4,10 +4,10 @@
    the whole world, and it has to survive the app being closed on a phone, which
    happens constantly and without warning.
 
-   Deliberately NOT in every game. Live Wire is one-life score-attack: being able
+   Deliberately NOT in every game. Drift Net is one-life score-attack: being able
    to resume a run is contrary to the genre, and a save would make its ladder
-   meaningless. Circuit Breaker and Serpent Battery have long runs where losing
-   progress genuinely stings, and Angle Iron is level-based, so those three get
+   meaningless. Choke Point and Flak Battery have long runs where losing
+   progress genuinely stings, and Hull Breach is level-based, so those three get
    it.
 
    The engines own what a snapshot *is* (`snapshot(w)` / `hydrate(w, snap)`),

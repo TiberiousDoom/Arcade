@@ -1,4 +1,4 @@
-/* Live Wire — pure logic core.
+/* Drift Net — pure logic core.
    No DOM, no canvas, no timers. The only randomness is a seeded LCG (`rand`),
    so a given seed replays a run exactly — which is what makes food placement
    testable. The HTML shell owns rendering, input, and the frame loop. */
@@ -22,13 +22,13 @@ export const LAYOUT = {
 
 /** Portrait phones get a taller, narrower grid at the same cell size.
  *
- *  No pace adjustment is needed, unlike Angle Iron: the tick rate is seconds
+ *  No pace adjustment is needed, unlike Hull Breach: the tick rate is seconds
  *  *per cell*, so reaction time per move — which is the whole difficulty curve
  *  — is identical on any grid. A portrait board is a slightly shorter game
  *  simply because there are fewer cells to fill.
  *
  *  No thumb-rest band either: steering is a flick, not a hold, so a finger is
- *  never parked over the board the way it is in Angle Iron or Serpent Battery. */
+ *  never parked over the board the way it is in Hull Breach or Flak Battery. */
 export const LAYOUT_TALL = {
   // The exact transpose of LAYOUT — 450x800. Same cell count, same game, just
   // stood on its end. Keep these two mirrored: `relayout` relies on it, and a
@@ -66,7 +66,7 @@ export const BONUS_TTL = 42;        // in ticks
 
 /* ---------- randomness ---------- */
 
-/** Same LCG as Serpent Battery's drop roll. Deterministic per seed. */
+/** Same LCG as Flak Battery's drop roll. Deterministic per seed. */
 export function rand(w) {
   return (w.seed = (w.seed * 1103515245 + 12345) & 0x7fffffff);
 }

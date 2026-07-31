@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { bootAndStart } from '../../tools/render-harness.mjs';
 
-const SHELL = fileURLToPath(new URL('./serpent-battery.html', import.meta.url));
-const KEY = 'arcade:run:serpent-battery';
+const SHELL = fileURLToPath(new URL('./hull-breach.html', import.meta.url));
+const KEY = 'arcade:run:hull-breach';
 
 const background = (g) => {
   const doc = g.window.document;
@@ -14,46 +14,54 @@ const background = (g) => {
   doc.dispatchEvent(new g.window.Event('visibilitychange', { bubbles: true }));
 };
 
-async function playAWhile(g, frames = 300) {
+async function playAWhile(g, frames = 240) {
+  const { world, E } = g;
   let t = 1000;
-  for (let i = 0; i < frames; i++) { t += 16.7; g.frame(t); }
+  for (let i = 0; i < frames; i++) {
+    if (world.held) E.launch(world);
+    const ball = world.balls[0];
+    if (ball) E.setPaddle(world, ball.x);      // keep it alive so play continues
+    t += 16.7;
+    g.frame(t);
+  }
 }
 
 test('backgrounding writes a save, and a reload brings the run back', async () => {
   const first = await bootAndStart(SHELL);
   assert.deepEqual(first.errors, [], 'boot threw');
   await playAWhile(first);
-  first.world.scrap = 40;
+  // stage a powerup and a falling capsule, so the interesting state is covered
+  first.E.applyPowerup(first.world, 'wide');
+  first.world.drops = [{ kind: 'multi', x: 100, y: 300, vy: first.E.DROP_SPEED }];
   const before = {
-    wave: first.world.wave, score: first.world.score,
-    lives: first.world.lives, scrap: first.world.scrap,
-    segs: first.world.chains.reduce((n, ch) => n + ch.segs.length, 0),
+    level: first.world.level, score: first.world.score, lives: first.world.lives,
+    bricks: first.E.aliveBricks(first.world),
   };
+  assert.ok(before.bricks < first.world.bricks.length, 'setup: some bricks are gone');
 
   background(first);
   const stored = first.window.localStorage.getItem(KEY);
   assert.ok(stored, 'a save was written');
-  assert.ok(JSON.parse(stored).label.includes('Wave'));
+  assert.ok(JSON.parse(stored).label.includes('Level'));
 
   const second = await bootAndStart(SHELL, { storage: { [KEY]: stored } });
   assert.deepEqual(second.errors, [], 'second boot threw');
-  assert.equal(second.world.wave, before.wave, 'wave came back');
+  assert.equal(second.world.level, before.level, 'level came back');
   assert.equal(second.world.score, before.score, 'score came back');
   assert.equal(second.world.lives, before.lives, 'lives came back');
-  assert.equal(second.world.scrap, before.scrap, 'scrap came back');
-  assert.equal(second.world.chains.reduce((n, ch) => n + ch.segs.length, 0), before.segs,
-    'the serpent came back at the length it was');
-  assert.equal(second.world.cannon, second.world.battery, 'the cannon alias survived');
+  assert.equal(second.E.aliveBricks(second.world), before.bricks, 'brick damage came back');
+  assert.ok(second.world.effects.wide > 0, 'the running effect came back');
+  assert.equal(second.world.drops.length, 1, 'the falling capsule came back');
 });
 
 test('a resumed run keeps drawing and stepping without throwing', async () => {
   const first = await bootAndStart(SHELL);
-  await playAWhile(first, 200);
+  await playAWhile(first, 180);
   background(first);
   const stored = first.window.localStorage.getItem(KEY);
 
   const second = await bootAndStart(SHELL, { storage: { [KEY]: stored } });
-  await playAWhile(second, 300);
+  await playAWhile(second, 240);
   assert.deepEqual(second.errors, [], 'a restored run threw while playing on');
 });
 
@@ -69,17 +77,17 @@ test('a finished run leaves nothing to resume', async () => {
 
 test('a save from another build is discarded rather than restored', async () => {
   const stale = JSON.stringify({
-    build: 'v0-ancient', at: Date.now(), label: 'Wave 12 · 9000',
-    snap: { wave: 12, score: 9000, chains: [], battery: { guns: [] } },
+    build: 'v0-ancient', at: Date.now(), label: 'Level 6 · 8000',
+    snap: { level: 6, score: 8000, bricks: [], balls: [], drops: [] },
   });
   const g = await bootAndStart(SHELL, { storage: { [KEY]: stale } });
   assert.deepEqual(g.errors, [], 'boot threw on a stale save');
-  assert.equal(g.world.score, 0, 'started fresh');
+  assert.equal(g.world.level, 1, 'started fresh');
   assert.equal(g.window.localStorage.getItem(KEY), null, 'and cleared it');
 });
 
 test('a corrupt save does not stop the game loading', async () => {
-  const g = await bootAndStart(SHELL, { storage: { [KEY]: 'not json at all' } });
+  const g = await bootAndStart(SHELL, { storage: { [KEY]: '{{{' } });
   assert.deepEqual(g.errors, [], 'boot threw on a corrupt save');
   assert.ok(g.world, 'the game still came up');
 });

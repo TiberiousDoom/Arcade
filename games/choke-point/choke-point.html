@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Circuit Breaker</title>
+<title>Choke Point</title>
 <link rel="manifest" href="../../manifest.webmanifest">
 <meta name="theme-color" content="#0b1418">
 <link rel="icon" href="../../shared/icons/favicon-32.png" sizes="32x32" type="image/png">
@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="../../shared/theme.css">
 <script type="module" src="../../shared/pwa.js"></script>
 <style>
-  /* Circuit Breaker runs electrical blue, on a 780x520 board. */
+  /* Choke Point runs electrical blue, on a 780x520 board. */
   :root{
     --accent:#4d7fb3;
     --accent-hot:#6fb7e8;
@@ -56,7 +56,7 @@
   <header>
     <div class="titles">
       <a class="back" href="../../index.html">&larr; Arcade</a>
-      <h1>Circuit <span>Breaker</span></h1>
+      <h1>Choke <span>Point</span></h1>
     </div>
     <div class="meta">
       <div>Wave <b id="uiWave">0</b></div>
@@ -72,7 +72,7 @@
     <canvas id="cv" width="780" height="520"></canvas>
     <div id="tsel"></div>
     <div id="banner">
-      <h2>Circuit Breaker</h2>
+      <h2>Choke Point</h2>
       <p id="hint">Pick a tower, tap an empty cell to build it, then start the wave.</p>
       <button id="go">Begin</button>
     </div>
@@ -95,7 +95,7 @@ const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
 const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
 const $ = id => document.getElementById(id);
-const GAME_ID = 'circuit-breaker';
+const GAME_ID = 'choke-point';
 
 const gfx = makeFx({ reduce });
 const audio = makeAudio();
@@ -281,7 +281,8 @@ mountAudioToggle({ stage: $('stage'), audio });
 
 makeHelp({
   stage: $('stage'),
-  title: 'Circuit Breaker',
+  title: 'Choke Point',
+  lore: 'They are on the ground now, and they only advance one way. Make that one way expensive.',
   rows: [
     ['Build', 'Pick a tower below, then tap an empty cell. Towers fire on their own.'],
     ['Wave', 'Tap Start Wave when you\'re ready. Kills earn charge to build more.'],
@@ -350,7 +351,7 @@ function offerResume() {
     clearRun(GAME_ID);
     fresh.remove();
     resumeOffered = false;
-    showBanner('Circuit Breaker', 'Pick a tower, tap an empty cell to build it, then start the wave.', 'Begin');
+    showBanner('Choke Point', 'Pick a tower, tap an empty cell to build it, then start the wave.', 'Begin');
   });
   $('go').after(fresh);
 
@@ -435,12 +436,12 @@ function syncPopup() {
 /* ---------- draw ---------- */
 const C = () => world.L.CELL;
 
-/* Circuit Breaker gets the glow and the extrusion but NOT the phosphor trails
+/* Choke Point gets the glow and the extrusion but NOT the phosphor trails
    the other games use. A tower-defense puts many small moving objects on screen
    whose exact position and type you have to read at a glance — smearing them
    would fight the enemy trait cues directly, and those cues are the whole
    reason a mix of towers is needed. Clean frame, no fade. It also means static
-   alphas here are literal, with none of the accumulation Live Wire compensates
+   alphas here are literal, with none of the accumulation Drift Net compensates
    for. */
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -509,7 +510,7 @@ function drawCore() {
 
 /* Towers are exactly what `extrude` is for: discrete objects sitting on a dark
    board, where a dark body with a lit rim and a face offset behind reads as a
-   solid installation bolted to the grid. (Contrast Live Wire's head, where the
+   solid installation bolted to the grid. (Contrast Drift Net's head, where the
    same treatment punched a hole in a glowing tube.) */
 function drawTower(t) {
   const cell = C();
@@ -560,7 +561,7 @@ function drawEnemy(e) {
      in a flat blue that is almost exactly Shell's own colour, so "held up" and
      "plated" were indistinguishable — and which of the two you're looking at
      changes what you should build. */
-  /* A halo AROUND a full-strength body, never instead of one. Live Wire's food
+  /* A halo AROUND a full-strength body, never instead of one. Drift Net's food
      shipped with a shrunken opaque core wrapped in haze and became genuinely
      hard to find; these are smaller, there are more of them, and they have to
      be told apart, so the solid disc stays exactly the size it was and only

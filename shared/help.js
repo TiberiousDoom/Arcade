@@ -5,15 +5,19 @@
    bottom of the screen. Behind a button they can be as detailed as they like
    and cost no space until asked for. */
 
+import { BUILD_LABEL } from './version.js';
+
 /**
  * @param stage    the positioned element the button and panel are placed in
  * @param title    heading for the panel
  * @param rows     [[term, description], …] — the controls table
  * @param notes    array of short strings shown under the table
+ * @param lore     one line of setting, shown under the title. The four games
+ *                 share a story, and this is the whole of how it gets told
+ *                 in-game — deliberately one sentence a player can ignore,
+ *                 rather than cutscenes nobody asked for.
  */
-import { BUILD_LABEL } from './version.js';
-
-export function makeHelp({ stage, title, rows = [], notes = [] }) {
+export function makeHelp({ stage, title, rows = [], notes = [], lore = '' }) {
   const btn = document.createElement('button');
   btn.id = 'helpBtn';
   btn.type = 'button';
@@ -28,6 +32,7 @@ export function makeHelp({ stage, title, rows = [], notes = [] }) {
 
   panel.innerHTML =
     `<h2>${title}</h2>` +
+    (lore ? `<p class="lore">${lore}</p>` : '') +
     `<dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>` +
     (notes.length ? `<ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
     `<button type="button" id="helpClose">Got it</button>` +

@@ -3,7 +3,7 @@
    keeping it here is what lets the engines stay deterministic (this module
    uses Math.random freely, which engine code must never do).
 
-   Serpent Battery does NOT use this: its bits and floaters live on the world
+   Flak Battery does NOT use this: its bits and floaters live on the world
    object and are stepped inside its engine, which predates this module. Left
    alone rather than churned — see docs/DECISIONS.md. */
 

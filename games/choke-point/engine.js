@@ -1,4 +1,4 @@
-/* Circuit Breaker — pure logic core.
+/* Choke Point — pure logic core.
    A grid tower-defense: surges flow along a fixed circuit path toward the core;
    you build auto-firing towers on empty cells to stop them. No DOM, no canvas,
    no timers. The only randomness is a seeded LCG (`rand`), so a seed replays a
@@ -13,7 +13,7 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
  *  That is what makes rotation lossless: turning the phone maps every cell
  *  (c, r) -> (r, c), and because cells are square the transposed path has the
  *  *same total length*, so an enemy's distance along it carries straight over
- *  with no rescaling. See `relayout`, and Live Wire for the same trick. */
+ *  with no rescaling. See `relayout`, and Drift Net for the same trick. */
 /*  Note CELL is a *resolution* knob, not an on-screen size one: the shell's
  *  makeFit scales the whole canvas to the stage, so a cell's physical size is
  *  screen-width / COLS. Bigger squares on a phone therefore means *fewer*
@@ -85,7 +85,7 @@ export function cellAt(L, px, py) {
   return inGrid(L, c, r) ? { c, r } : null;
 }
 
-/* ---------- path geometry (same arc-length model as Serpent Battery) ---------- */
+/* ---------- path geometry (same arc-length model as Flak Battery) ---------- */
 
 /** Build the polyline through the route's cell centres, tagging each vertex
  *  with cumulative arc-length `s`. Returns the points and the total length. */
@@ -242,7 +242,7 @@ export const START_INTEGRITY = 20;
  *  wave; the shell scales enemy hp via `hpScale`. */
 /** The wave each enemy type first appears on. One new idea at a time, so each
  *  trait can be met and understood on its own rather than all at once — same
- *  reasoning as Serpent Battery's KIND_UNLOCK. */
+ *  reasoning as Flak Battery's KIND_UNLOCK. */
 export const ENEMY_UNLOCK = {
   surge: 1, spark: 3, swarm: 4, load: 5, shell: 7, phase: 9, patch: 11,
 };
@@ -606,7 +606,7 @@ export function hydrate(w, snap) {
  *  and the path is the same length, so every enemy's `dist` carries over
  *  untouched — as do charge, integrity, wave and score. Turning the phone turns
  *  the board, which is also the least surprising thing that could happen. Same
- *  approach as Live Wire. */
+ *  approach as Drift Net. */
 export function relayout(w, L2) {
   // the run's own circuit has to come across too — rebuilding at route 0 would
   // silently swap the board mid-run and strand every tower off the new path

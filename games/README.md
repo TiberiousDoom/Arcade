@@ -2,9 +2,9 @@
 
 Each game lives in its own directory here, as `games/<name>/`, following the engine/shell split described in [CLAUDE.md](../CLAUDE.md): a pure-logic engine (no DOM, no canvas, no timers) plus a thin rendering/input shell.
 
-- **[serpent-battery/](serpent-battery/)** — the template for this split: `engine.js` / `engine.test.js` / `render-test.mjs` (logic + tests) and `serpent-battery.html` / `serpent-battery-standalone.html` (playable shells).
-- **[angle-iron/](angle-iron/)** — a smaller, newer example of the same split: `engine.js` / `engine.test.js` plus the `angle-iron.html` shell. Easier to read end to end if you're learning the pattern.
-- **[live-wire/](live-wire/)** — grid/tick-based rather than continuous physics, so the engine owns its own tick clock. Also the first game with touch (swipe) controls.
+- **[flak-battery/](flak-battery/)** — the template for this split: `engine.js` / `engine.test.js` / `render-test.mjs` (logic + tests) and `flak-battery.html` / `flak-battery-standalone.html` (playable shells).
+- **[hull-breach/](hull-breach/)** — a smaller, newer example of the same split: `engine.js` / `engine.test.js` plus the `hull-breach.html` shell. Easier to read end to end if you're learning the pattern.
+- **[drift-net/](drift-net/)** — grid/tick-based rather than continuous physics, so the engine owns its own tick clock. Also the first game with touch (swipe) controls.
 
 The shells load `engine.js` as an ES module, so serve the repo (`python -m http.server 8123`) rather than opening the `.html` files directly.
 

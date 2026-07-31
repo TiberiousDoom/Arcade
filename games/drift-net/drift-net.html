@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Live Wire</title>
+<title>Drift Net</title>
 <link rel="manifest" href="../../manifest.webmanifest">
 <meta name="theme-color" content="#0b1418">
 <link rel="icon" href="../../shared/icons/favicon-32.png" sizes="32x32" type="image/png">
@@ -25,7 +25,7 @@
   <header>
     <div class="titles">
       <a class="back" href="../../index.html">&larr; Arcade</a>
-      <h1>Live <span>Wire</span></h1>
+      <h1>Drift <span>Net</span></h1>
     </div>
     <div class="meta">
       <div>Score <b id="uiScore">0</b></div>
@@ -37,7 +37,7 @@
   <div id="stage">
     <canvas id="cv" width="800" height="600"></canvas>
     <div id="banner">
-      <h2>Live Wire</h2>
+      <h2>Drift Net</h2>
       <p id="hint">Swipe to steer.</p>
       <button id="go">Begin</button>
     </div>
@@ -190,7 +190,8 @@ mountAudioToggle({ stage: $('stage'), audio });
 
 makeHelp({
   stage: $('stage'),
-  title: 'Live Wire',
+  title: 'Drift Net',
+  lore: 'You are the thing that arrived. Every world you touch becomes part of you, and you do not stop.',
   rows: [
     ['Steer', 'Swipe anywhere. A short flick is enough.'],
     ['Grow', 'Every meal adds a segment and speeds the board up.'],
@@ -228,7 +229,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-const GAME_ID = 'live-wire';
+const GAME_ID = 'drift-net';
 
 function syncBest() {
   const b = best(GAME_ID);

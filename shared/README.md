@@ -14,14 +14,14 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
   fixed-ratio board into the space left on screen, and wires the
   resize/orientation listeners. `board` is read on every fit, so a game can
   mutate it in place when it swaps to a portrait layout. `extra` reserves room
-  for furniture below the board (Serpent Battery's touch pad).
+  for furniture below the board (Flak Battery's touch pad).
 - **[audio.js](audio.js)** — `makeAudio()` synthesizes all sound effects with
   WebAudio (no files), plus `mountAudioToggle(...)` for the mute button. Guarded
   against no-AudioContext environments and remembers mute in localStorage.
 - **[scores.js](scores.js)** — `best()` / `submit()` for local personal bests.
 - **[help.js](help.js)** — `makeHelp(...)` builds the "?" instructions overlay.
 - **[fx.js](fx.js)** — `makeFx({ reduce, gravity })` gives particles and a
-  screen-flash value. Used by Angle Iron and Live Wire. **Serpent Battery does not
+  screen-flash value. Used by Hull Breach and Drift Net. **Flak Battery does not
   use it**: its bits and floaters live on the world object and are stepped
   inside its engine, which predates this module and wasn't worth churning.
 - **[version.js](version.js)** — one app-wide `BUILD` string, shown in every
@@ -29,34 +29,34 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
   `CACHE_VERSION` by [version.test.js](version.test.js).
 - **[resume.js](resume.js)** — storage for mid-run saves. The *engines* own what
   a snapshot is (`snapshot`/`hydrate`); this only handles keys, build-stamping
-  and the fact that localStorage may throw. Used by Circuit Breaker, Serpent
-  Battery and Angle Iron; **not** Live Wire, which is one-life score-attack.
+  and the fact that localStorage may throw. Used by Choke Point, Serpent
+  Battery and Hull Breach; **not** Drift Net, which is one-life score-attack.
 - **[glow.js](glow.js)** — the vector/CRT art primitives: `glowStroke` (the
   multi-pass emissive stroke everything else is built on), `glowDot`, `inkDot`,
   `extrude`/`extrudeDisc`/`extrudeRect`, `fadeFrame` and `scanlines`. Piloted on
-  Live Wire and Circuit Breaker. Four things to know before using it:
+  Drift Net and Choke Point. Four things to know before using it:
   - **Static content accumulates** under `fadeFrame`, settling at roughly
     `1/fade` times the alpha you wrote — a grid drawn at 0.5 ends up looking
     like 1.5. Write static alphas about a third of what you want.
   - **Extrusion suits discrete objects on a dark board**, not the tip of an
     already-glowing form: it fills a dark body before rimming it, which on the
-    end of a glowing tube punches a visible hole. Live Wire's head is a bright
+    end of a glowing tube punches a visible hole. Drift Net's head is a bright
     `glowDot` for exactly this reason.
   - **`glowDot`'s `r` is the solid core**, with the halo spreading outside it.
     An earlier version put the only full-alpha pass at `r * 0.5`, so callers got
     a dot half the size they asked for wrapped in haze — legible on a desktop,
     genuinely hard to spot on a phone. If a glowing object needs to be *found*
-    rather than just seen, give it a near-white inner dot as well; Live Wire's
+    rather than just seen, give it a near-white inner dot as well; Drift Net's
     food does.
   - **Additive compositing cannot darken.** `glowStroke` and `glowDot` are
     additive, so a dark colour passed to either *brightens* what is underneath.
     Anything meant to be darker than its surroundings — a recessed channel, a
     shadow, a pupil — must be painted with the normal composite (`inkDot`, or a
-    plain stroke/fill). Circuit Breaker's path glowed like a lit ribbon until
-    this was understood, and Live Wire's pupils are `inkDot` for the same reason.
+    plain stroke/fill). Choke Point's path glowed like a lit ribbon until
+    this was understood, and Drift Net's pupils are `inkDot` for the same reason.
 
 Deliberately *not* shared: the banner show/hide logic. It looked like a
-duplicate, but Serpent Battery's variant hides a legend and two hint
+duplicate, but Flak Battery's variant hides a legend and two hint
 paragraphs, so sharing it would mean a config-heavy wrapper around about six
 lines per game.
 

@@ -8,7 +8,7 @@
 
    Deliberately ONE app-wide version rather than a version per game. Four
    hand-maintained numbers with no release process behind them would drift
-   immediately, and a player does not care that Live Wire is at 1.3.0 — the only
+   immediately, and a player does not care that Drift Net is at 1.3.0 — the only
    question anyone actually asks is which deploy they are looking at.
 
    Keep this in lockstep with `CACHE_VERSION` in sw.js: the worker's cache name
@@ -16,7 +16,7 @@
    can see and a cache they can't must never disagree. `version.test.js` reads
    sw.js and fails if the two drift, so this is enforced rather than hoped for —
    bump both together. */
-export const BUILD = 'v17';
+export const BUILD = 'v19';
 
-/** Short human label, e.g. "Arcade v17". */
+/** Short human label, e.g. "Arcade v19". */
 export const BUILD_LABEL = `Arcade ${BUILD}`;
