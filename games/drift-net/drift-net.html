@@ -322,11 +322,29 @@ function drawWire() {
   const pts = wirePoints();
   if (!pts.length) return;
 
+  /* You are the invader here, so the body is made of cubes like everything else
+     on their side. The continuous tube underneath stays — thinner, and now
+     reading as the tether holding the cubes into one body rather than as the
+     body itself. Without it a row of separate squares stops looking connected,
+     which is the one thing this shape has to communicate. */
   if (pts.length > 1) {
     glowStroke(ctx, c => {
       c.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
-    }, '#3fae8f', C * 0.30);
+    }, '#2f8a72', C * 0.16);
+  }
+
+  /* Body cubes, cheaply: a fill plus a two-pass rim each. The full `cube()`
+     helper costs eight stroke passes, which on a sixty-cell net is several
+     hundred draws a frame on a phone — the same reason the body was a single
+     polyline to begin with. Skipping the head, which is drawn hotter below. */
+  const sz = C * 0.62, bh = sz / 2;
+  for (let i = pts.length - 1; i >= 1; i--) {
+    const q = pts[i];
+    const face = (c) => c.rect(q.x - bh, q.y - bh, sz, sz);
+    ctx.fillStyle = '#12332b';
+    ctx.beginPath(); face(ctx); ctx.fill();
+    glowStroke(ctx, face, '#3fae8f', 1.6, GLOW_PASSES_CHEAP);
   }
 
   /* The head is drawn as the brightest point rather than as an extruded solid.
@@ -334,16 +352,18 @@ function drawWire() {
      discrete object sitting on a dark board — a tower, a brick — but on the tip
      of an already-glowing tube it punches a hole in the end. Volume here comes
      from the tube itself; the head just needs to be hotter than the body. */
-  const h = pts[0];
-  glowDot(ctx, h.x, h.y, C * 0.30, '#9fffe0');
-  glowStroke(ctx, c => c.arc(h.x, h.y, C * 0.34, 0, Math.PI * 2), '#5fc9a4', 1.4,
-    GLOW_PASSES_CHEAP);
+  // the leading cube, hotter than the rest so the business end is unmistakable
+  const hd = pts[0], hs = C * 0.72, hh = hs / 2;
+  const hface = (c) => c.rect(hd.x - hh, hd.y - hh, hs, hs);
+  ctx.fillStyle = '#1d6f5b';
+  ctx.beginPath(); hface(ctx); ctx.fill();
+  glowStroke(ctx, hface, '#9fffe0', 2);
 
   // eyes, so the direction of travel is readable even standing still. Drawn
-  // dark and normally composited: the head is a bright emissive disc, so a
+  // dark and normally composited: the head is a bright emissive cube, so a
   // light pupil would be invisible against it and additive cannot darken.
   const d = world.dir;
-  const ex = h.x + d.x * 4, ey = h.y + d.y * 4;
+  const ex = hd.x + d.x * 4, ey = hd.y + d.y * 4;
   const ox = d.x === 0 ? 4 : 0, oy = d.y === 0 ? 4 : 0;
   inkDot(ctx, ex - ox, ey - oy, 1.9);
   inkDot(ctx, ex + ox, ey + oy, 1.9);

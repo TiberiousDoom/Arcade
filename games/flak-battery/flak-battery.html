@@ -547,8 +547,13 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
   // plate dimensions: longer than the spacing so consecutive plates overlap
   // into a continuous armoured body, and clearly longer than wide so each
   // points forward
-  const long = seg.r * 2.7, wide = seg.r * 1.9;
-  const corner = seg.kind === 'head' ? seg.r * 0.55 : seg.r * 0.4;
+  /* Square, and square on purpose: the invaders are cubes and the defenders are
+     spheres, everywhere, without exception. These were elongated plates, which
+     read as a single armoured body — but the fiction is a column of individual
+     craft, and a chain of cubes says that better as well as matching the other
+     games. Kept slightly long so the direction of travel still reads. */
+  const long = seg.r * 2.3, wide = seg.r * 2.0;
+  const corner = 0;
 
   ctx.save();
   ctx.translate(sp.x, sp.y);

@@ -506,3 +506,16 @@ Two mechanics gained a meaning for free: killing Flak Battery's head ending the 
 One thing the rename nearly got wrong: each game's `<h1>` is split across a span — `<h1>Live <span>Wire</span></h1>` — so a bulk replacement of the literal string missed all four titles while changing everything else. Every page still said its old name in the largest text on screen, and every test passed. Caught by loading the games and reading the DOM rather than by trusting the replacement count.
 
 **Deliberately deferred:** the visual half — spheres for defenders, cubes for invaders. Changing every enemy from a disc to a cube at the same moment as finding out whether the v17 trait cues read on a device would make both answers unreadable.
+
+## 2026-07-31 — Spheres and cubes, made absolute
+
+With the Choke Point trait cues confirmed readable on a device, the visual half of the setting landed: **invaders are cubes, defenders are spheres, everywhere, without exception.** `cube()` in `shared/glow.js` draws the former — a square face, a second face offset behind, and the silhouette corners joined, which reads as solid without needing a projection matrix.
+
+The rule is absolute on purpose. Shape alone telling you which side something is on is what keeps a busy board readable at a glance; a "sort of rounded" middle ground would throw that away for nothing. Per game:
+
+- **Drift Net** — you are the invader, so the body became a chain of cubes. The continuous glowing tube stays underneath, thinner, now reading as the tether that holds them into one body: without it a row of separate squares stops looking connected, which is the one thing that shape has to communicate. Body cubes are drawn cheaply (a fill plus a two-pass rim) rather than via the full `cube()` helper, for the same reason the body was a single polyline to begin with — eight stroke passes across sixty cells is several hundred draws a frame on a phone.
+- **Flak Battery** — segments were elongated plates, which read as one armoured body. Square now, and only slightly long so direction of travel still reads, because the fiction is a column of individual craft.
+- **Choke Point** — the risky one, since its trait cues had just been confirmed working. The cue *language* was preserved exactly (heavy = plated, dashed = insulated, chevron = unslowable, cross = repairs) and only refitted from circles to squares; the towers stay round, so the defender/invader read is immediate.
+- **Hull Breach** — deliberately unchanged. Its ball was already a sphere and its bricks are hull *plating*, not craft; forcing them square would have confused armour with units. The exception that proves the rule.
+
+Still outstanding: the glow pass for Flak Battery and Hull Breach. Both now have the right shapes but are still on flat fills, so they look out of step with the two games that have been converted.

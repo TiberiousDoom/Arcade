@@ -140,6 +140,52 @@ export function extrudeDisc(ctx, x, y, r, col, opts = {}) {
     '#ffffff', 1, [[3, 0.08], [1.4, 0.22]]);
 }
 
+/** The invaders' shape.
+ *
+ *  A square face with a second face offset behind it and the silhouette corners
+ *  joined, which reads as a cube without needing a projection matrix. `rot`
+ *  tumbles it — worth using for things in flight, wrong for things marching in
+ *  formation on the ground.
+ *
+ *  This is the whole visual half of the setting: everything the invaders are
+ *  made of is a cube, everything the defenders are made of is a sphere. Keeping
+ *  that rule absolute is what makes a board readable at a glance, so resist
+ *  drawing a "sort of rounded" anything. */
+export function cube(ctx, x, y, size, col, {
+  depth = size * 0.34, rot = 0, width = 2,
+  body = 'rgba(10,20,26,.97)', back = 'rgba(7,14,18,.95)',
+} = {}) {
+  const h = size / 2;
+  const c = Math.cos(rot), s = Math.sin(rot);
+  // corners of the front face, rotated about the centre
+  const pt = (sx, sy) => ({ x: x + (sx * h * c - sy * h * s), y: y + (sx * h * s + sy * h * c) });
+  const F = [pt(-1, -1), pt(1, -1), pt(1, 1), pt(-1, 1)];
+  const dx = depth * 0.55, dy = depth;
+
+  const face = (c2, ox, oy) => {
+    c2.moveTo(F[0].x + ox, F[0].y + oy);
+    for (let i = 1; i < 4; i++) c2.lineTo(F[i].x + ox, F[i].y + oy);
+    c2.closePath();
+  };
+
+  ctx.save();
+  ctx.fillStyle = back;
+  ctx.beginPath(); face(ctx, dx, dy); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c2 => face(c2, dx, dy), col, 1, [[4, 0.05], [2, 0.10]]);
+
+  // the joining edges are what say "solid", not "two squares"
+  glowStroke(ctx, c2 => {
+    for (const p of F) { c2.moveTo(p.x, p.y); c2.lineTo(p.x + dx, p.y + dy); }
+  }, col, 1, [[3, 0.07], [1.2, 0.18]]);
+
+  ctx.save();
+  ctx.fillStyle = body;
+  ctx.beginPath(); face(ctx, 0, 0); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c2 => face(c2, 0, 0), col, width);
+}
+
 /** Convenience: an extruded axis-aligned rectangle. */
 export function extrudeRect(ctx, x, y, w, h, col, opts = {}) {
   const depth = opts.depth ?? 6;

@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 ## Read this first
 
@@ -181,7 +181,9 @@ The fiction was chosen to fit mechanics that already existed rather than the oth
 
 **Game IDs and directories were renamed too**, at the owner's request, knowingly discarding all personal bests and saved runs — there is one player and he didn't mind. If that ever changes, note that `shared/scores.js` and `shared/resume.js` both key off the game id, and the cabinet derives that id from a CSS class, so a future rename needs a real migration with a fallback read of the old key.
 
-**Still to do:** the visual half of the direction — spheres for defenders, cubes for invaders. Held deliberately until the v17 art is checked on a device, because changing every enemy from a disc to a cube at the same time as finding out whether the trait cues read would confuse both answers.
+**The visual half landed in v20**, once the v17 trait cues were confirmed readable on device. Invaders are cubes, defenders are spheres, absolutely — Drift Net is a chain of cubes on a tether, Flak Battery a column of square craft, Choke Point square ground units against round emplacements. Hull Breach needed no change: its ball was already a sphere, and its bricks stay rectangular *plates* because they are hull armour rather than craft.
+
+**Still to do:** the glow pass for Flak Battery and Hull Breach. Both have the right shapes now but are still on the old flat fills, so they look out of step with Drift Net and Choke Point.
 
 ## Open decisions (not yet settled)
 

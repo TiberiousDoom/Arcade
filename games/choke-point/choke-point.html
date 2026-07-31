@@ -566,12 +566,21 @@ function drawEnemy(e) {
      hard to find; these are smaller, there are more of them, and they have to
      be told apart, so the solid disc stays exactly the size it was and only
      gains a glow outside it. */
-  glowStroke(ctx, c => c.arc(p.x, p.y, e.r, 0, TAU), col, 3, [[1.6, .10], [1, .22]]);
+  /* Invaders are cubes; defenders are spheres. That rule is the whole visual
+     half of the setting, and it is absolute — no rounded corners, no
+     compromise, because a board is only readable at a glance if the shape
+     alone tells you which side something is on.
+     These march in formation on the ground, so they do not tumble. */
+  const s = e.r * 1.9;                       // a square of comparable visual mass
+  const half = s / 2;
+  const face = (c) => c.rect(p.x - half, p.y - half, s, s);
+
+  glowStroke(ctx, face, col, 3, [[1.6, .10], [1, .22]]);
   ctx.fillStyle = col;
-  ctx.beginPath(); ctx.arc(p.x, p.y, e.r, 0, TAU); ctx.fill();
+  ctx.beginPath(); face(ctx); ctx.fill();
   if (e.slow > 0) {
     ctx.fillStyle = 'rgba(150,220,255,.5)';
-    ctx.beginPath(); ctx.arc(p.x, p.y, e.r, 0, TAU); ctx.fill();
+    ctx.beginPath(); face(ctx); ctx.fill();
   }
 
   /* Traits have to be legible at a glance or "my towers aren't working" reads
@@ -582,15 +591,15 @@ function drawEnemy(e) {
      turns it into a smudge, and telling Shell from Phase from Patch is the
      single most load-bearing readability job on this board. */
   if (T.armor) {
-    // plating: a heavy ring, suggesting something to punch through
+    // plating: a heavy inset border, suggesting something to punch through
     ctx.strokeStyle = '#bcd8f0'; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.arc(p.x, p.y, e.r - 1.5, 0, TAU); ctx.stroke();
+    ctx.strokeRect(p.x - half + 2.5, p.y - half + 2.5, s - 5, s - 5);
   }
   if (T.splashResist) {
-    // insulated: a dashed shell, suggesting damage sliding off
+    // insulated: a dashed shell outside the body, suggesting damage sliding off
     ctx.strokeStyle = '#e6d5f5'; ctx.lineWidth = 1.5;
     ctx.setLineDash([3, 3]);
-    ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 2.5, 0, TAU); ctx.stroke();
+    ctx.strokeRect(p.x - half - 3, p.y - half - 3, s + 6, s + 6);
     ctx.setLineDash([]);
   }
   if (T.slowImmune) {
@@ -612,14 +621,14 @@ function drawEnemy(e) {
   if (e.healed > 0) {
     ctx.strokeStyle = `rgba(95,201,164,${Math.min(1, e.healed * 5)})`;
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 5, 0, TAU); ctx.stroke();
+    ctx.strokeRect(p.x - half - 5, p.y - half - 5, s + 10, s + 10);
   }
 
-  // hp bar
-  const w = e.r * 2, frac = Math.max(0, e.hp / e.maxhp);
-  ctx.fillStyle = 'rgba(11,20,24,.7)'; ctx.fillRect(p.x - w / 2, p.y - e.r - 7, w, 3);
+  // hp bar, sized to the body and sitting clear above it
+  const frac = Math.max(0, e.hp / e.maxhp);
+  ctx.fillStyle = 'rgba(11,20,24,.7)'; ctx.fillRect(p.x - half, p.y - half - 7, s, 3);
   ctx.fillStyle = frac > .5 ? '#3fae8f' : frac > .25 ? '#c9a227' : '#e0503c';
-  ctx.fillRect(p.x - w / 2, p.y - e.r - 7, w * frac, 3);
+  ctx.fillRect(p.x - half, p.y - half - 7, s * frac, 3);
 }
 
 /* The beams are where this style pays off most: a hitscan zap is a line of

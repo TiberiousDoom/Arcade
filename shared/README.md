@@ -34,14 +34,14 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
 - **[glow.js](glow.js)** — the vector/CRT art primitives: `glowStroke` (the
   multi-pass emissive stroke everything else is built on), `glowDot`, `inkDot`,
   `extrude`/`extrudeDisc`/`extrudeRect`, `fadeFrame` and `scanlines`. Piloted on
-  Drift Net and Choke Point. Four things to know before using it:
+  Drift Net and Choke Point. Five things to know before using it:
   - **Static content accumulates** under `fadeFrame`, settling at roughly
     `1/fade` times the alpha you wrote — a grid drawn at 0.5 ends up looking
     like 1.5. Write static alphas about a third of what you want.
   - **Extrusion suits discrete objects on a dark board**, not the tip of an
     already-glowing form: it fills a dark body before rimming it, which on the
-    end of a glowing tube punches a visible hole. Drift Net's head is a bright
-    `glowDot` for exactly this reason.
+    end of a glowing tube punches a visible hole — which is what happened to
+    Drift Net's head when it was still a disc.
   - **`glowDot`'s `r` is the solid core**, with the halo spreading outside it.
     An earlier version put the only full-alpha pass at `r * 0.5`, so callers got
     a dot half the size they asked for wrapped in haze — legible on a desktop,
@@ -54,6 +54,12 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
     shadow, a pupil — must be painted with the normal composite (`inkDot`, or a
     plain stroke/fill). Choke Point's path glowed like a lit ribbon until
     this was understood, and Drift Net's pupils are `inkDot` for the same reason.
+  - **Invaders are cubes, defenders are spheres**, absolutely and everywhere —
+    `cube()` draws the former. Shape alone tells you which side something is on,
+    which is what keeps a busy board readable, so there is no "sort of rounded"
+    middle ground. The exception that proves it: Hull Breach's bricks stay
+    rectangular *plates* rather than becoming squares, because they are hull
+    armour rather than craft.
 
 Deliberately *not* shared: the banner show/hide logic. It looked like a
 duplicate, but Flak Battery's variant hides a legend and two hint
