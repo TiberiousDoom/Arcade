@@ -41,7 +41,13 @@ export function makeFit({ canvas, stage, board, extra }) {
   addEventListener('resize', fit);
   // orientation settles a beat after the event, so re-fit once it has
   addEventListener('orientationchange', () => setTimeout(fit, 150));
-  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  if (window.visualViewport) {
+    // iOS Safari's collapsing address bar changes visualViewport's height
+    // via a scroll event, not always a resize — miss it and the header
+    // drifts out of sync with the fitted board over a long session.
+    visualViewport.addEventListener('resize', fit);
+    visualViewport.addEventListener('scroll', fit);
+  }
 
   fit();
   return fit;

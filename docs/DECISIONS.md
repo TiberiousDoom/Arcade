@@ -533,3 +533,27 @@ The last two games onto the vector look, which completes the art direction acros
 **The trap this pass sprang, again in a new form: contrast inversion.** Flak Battery's segment bodies used to be bright gradient plates, so the hp numbers, the damage cracks, the head's eye sockets and the shielded plate's rivets were all drawn *dark on top*. Making the body dark inverted every one of those, and they vanished — the numbers most visibly, since they are load-bearing information rather than decoration. Nothing failed; no test could have caught it; the pixels were all drawn exactly as instructed, in a colour now identical to what was underneath.
 
 That is the third distinct version of the same underlying mistake this week (glow instead of mass; additive cannot darken; now dark-on-dark after a body flip). The general rule, worth stating once: **converting to an emissive style inverts the background, so every foreground colour chosen against the old background has to be re-checked.** It is not enough to convert the shapes.
+
+## 2026-07-31 — v22 device checklist: a per-chain position cache, not a per-frame one
+
+Flak Battery's wave-15+ chop traced to `stepShots`: every shot tested every segment of every chain, and each test called `segPos` — an O(log n) binary search over the path — fresh. With 5 guns and the spread upgrade stacking shots, that's shots × segments × log(path-length) per frame.
+
+The first fix cached each chain's segment positions **once per `stepShots` call, shared across all shots that frame** — correct-looking, and wrong: it broke 7 tests. The bug was assuming a chain's positions are stable *within* a frame just because nothing had hit it yet. They aren't — `stepChains` moves every chain forward before `stepShots` runs, so a cache that survives from the *previous* frame (built lazily, on first access, and never invalidated except by a splice) is stale from frame two onward regardless of combat. The fix needed two invalidation triggers, not one: every chain's cache is nulled at the top of *every* `stepShots` call (movement invalidates it), and `damageSeg` nulls it again after `ch.segs.splice(...)` (a death or a splitter's split invalidates it *again*, mid-frame, since a chain can be hit more than once in one frame). Lazy rebuild-on-next-access handles both.
+
+Worth remembering as a general shape: a cache invalidated by "the thing that obviously changes it" (a splice) can still be stale from "the thing that changes it every single frame regardless" (movement). Test on frame *two*, not frame one, when caching something that moves.
+
+## 2026-07-31 — v22 device checklist: Choke Point upgrades specialize instead of scaling everything
+
+Choke Point's three tower types differed at tier 0 but converged in effect as they upgraded — all three tiers scaled range, rate and damage together, so upgrading was a flat power increase regardless of type rather than a choice about what to specialize in. Feedback asked for the opposite: Coil should gain splash on upgrade, Breaker should gain reach, Node should gain fire rate. Implemented as literal per-tier table entries (`TOWER_TYPES[type].tiers[n]`) rather than a formula, since the whole point is that each type's tiers grow a *different* stat — a shared multiplier would have defeated it.
+
+Bounties were also cut ~35% and mount-equivalent costs (Choke Point has no mount cost, but Flak Battery's `MOUNT_COST` got the same treatment) raised, because a run could afford everything the economy offered well before the difficulty curve gave it a reason to. Same root cause in both games: kill income was tuned once, early, and never re-checked after later tuning passes made waves longer (more kills) without the economy side being revisited.
+
+## 2026-07-31 — v22 device checklist: level 1 was the one shape with no gaps
+
+Hull Breach's level rotation (`brickPresent`, `(level-1) % 4`) put the solid-wall pattern first. That's not an arbitrary difficulty spike — a solid wall is the only one of the four shapes with zero empty cells, meaning no gap for the ball to get behind the front row or bounce somewhere forgiving. It was, mechanically, the hardest pattern in the rotation, and it was also a new player's very first level. Feedback called level 1 "too hard" and levels 2-3 "fun" — which lines up exactly with solid-wall-first vs. everything-else.
+
+Fix was reordering the cycle (checkerboard → pyramid → hollow frame → solid wall) rather than softening any one pattern, since the patterns themselves were fine — checkerboard and pyramid are legitimately easier because gaps let the ball recover. Two tests hardcoded "level 1 is a solid wall"; updated to assert the wall at level 4 (where `(4-1)%4===3` now lands it) instead of deleting the invariant.
+
+## 2026-07-31 — v22 device checklist: multiball capped at 4, not 6
+
+`MAX_BALLS` was 6, and the device checklist explicitly wanted to see six trailing interceptors on screen (a visual/perf check, not a fun check) — it passed. The separate fun-vs-chaos question got the opposite answer: six independently-bouncing balls to track was reported as chaos. Lowered the cap to 4 rather than compensating with a wider paddle tied to ball count, since paddle width already has an exact-value test (`w.paddle.w === L.PADDLE_W * WIDE_MULT` after a `multi` + `wide` combo) that a ball-count-dependent formula would have broken, and a simpler dial was available anyway.

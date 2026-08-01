@@ -157,6 +157,30 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
   background:currentColor;transform:rotate(-45deg);
 }
 
+/* ---- the pause toggle, matched to the "?" button but sitting beside it ---- */
+#pauseBtn{
+  position:absolute;top:8px;right:56px;z-index:5;
+  width:40px;height:40px;padding:0;
+  background:transparent;color:var(--dim);
+  border:1px solid var(--line);border-radius:50%;
+  font:700 13px/1 'Chivo Mono',monospace;letter-spacing:0;
+  display:flex;align-items:center;justify-content:center;
+}
+#pauseBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
+#pauseBtn.on{color:var(--accent);border-color:var(--accent)}
+
+#pauseOverlay{
+  position:absolute;inset:0;z-index:4;display:none;
+  align-items:center;justify-content:center;
+  background:rgba(11,20,24,.85);cursor:pointer;
+}
+#pauseOverlay.on{display:flex}
+#pauseOverlay span{
+  font-family:'Archivo Black',sans-serif;
+  font-size:clamp(18px,5vw,30px);text-transform:uppercase;letter-spacing:.04em;
+  color:var(--bone);
+}
+
 #helpPanel{
   position:absolute;inset:0;z-index:6;display:none;
   flex-direction:column;gap:12px;

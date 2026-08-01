@@ -56,6 +56,7 @@ import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
+import { makePause } from '../../shared/pause.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
@@ -193,6 +194,7 @@ addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 mountAudioToggle({ stage: $('stage'), audio });
+const pause = makePause({ stage: $('stage') });
 
 makeHelp({
   stage: $('stage'),
@@ -242,7 +244,7 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);
   last = now;
 
-  if (world.running && !world.over) {
+  if (world.running && !world.over && !pause.paused) {
     let kb = 0;
     if (keys.ArrowLeft) kb -= 1;
     if (keys.ArrowRight) kb += 1;
@@ -328,7 +330,10 @@ function draw() {
   for (const b of world.bricks) {
     if (!b.alive) continue;
     const col = brickFace(b);
-    const lit = b.hp < b.maxhp ? 0.35 + 0.65 * (b.hp / b.maxhp) : 1;
+    // quantized into bands, not a smooth fade — a hit should look like a
+    // light switching off in stages, not like the rim slowly dimming
+    const hpFrac = b.hp / b.maxhp;
+    const lit = b.hp >= b.maxhp ? 1 : hpFrac > 0.66 ? 0.7 : hpFrac > 0.33 ? 0.45 : 0.25;
     const face = (c) => c.rect(b.x + .5, b.y + .5, b.w - 1, b.h - 1);
 
     ctx.fillStyle = 'rgba(10,22,27,.96)';
@@ -403,9 +408,13 @@ function drawDrop(d) {
   ctx.fillStyle = P.col;
   ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, TAU); ctx.fill();
   glowDot(ctx, d.x, d.y, r, P.col);
-  ctx.fillStyle = '#0b1418';
-  ctx.font = "700 13px 'Chivo Mono', monospace";
+  // a heavier, larger glyph than before — the arrow and triangle characters
+  // in particular read thin at 13px and were hard to tell apart at a glance
+  ctx.font = "900 16px 'Chivo Mono', monospace";
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(11,20,24,.9)';
+  ctx.strokeText(DROP_GLYPH[d.kind] || '?', d.x, d.y + .5);
+  ctx.fillStyle = '#0b1418';
   ctx.fillText(DROP_GLYPH[d.kind] || '?', d.x, d.y + .5);
   ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
 }

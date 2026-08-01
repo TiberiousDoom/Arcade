@@ -90,6 +90,7 @@ import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
+import { makePause } from '../../shared/pause.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
@@ -164,6 +165,15 @@ startBtn.textContent = 'Start Wave';
 startBtn.addEventListener('click', () => { if (world.running) E.startWave(world); syncPalette(); });
 controls.append(startBtn);
 
+// lets a player pull the rest of an already-running wave's spawns in now,
+// rather than wait out its gaps — for when the pace feels too slow
+const rushBtn = document.createElement('button');
+rushBtn.id = 'rushWave';
+rushBtn.type = 'button';
+rushBtn.textContent = 'Rush Wave';
+rushBtn.addEventListener('click', () => { if (world.running) E.rushWave(world); syncPalette(); });
+controls.append(rushBtn);
+
 function syncPalette() {
   for (const key of E.TOWER_KEYS) {
     pickBtns[key].classList.toggle('on', key === selected);
@@ -174,8 +184,10 @@ function syncPalette() {
   // toggles, or it keeps a size computed against the old strip and can run off
   // the bottom of a short screen. Only on the actual edge; sync() runs per frame.
   const wantStart = world.running && world.betweenWaves && !world.over;
-  if (wantStart === startBtn.classList.contains('hide')) {
+  const wantRush = world.running && world.waveActive && world.spawnQueue.length > 0;
+  if (wantStart === startBtn.classList.contains('hide') || wantRush === rushBtn.classList.contains('hide')) {
     startBtn.classList.toggle('hide', !wantStart);
+    rushBtn.classList.toggle('hide', !wantRush);
     if (fitStage) fitStage();
   }
 }
@@ -242,6 +254,41 @@ for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
   cv.addEventListener(ev, e => e.preventDefault());
 }
 
+/* ---------- drag-and-drop placement ----------
+   Tap-a-palette-tower-then-tap-a-cell (above) still works; this adds
+   picking a palette tower up and dropping it straight onto a cell in one
+   gesture. Pointer events, not the HTML5 drag API — dragstart is
+   preventDefault'd above, and touch needs pointer events anyway. */
+let dragType = null;
+
+function dragPoint(e) {
+  const r = cv.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return null;
+  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+}
+
+for (const key of E.TOWER_KEYS) {
+  pickBtns[key].addEventListener('pointerdown', e => {
+    if (!world.running || pickBtns[key].disabled) return;
+    dragType = key;
+    selected = key; syncPalette();
+    hoverCell = null;
+    e.preventDefault();
+  });
+}
+addEventListener('pointermove', e => {
+  if (!dragType) return;
+  const p = dragPoint(e);
+  hoverCell = p ? E.cellAt(world.L, p.x, p.y) : null;
+});
+addEventListener('pointerup', e => {
+  if (!dragType) return;
+  const p = dragPoint(e);
+  const cell = p && E.cellAt(world.L, p.x, p.y);
+  if (cell && E.buildTower(world, cell.c, cell.r, dragType)) sync();
+  dragType = null; hoverCell = null;
+});
+
 addEventListener('keydown', e => {
   if (e.code === 'Digit1') selected = 'node';
   else if (e.code === 'Digit2') selected = 'breaker';
@@ -278,6 +325,7 @@ addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 mountAudioToggle({ stage: $('stage'), audio });
+const pause = makePause({ stage: $('stage') });
 
 makeHelp({
   stage: $('stage'),
@@ -380,7 +428,7 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);
   last = now;
 
-  if (world.running && !world.over) {
+  if (world.running && !world.over && !pause.paused) {
     const wasActive = world.waveActive;
     E.step(world, dt);
     // a wave just finished: the board is quiet and the run is worth keeping
@@ -455,6 +503,17 @@ function draw() {
   if (gfx.flash > 0) { ctx.fillStyle = `rgba(224,80,60,${gfx.flash * .3})`; ctx.fillRect(0, 0, W, H); }
   // range preview for the selected build type, under the pointer cell
   if (hoverCell) drawRangePreview();
+  // range ring for whichever tower the popup is currently open on — the tap
+  // flow (mobile) has no hover, so this is the only way to see it there
+  if (popupIndex >= 0 && world.towers[popupIndex]) drawTowerRange(world.towers[popupIndex]);
+}
+
+function drawTowerRange(t) {
+  const cx = (t.c + .5) * C(), cy = (t.r + .5) * C();
+  ctx.strokeStyle = 'rgba(111,183,232,.6)';
+  ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.arc(cx, cy, E.stats(t).range, 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawGrid() {

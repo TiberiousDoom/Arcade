@@ -77,23 +77,26 @@ export function atS(path, pathLen, s) {
 
 /* ---------- segments ---------- */
 
+// Scrap trimmed ~25-30% across the board: at the old rates a run could afford
+// all 5 gun mounts by wave 7, well before the upgrade tree gave it anything
+// to weigh that against.
 export const KIND = {
-  std:      { hp: 3, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 3 },
-  armored:  { hp: 10, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 8 },
-  volatile: { hp: 2, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 5 },
+  std:      { hp: 3, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 2 },
+  armored:  { hp: 10, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 6 },
+  volatile: { hp: 2, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 4 },
   // Plated on the leading face: shots from the front glance off, so you must
   // either come at it from the side via a wall bounce or clear a neighbour
   // first to expose the flank.
-  shielded: { hp: 5, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 9, shield: true },
+  shielded: { hp: 5, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 7, shield: true },
   // Heals while it lives. Ignore it and it undoes your chip damage; it never
   // heals past its cap and never comes back once destroyed.
-  regen:    { hp: 6, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 8, regen: 1.1 },
+  regen:    { hp: 6, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 6, regen: 1.1 },
   // Rare. Killing it splits the chain into two independent snakes instead of
   // paying recoil — a trap that doubles the threat, or a scoring gamble.
-  splitter: { hp: 6, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 12, splits: true },
+  splitter: { hp: 6, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 9, splits: true },
   // Drops a power-up on death. Worth breaking your rhythm for.
-  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 6, carries: true },
-  head:     { hp: 14, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 18 },
+  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 5, carries: true },
+  head:     { hp: 14, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 14 },
 };
 
 /** Shots landing within this angle of a shielded segment's leading face are
@@ -185,7 +188,9 @@ export function reserveSegIds(id) {
  *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
  *  56-segment chain spans 1650px of a ~5750px path, so it still fits the board
  *  comfortably without the tail overlapping the head. */
-export const waveCount = (wave) => Math.min(14 + wave * 4, 56);
+// Ramp steeper than before (18+6/wave, was 14+4/wave) so chains get longer
+// sooner — the cap is unchanged, just reached by wave 7 instead of wave 11.
+export const waveCount = (wave) => Math.min(18 + wave * 6, 56);
 /** Path length of the standard layout, used as the default reference. */
 export const REF_PATH_LEN = buildPath(LAYOUT).pathLen;
 
@@ -765,7 +770,7 @@ export const GUN_KEYS = Object.keys(GUN_TYPES);
  *  dead centre; more mounts fan outward symmetrically. */
 export const MOUNT_X = [0.5, 0.32, 0.68, 0.18, 0.82];
 export const MAX_MOUNTS = 5;
-export const MOUNT_COST = [0, 90, 150, 230, 330];   // cost of the Nth mount
+export const MOUNT_COST = [0, 100, 190, 320, 480];   // cost of the Nth mount
 
 /** How close two hits must land in time to count as convergence. */
 export const CONVERGE_WINDOW = 0.12;
@@ -968,7 +973,7 @@ function decapitate(w, ci) {
   const hp = segPos(w.path, w.pathLen, ch, 0);
   w.score += score;
   w.scrap += scrap;
-  w.fx.push('DECAPITATED +' + score, hp.x, hp.y, KIND.head.col);
+  w.fx.push('COMMAND SHIP DOWN +' + score, hp.x, hp.y, KIND.head.col);
   w.hitStop = Math.max(w.hitStop, 0.12);
   w.shake = Math.max(w.shake, 0.6);
   w.chains.splice(ci, 1);
@@ -1024,6 +1029,7 @@ export function damageSeg(w, ci, i, dmg) {
   if (K.carries) spawnPickup(w, pos.x, pos.y, rollDrop(w));
 
   ch.segs.splice(i, 1);
+  ch._pos = null;   // stale after the splice — stepShots rebuilds it lazily
 
   /* A splitter pays no recoil — instead the chain comes apart and the tail
      grows its own head. That is the trade: you lose the time a normal cut
@@ -1106,6 +1112,12 @@ export function stepCannon(w, dt, firing) {
 
 export function stepShots(w, dt) {
   const { W, H } = w.L;
+  // Chains move every frame (stepChains runs before this), so last frame's
+  // cached positions are stale even without a splice — every chain's cache
+  // has to start the frame invalidated. Splices mid-frame (a death, or a
+  // splitter's split) invalidate again below, since a chain can be hit more
+  // than once in the same frame.
+  for (const ch of w.chains) ch._pos = null;
   for (let k = w.shots.length - 1; k >= 0; k--) {
     const p = w.shots[k];
     p.x += p.vx * dt;
@@ -1142,9 +1154,16 @@ export function stepShots(w, dt) {
     outer:
     for (let ci = w.chains.length - 1; ci >= 0; ci--) {
       const ch = w.chains[ci];
+      // Every shot checks every segment, and segPos does an O(log n) path
+      // lookup — with 5 guns + spread stacking shots, that product was the
+      // choppiness at high wave counts. Positions are cached per chain and
+      // reused across shots within the frame; damageSeg invalidates the
+      // cache whenever it splices ch.segs (a death, or a splitter's split),
+      // so a stale index never survives past the mutation that caused it.
+      if (!ch._pos) ch._pos = ch.segs.map((_, si) => segPos(w.path, w.pathLen, ch, si));
       for (let i = ch.segs.length - 1; i >= 0; i--) {
         const seg = ch.segs[i];
-        const sp = segPos(w.path, w.pathLen, ch, i);
+        const sp = ch._pos[i];
         if (sp.off) continue;
         if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r + w.assistR) {
           const heading = segHeading(w.path, w.pathLen, ch, i);

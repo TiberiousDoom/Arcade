@@ -58,6 +58,7 @@ import { glowStroke, glowDot, inkDot, fadeFrame, scanlines, GLOW_PASSES_CHEAP } 
 import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
+import { makePause } from '../../shared/pause.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -187,11 +188,12 @@ addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 mountAudioToggle({ stage: $('stage'), audio });
+const pause = makePause({ stage: $('stage') });
 
 makeHelp({
   stage: $('stage'),
   title: 'Drift Net',
-  lore: 'You are the thing that arrived. Every world you touch becomes part of you, and you do not stop.',
+  lore: 'Every world it touched became a part of it, and it does not stop.',
   rows: [
     ['Steer', 'Swipe anywhere. A short flick is enough.'],
     ['Grow', 'Every meal adds a segment and speeds the board up.'],
@@ -210,7 +212,7 @@ function frame(now) {
   last = now;
 
   const wasOver = world.over;
-  E.step(world, dt);
+  if (!pause.paused) E.step(world, dt);
   if (world.over && !wasOver) {
     const r = submit(GAME_ID, world.score, `Length ${world.wire.length}`);
     syncBest();

@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-07-31
+Last updated: 2026-07-31 (v23 feedback pass)
 
 ## Read this first
 
@@ -184,6 +184,23 @@ The fiction was chosen to fit mechanics that already existed rather than the oth
 **The visual half landed in v20**, once the v17 trait cues were confirmed readable on device. Invaders are cubes, defenders are spheres, absolutely — Drift Net is a chain of cubes on a tether, Flak Battery a column of square craft, Choke Point square ground units against round emplacements. Hull Breach needed no change: its ball was already a sphere, and its bricks stay rectangular *plates* because they are hull armour rather than craft.
 
 **The art direction is complete across all four games** as of v22. Flak Battery is a column of lit cube craft with glowing spherical ordnance; Hull Breach is lit hull plating with a trailing interceptor. Neither takes phosphor trails — both boards are mostly static, and static content accumulates under a fade; Hull Breach trails only the ball instead, tracked in the shell.
+
+## Device feedback, round four — v22 checklist (acted on 2026-07-31)
+
+46/47 checklist items passed; the free-text notes drove a full pass across all four games plus `shared/`. See [docs/DECISIONS.md](docs/DECISIONS.md) for the reasoning behind the notable calls.
+
+- **A pause button now exists app-wide.** `shared/pause.js`, mounted next to the "?" help button in all four shells, gates each shell's `E.step(...)` call. First player-triggered pause the app has ever had.
+- **The header-climb bug is fixed.** `shared/fit.js` only re-fit on `resize`/`orientationchange`/`visualViewport resize` — missing `visualViewport`'s `scroll` event, which is what iOS Safari's collapsing address bar actually fires. Now listened for too.
+- **Choke Point rework:** bounties cut ~35%, per-type upgrade specialization (Node → fire rate, Breaker → range, Coil → splash), Patch's heal unlock pulled from wave 11 to 8 with a bigger radius/rate, a range ring now shows on an already-built tower's popup (not just placement preview), drag-and-drop placement alongside tap-to-build, and a new "Rush Wave" button that pulls the active wave's remaining spawns in immediately.
+- **Flak Battery:** fixed the wave-15+ chop — `stepShots` was doing an O(shots × segments) scan with an uncached path lookup per pair every frame; segment positions are now cached per chain per frame (invalidated on any mid-frame splice). Also: chain length ramps steeper (cap reached by wave 7, not 11), scrap trimmed ~25-30% and mount costs raised (all 5 emplacements no longer affordable by wave 7), HP text bumped to 11px with an outline, the head's ring replaced with four corner brackets (less "target reticle"), and "DECAPITATED" reworded to "COMMAND SHIP DOWN" to match the command-ship framing.
+- **Hull Breach:** brick damage now reads in discrete brightness bands instead of a continuous alpha fade, capsule glyphs bumped to 16px with a stroke outline, `MAX_BALLS` cut from 6 to 4 (six independent balls was chaos, not fun), and level 1 — previously the one layout with *no gaps* (a solid wall) — swapped for the checkerboard pattern so the opener isn't the hardest shape in the rotation.
+- **Drift Net's lore line** dropped its "you" framing per note: now "Every world it touched became a part of it, and it does not stop."
+- **Landscape support was already fully removed** in a prior session (`PORTRAIT_ONLY = true` in all four shells, manifest already `"orientation": "portrait"`) — nothing left to do there beyond the still-open question of deleting the now-dead `LAYOUT` (landscape) objects, which stays deliberately deferred (see DECISIONS.md 2026-07-27).
+
+**Deliberately not built this pass** (logged as ideas, not started):
+- Hull Breach level-select / revisit-completed-levels.
+- A shop to upgrade the ball/paddle in Hull Breach.
+- Flak Battery: an ion-cannon gun type specifically needed to pierce a new shielded-craft kind (distinct from the existing `shielded` KIND's frontal deflection).
 
 ## Open decisions (not yet settled)
 

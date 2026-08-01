@@ -130,6 +130,7 @@ import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
+import { makePause } from '../../shared/pause.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -288,6 +289,7 @@ addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 mountAudioToggle({ stage: $('stage'), audio });
+const pause = makePause({ stage: $('stage') });
 
 makeHelp({
   stage: $('stage'),
@@ -312,7 +314,7 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);
   last = now;
 
-  if (world.running) {
+  if (world.running && !pause.paused) {
     const c = world.cannon;
     let kb = 0;
     if (keys.ArrowLeft) kb -= 1;
@@ -612,9 +614,15 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
     const hit = seg.deflect > 0;
     const pulse = reduce ? 0 : Math.sin(performance.now() / 260) * 1.6;
     const rr = seg.r * 1.55 + (1 - prot) * 6 + pulse;
-    glowStroke(ctx, c => c.arc(sp.x, sp.y, rr, 0, TAU),
-      hit ? '#ffffff' : '#c9a227', hit ? 2.6 : 1 + prot * 1.6,
-      GLOW_PASSES_CHEAP, hit ? 1 : 0.35 + prot * 0.6);
+    const col = hit ? '#ffffff' : '#c9a227';
+    const lw = hit ? 2.6 : 1 + prot * 1.6;
+    const alpha = hit ? 1 : 0.35 + prot * 0.6;
+    // four corner brackets, not a full halo — an armour-plating cue on the
+    // command ship rather than a target reticle drawn around a "head"
+    const half = Math.PI / 5;
+    for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      glowStroke(ctx, c => c.arc(sp.x, sp.y, rr, a - half, a + half), col, lw, GLOW_PASSES_CHEAP, alpha);
+    }
   }
 
   /* HP readout for tough segments, upright (outside the rotation). Light on
@@ -623,9 +631,14 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
      caught the damage cracks and the head's eye sockets — anything drawn dark
      on top of what is now a dark body simply disappeared. */
   if (seg.maxhp > 3) {
-    ctx.fillStyle = 'rgba(235,244,240,.92)';
-    ctx.font = '700 9px "Chivo Mono",monospace'; ctx.textAlign = 'center';
-    ctx.fillText(Math.ceil(seg.hp), sp.x, sp.y + 3.4);
+    ctx.font = '700 11px "Chivo Mono",monospace'; ctx.textAlign = 'center';
+    // a dark outline first, so the number stays legible over a bright or busy
+    // plate rather than only over the dark body it was tuned against
+    ctx.strokeStyle = 'rgba(9,19,24,.85)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(Math.ceil(seg.hp), sp.x, sp.y + 3.8);
+    ctx.fillStyle = 'rgba(235,244,240,.96)';
+    ctx.fillText(Math.ceil(seg.hp), sp.x, sp.y + 3.8);
     ctx.textAlign = 'left';
   }
 }

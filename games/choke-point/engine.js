@@ -135,29 +135,32 @@ export function pathCells(L, routeIndex = 0) {
 /** Three tower types. `stats(type, tier)` resolves the effective numbers; read
  *  from that, not these tables directly. Ranges are in pixels; rate is seconds
  *  between shots; slow is a fraction and duration in seconds. */
+// Each type's upgrade grows a different stat, so tier choices read as a
+// specialization rather than a flat power bump on every tower alike:
+// Node's edge is fire rate, Breaker's is reach, Coil's is splash.
 export const TOWER_TYPES = {
   node: {
-    name: 'Node', cost: 12, col: '#6fb7e8', blurb: 'Cheap, fast, low damage',
+    name: 'Node', cost: 12, col: '#6fb7e8', blurb: 'Cheap — upgrades for fire rate',
     tiers: [
       { range: 92, rate: 0.5, dmg: 4, splash: 0, slow: 0 },
-      { range: 104, rate: 0.42, dmg: 6, splash: 0, slow: 0 },
-      { range: 116, rate: 0.36, dmg: 9, splash: 0, slow: 0 },
+      { range: 96, rate: 0.32, dmg: 5, splash: 0, slow: 0 },
+      { range: 100, rate: 0.2, dmg: 6, splash: 0, slow: 0 },
     ],
   },
   breaker: {
-    name: 'Breaker', cost: 32, col: '#e0503c', blurb: 'Slow, heavy, small splash',
+    name: 'Breaker', cost: 32, col: '#e0503c', blurb: 'Splash — upgrades for reach',
     tiers: [
       { range: 120, rate: 1.4, dmg: 24, splash: 44, slow: 0 },
-      { range: 132, rate: 1.25, dmg: 38, splash: 50, slow: 0 },
-      { range: 146, rate: 1.1, dmg: 58, splash: 58, slow: 0 },
+      { range: 150, rate: 1.35, dmg: 28, splash: 46, slow: 0 },
+      { range: 185, rate: 1.3, dmg: 32, splash: 48, slow: 0 },
     ],
   },
   coil: {
-    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Slows, and softens for others',
+    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Slows — upgrades for splash',
     tiers: [
       { range: 84, rate: 0.8, dmg: 2, splash: 0, slow: 0.4, slowDur: 1.2 },
-      { range: 92, rate: 0.72, dmg: 3, splash: 0, slow: 0.5, slowDur: 1.4 },
-      { range: 100, rate: 0.64, dmg: 4, splash: 0, slow: 0.6, slowDur: 1.6 },
+      { range: 88, rate: 0.76, dmg: 3, splash: 30, slow: 0.5, slowDur: 1.4 },
+      { range: 92, rate: 0.72, dmg: 4, splash: 40, slow: 0.6, slowDur: 1.6 },
     ],
   },
 };
@@ -202,28 +205,32 @@ export function stats(tower) {
  *    heals        repairs nearby enemies, which makes target priority matter
  *                 rather than just total damage
  */
+// Bounties scaled down (~65% of the original table) so the economy takes
+// longer to snowball — full upgrades shouldn't be affordable by wave 7.
 export const ENEMY_TYPES = {
-  surge: { name: 'Surge', hp: 20, speed: 62, bounty: 3, r: 12, col: '#e6e9e2' },
-  spark: { name: 'Spark', hp: 12, speed: 112, bounty: 4, r: 10, col: '#c9a227' },
-  load:  { name: 'Load',  hp: 92, speed: 40, bounty: 8, r: 15, col: '#7f8fa0' },
+  surge: { name: 'Surge', hp: 20, speed: 62, bounty: 2, r: 12, col: '#e6e9e2' },
+  spark: { name: 'Spark', hp: 12, speed: 112, bounty: 3, r: 9, col: '#c9a227' },
+  load:  { name: 'Load',  hp: 92, speed: 40, bounty: 5, r: 19, col: '#7f8fa0' },
   // many, tiny and quick: the case splash damage is *for*
-  swarm: { name: 'Swarm', hp: 7, speed: 128, bounty: 2, r: 8, col: '#d8763a' },
+  swarm: { name: 'Swarm', hp: 7, speed: 128, bounty: 1, r: 7, col: '#d8763a' },
   // plated: chips a flat amount off every hit, so a tier-0 Node barely dents it
   // while a Breaker hardly notices. Deliberately 3 and not higher — at 6 it
   // exceeded Node's base damage outright, which made Node permanently useless
   // here rather than something worth *upgrading* to make viable.
-  shell: { name: 'Shell', hp: 70, speed: 46, bounty: 11, r: 15, col: '#4d7fb3', armor: 3 },
+  shell: { name: 'Shell', hp: 70, speed: 46, bounty: 7, r: 17, col: '#4d7fb3', armor: 3 },
   // insulated against splash, and quick — punish leaning on Breaker
-  phase: { name: 'Phase', hp: 34, speed: 104, bounty: 9, r: 11, col: '#b58fd0',
+  phase: { name: 'Phase', hp: 34, speed: 104, bounty: 6, r: 10, col: '#b58fd0',
            splashResist: 0.8, slowImmune: true },
   // repairs its neighbours. Towers shoot the furthest-along enemy, so a patch
-  // trailing the pack is safe unless you build to reach it.
-  patch: { name: 'Patch', hp: 44, speed: 54, bounty: 10, r: 13, col: '#5fc9a4', heals: 7 },
+  // trailing the pack is safe unless you build to reach it. Heal rate/radius
+  // raised and unlock pulled earlier so it's a real nuisance, not a no-op —
+  // at wave 11 with a 96px/7hp-per-sec heal it was over before it mattered.
+  patch: { name: 'Patch', hp: 44, speed: 54, bounty: 6, r: 13, col: '#5fc9a4', heals: 12 },
 };
 export const ENEMY_KEYS = Object.keys(ENEMY_TYPES);
 
 /** How far a Patch's repair reaches, in pixels. */
-export const HEAL_RADIUS = 96;
+export const HEAL_RADIUS = 140;
 /** No hit is ever fully absorbed — armour caps out at leaving this through. */
 export const MIN_DAMAGE = 1;
 /** A slowed enemy takes this much extra damage. This is what makes Coil worth
@@ -244,7 +251,7 @@ export const START_INTEGRITY = 20;
  *  trait can be met and understood on its own rather than all at once — same
  *  reasoning as Flak Battery's KIND_UNLOCK. */
 export const ENEMY_UNLOCK = {
-  surge: 1, spark: 3, swarm: 4, load: 5, shell: 7, phase: 9, patch: 11,
+  surge: 1, spark: 3, swarm: 4, load: 5, shell: 7, phase: 9, patch: 8,
 };
 
 /** Types available on a given wave, in unlock order. */
@@ -383,6 +390,16 @@ export function startWave(w) {
   w.spawnQueue.sort((a, b) => a.at - b.at);
   w.waveActive = true;
   w.betweenWaves = false;
+  return true;
+}
+
+/** Pull the active wave's remaining spawns in immediately, for players who'd
+ *  rather fight the rest of the wave now than wait out its spawn gaps. Does
+ *  not touch enemies already on the board, and does not start a new wave —
+ *  `startWave`'s "no-op mid-wave" contract is unchanged. */
+export function rushWave(w) {
+  if (w.over || !w.waveActive || !w.spawnQueue.length) return false;
+  for (const s of w.spawnQueue) s.at = Math.min(s.at, w.clock);
   return true;
 }
 

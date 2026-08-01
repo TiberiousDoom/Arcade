@@ -167,6 +167,30 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
   background:currentColor;transform:rotate(-45deg);
 }
 
+/* ---- the pause toggle, matched to the "?" button but sitting beside it ---- */
+#pauseBtn{
+  position:absolute;top:8px;right:56px;z-index:5;
+  width:40px;height:40px;padding:0;
+  background:transparent;color:var(--dim);
+  border:1px solid var(--line);border-radius:50%;
+  font:700 13px/1 'Chivo Mono',monospace;letter-spacing:0;
+  display:flex;align-items:center;justify-content:center;
+}
+#pauseBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
+#pauseBtn.on{color:var(--accent);border-color:var(--accent)}
+
+#pauseOverlay{
+  position:absolute;inset:0;z-index:4;display:none;
+  align-items:center;justify-content:center;
+  background:rgba(11,20,24,.85);cursor:pointer;
+}
+#pauseOverlay.on{display:flex}
+#pauseOverlay span{
+  font-family:'Archivo Black',sans-serif;
+  font-size:clamp(18px,5vw,30px);text-transform:uppercase;letter-spacing:.04em;
+  color:var(--bone);
+}
+
 #helpPanel{
   position:absolute;inset:0;z-index:6;display:none;
   flex-direction:column;gap:12px;
@@ -428,23 +452,26 @@ function atS(path, pathLen, s) {
 
 /* ---------- segments ---------- */
 
+// Scrap trimmed ~25-30% across the board: at the old rates a run could afford
+// all 5 gun mounts by wave 7, well before the upgrade tree gave it anything
+// to weigh that against.
 const KIND = {
-  std:      { hp: 3, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 3 },
-  armored:  { hp: 10, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 8 },
-  volatile: { hp: 2, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 5 },
+  std:      { hp: 3, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 2 },
+  armored:  { hp: 10, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 6 },
+  volatile: { hp: 2, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 4 },
   // Plated on the leading face: shots from the front glance off, so you must
   // either come at it from the side via a wall bounce or clear a neighbour
   // first to expose the flank.
-  shielded: { hp: 5, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 9, shield: true },
+  shielded: { hp: 5, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 7, shield: true },
   // Heals while it lives. Ignore it and it undoes your chip damage; it never
   // heals past its cap and never comes back once destroyed.
-  regen:    { hp: 6, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 8, regen: 1.1 },
+  regen:    { hp: 6, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 6, regen: 1.1 },
   // Rare. Killing it splits the chain into two independent snakes instead of
   // paying recoil — a trap that doubles the threat, or a scoring gamble.
-  splitter: { hp: 6, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 12, splits: true },
+  splitter: { hp: 6, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 9, splits: true },
   // Drops a power-up on death. Worth breaking your rhythm for.
-  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 6, carries: true },
-  head:     { hp: 14, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 18 },
+  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 5, carries: true },
+  head:     { hp: 14, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 14 },
 };
 
 /** Shots landing within this angle of a shielded segment's leading face are
@@ -536,7 +563,9 @@ function reserveSegIds(id) {
  *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
  *  56-segment chain spans 1650px of a ~5750px path, so it still fits the board
  *  comfortably without the tail overlapping the head. */
-const waveCount = (wave) => Math.min(14 + wave * 4, 56);
+// Ramp steeper than before (18+6/wave, was 14+4/wave) so chains get longer
+// sooner — the cap is unchanged, just reached by wave 7 instead of wave 11.
+const waveCount = (wave) => Math.min(18 + wave * 6, 56);
 /** Path length of the standard layout, used as the default reference. */
 const REF_PATH_LEN = buildPath(LAYOUT).pathLen;
 
@@ -1116,7 +1145,7 @@ const GUN_KEYS = Object.keys(GUN_TYPES);
  *  dead centre; more mounts fan outward symmetrically. */
 const MOUNT_X = [0.5, 0.32, 0.68, 0.18, 0.82];
 const MAX_MOUNTS = 5;
-const MOUNT_COST = [0, 90, 150, 230, 330];   // cost of the Nth mount
+const MOUNT_COST = [0, 100, 190, 320, 480];   // cost of the Nth mount
 
 /** How close two hits must land in time to count as convergence. */
 const CONVERGE_WINDOW = 0.12;
@@ -1319,7 +1348,7 @@ function decapitate(w, ci) {
   const hp = segPos(w.path, w.pathLen, ch, 0);
   w.score += score;
   w.scrap += scrap;
-  w.fx.push('DECAPITATED +' + score, hp.x, hp.y, KIND.head.col);
+  w.fx.push('COMMAND SHIP DOWN +' + score, hp.x, hp.y, KIND.head.col);
   w.hitStop = Math.max(w.hitStop, 0.12);
   w.shake = Math.max(w.shake, 0.6);
   w.chains.splice(ci, 1);
@@ -1375,6 +1404,7 @@ function damageSeg(w, ci, i, dmg) {
   if (K.carries) spawnPickup(w, pos.x, pos.y, rollDrop(w));
 
   ch.segs.splice(i, 1);
+  ch._pos = null;   // stale after the splice — stepShots rebuilds it lazily
 
   /* A splitter pays no recoil — instead the chain comes apart and the tail
      grows its own head. That is the trade: you lose the time a normal cut
@@ -1457,6 +1487,12 @@ function stepCannon(w, dt, firing) {
 
 function stepShots(w, dt) {
   const { W, H } = w.L;
+  // Chains move every frame (stepChains runs before this), so last frame's
+  // cached positions are stale even without a splice — every chain's cache
+  // has to start the frame invalidated. Splices mid-frame (a death, or a
+  // splitter's split) invalidate again below, since a chain can be hit more
+  // than once in the same frame.
+  for (const ch of w.chains) ch._pos = null;
   for (let k = w.shots.length - 1; k >= 0; k--) {
     const p = w.shots[k];
     p.x += p.vx * dt;
@@ -1493,9 +1529,16 @@ function stepShots(w, dt) {
     outer:
     for (let ci = w.chains.length - 1; ci >= 0; ci--) {
       const ch = w.chains[ci];
+      // Every shot checks every segment, and segPos does an O(log n) path
+      // lookup — with 5 guns + spread stacking shots, that product was the
+      // choppiness at high wave counts. Positions are cached per chain and
+      // reused across shots within the frame; damageSeg invalidates the
+      // cache whenever it splices ch.segs (a death, or a splitter's split),
+      // so a stale index never survives past the mutation that caused it.
+      if (!ch._pos) ch._pos = ch.segs.map((_, si) => segPos(w.path, w.pathLen, ch, si));
       for (let i = ch.segs.length - 1; i >= 0; i--) {
         const seg = ch.segs[i];
-        const sp = segPos(w.path, w.pathLen, ch, i);
+        const sp = ch._pos[i];
         if (sp.off) continue;
         if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r + w.assistR) {
           const heading = segHeading(w.path, w.pathLen, ch, i);
@@ -1662,7 +1705,13 @@ function makeFit({ canvas, stage, board, extra }) {
   addEventListener('resize', fit);
   // orientation settles a beat after the event, so re-fit once it has
   addEventListener('orientationchange', () => setTimeout(fit, 150));
-  if (window.visualViewport) visualViewport.addEventListener('resize', fit);
+  if (window.visualViewport) {
+    // iOS Safari's collapsing address bar changes visualViewport's height
+    // via a scroll event, not always a resize — miss it and the header
+    // drifts out of sync with the fitted board over a long session.
+    visualViewport.addEventListener('resize', fit);
+    visualViewport.addEventListener('scroll', fit);
+  }
 
   fit();
   return fit;
@@ -1927,9 +1976,9 @@ const __mod_4 = (() => {
    can see and a cache they can't must never disagree. `version.test.js` reads
    sw.js and fails if the two drift, so this is enforced rather than hoped for —
    bump both together. */
-const BUILD = 'v21';
+const BUILD = 'v22';
 
-/** Short human label, e.g. "Arcade v21". */
+/** Short human label, e.g. "Arcade v22". */
 const BUILD_LABEL = `Arcade ${BUILD}`;
 
 return { BUILD, BUILD_LABEL };
@@ -2284,6 +2333,49 @@ function mountAudioToggle({ stage, audio }) {
 
 return { MUTE_KEY, readMuted, writeMuted, makeAudio, mountAudioToggle };
 })();
+const __mod_8 = (() => {
+/* A pause button in the corner of the board, matched to the "?" help button.
+
+   No game had a player-triggered pause before this — only internal booleans
+   that halted the loop behind a shop/banner. This is the first one a player
+   can reach directly, mid-run. */
+
+function makePause({ stage, onToggle }) {
+  const btn = document.createElement('button');
+  btn.id = 'pauseBtn';
+  btn.type = 'button';
+  btn.textContent = '❚❚';
+  btn.setAttribute('aria-label', 'Pause');
+  btn.setAttribute('aria-pressed', 'false');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'pauseOverlay';
+  overlay.innerHTML = '<span>Paused</span>';
+
+  stage.append(btn, overlay);
+
+  let paused = false;
+  const set = (v) => {
+    paused = v;
+    overlay.classList.toggle('on', paused);
+    btn.classList.toggle('on', paused);
+    btn.textContent = paused ? '▶' : '❚❚';
+    btn.setAttribute('aria-pressed', String(paused));
+    btn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+    if (onToggle) onToggle(paused);
+  };
+  const toggle = () => set(!paused);
+
+  btn.addEventListener('click', toggle);
+  // tapping the overlay resumes, same "tap the backdrop to dismiss" as help
+  overlay.addEventListener('click', () => set(false));
+  addEventListener('keydown', e => { if (e.key === 'Escape' && paused) set(false); });
+
+  return { get paused() { return paused; }, pause: () => set(true), resume: () => set(false), toggle };
+}
+
+return { makePause };
+})();
 
 const E = __mod_0;
 
@@ -2298,6 +2390,8 @@ const { best, submit } = __mod_5;
 const { saveRun, loadRun, clearRun } = __mod_6;
 
 const { makeAudio, mountAudioToggle } = __mod_7;
+
+const { makePause } = __mod_8;
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -2456,6 +2550,7 @@ addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 mountAudioToggle({ stage: $('stage'), audio });
+const pause = makePause({ stage: $('stage') });
 
 makeHelp({
   stage: $('stage'),
@@ -2480,7 +2575,7 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);
   last = now;
 
-  if (world.running) {
+  if (world.running && !pause.paused) {
     const c = world.cannon;
     let kb = 0;
     if (keys.ArrowLeft) kb -= 1;
@@ -2780,9 +2875,15 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
     const hit = seg.deflect > 0;
     const pulse = reduce ? 0 : Math.sin(performance.now() / 260) * 1.6;
     const rr = seg.r * 1.55 + (1 - prot) * 6 + pulse;
-    glowStroke(ctx, c => c.arc(sp.x, sp.y, rr, 0, TAU),
-      hit ? '#ffffff' : '#c9a227', hit ? 2.6 : 1 + prot * 1.6,
-      GLOW_PASSES_CHEAP, hit ? 1 : 0.35 + prot * 0.6);
+    const col = hit ? '#ffffff' : '#c9a227';
+    const lw = hit ? 2.6 : 1 + prot * 1.6;
+    const alpha = hit ? 1 : 0.35 + prot * 0.6;
+    // four corner brackets, not a full halo — an armour-plating cue on the
+    // command ship rather than a target reticle drawn around a "head"
+    const half = Math.PI / 5;
+    for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+      glowStroke(ctx, c => c.arc(sp.x, sp.y, rr, a - half, a + half), col, lw, GLOW_PASSES_CHEAP, alpha);
+    }
   }
 
   /* HP readout for tough segments, upright (outside the rotation). Light on
@@ -2791,9 +2892,14 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
      caught the damage cracks and the head's eye sockets — anything drawn dark
      on top of what is now a dark body simply disappeared. */
   if (seg.maxhp > 3) {
-    ctx.fillStyle = 'rgba(235,244,240,.92)';
-    ctx.font = '700 9px "Chivo Mono",monospace'; ctx.textAlign = 'center';
-    ctx.fillText(Math.ceil(seg.hp), sp.x, sp.y + 3.4);
+    ctx.font = '700 11px "Chivo Mono",monospace'; ctx.textAlign = 'center';
+    // a dark outline first, so the number stays legible over a bright or busy
+    // plate rather than only over the dark body it was tuned against
+    ctx.strokeStyle = 'rgba(9,19,24,.85)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(Math.ceil(seg.hp), sp.x, sp.y + 3.8);
+    ctx.fillStyle = 'rgba(235,244,240,.96)';
+    ctx.fillText(Math.ceil(seg.hp), sp.x, sp.y + 3.8);
     ctx.textAlign = 'left';
   }
 }

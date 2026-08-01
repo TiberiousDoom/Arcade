@@ -109,17 +109,21 @@ export function brickScore(maxhp) {
  *  Pure arithmetic on (row, col) — no randomness, so a given level is identical
  *  every run and every test. */
 export function brickPresent(level, r, c, rows = LAYOUT.BRICK_ROWS, cols = LAYOUT.BRICK_COLS) {
+  // Solid wall used to be level 1 — the very first thing a new player sees,
+  // and the one shape with no gaps to give the ball room. Reordered so the
+  // opener is the airiest layout and the wall shows up once a player has a
+  // level under them.
   switch ((level - 1) % 4) {
-    case 0: return true;                                   // solid wall
-    case 1: return (r + c) % 2 === 0;                      // checkerboard
-    case 2: {                                              // centred pyramid
+    case 0: return (r + c) % 2 === 0;                      // checkerboard
+    case 1: {                                              // centred pyramid
       const mid = (cols - 1) / 2;
       return Math.abs(c - mid) <= r;
     }
-    case 3: {                                              // hollow frame + spine
+    case 2: {                                              // hollow frame + spine
       const edge = r === 0 || r === rows - 1 || c === 0 || c === cols - 1;
       return edge || c === Math.floor((cols - 1) / 2);
     }
+    case 3: return true;                                   // solid wall
   }
   return true;
 }
@@ -166,7 +170,9 @@ export const DROP_R = 11;             // catch radius, generous on purpose
 export const EFFECT_SECONDS = 12;     // how long a timed effect lasts
 export const WIDE_MULT = 1.6;         // paddle width while `wide` is up
 export const SLOW_MULT = 0.72;        // speed multiplier while `slow` is up
-export const MAX_BALLS = 6;           // ceiling so repeat splits can't run away
+// Lowered from 6: playtesting found six independent balls to track turned
+// multiball into chaos rather than the payoff it's meant to be.
+export const MAX_BALLS = 4;           // ceiling so repeat splits can't run away
 export const SPLIT_ANGLE = 0.42;      // how far the two new balls fan out
 
 /** Which powerup a brick at (row, col) yields on level `level`, or null for

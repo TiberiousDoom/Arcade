@@ -22,8 +22,10 @@ test('brick width fills the field flush with the margins', () => {
   assert.ok(Math.abs(total - (L.W - 2 * L.MARGIN)) < 1e-6, 'columns plus gaps span the field');
 });
 
-test('level 1 is a solid wall of the full grid', () => {
-  const bricks = E.buildBricks(1);
+test('the 4th level in the cycle is a solid wall of the full grid', () => {
+  // solid wall moved off level 1 — it's the one shape with no gaps, and a new
+  // player's first level shouldn't be the hardest layout in the rotation
+  const bricks = E.buildBricks(4);
   assert.equal(bricks.length, L.BRICK_ROWS * L.BRICK_COLS);
   assert.ok(bricks.every(b => b.alive));
 });
@@ -41,7 +43,7 @@ test('brick score scales with armour', () => {
 });
 
 test('later level patterns are non-trivial subsets and stay deterministic', () => {
-  for (let lvl = 2; lvl <= 4; lvl++) {
+  for (let lvl = 1; lvl <= 3; lvl++) {
     const a = E.buildBricks(lvl);
     const b = E.buildBricks(lvl);
     assert.equal(a.length, b.length, `level ${lvl} builds identically each time`);
@@ -662,7 +664,7 @@ test('resetGame restores a clean level 1', () => {
   assert.equal(w.score, 0);
   assert.equal(w.lives, E.START_LIVES);
   assert.equal(w.over, false);
-  assert.equal(w.bricks.length, L.BRICK_ROWS * L.BRICK_COLS);
+  assert.equal(w.bricks.length, E.buildBricks(1).length);
 });
 
 /* ---------- full-run sanity ---------- */
