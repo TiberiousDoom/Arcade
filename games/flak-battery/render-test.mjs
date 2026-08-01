@@ -61,7 +61,9 @@ test('the full battery with gun types renders without throwing', async () => {
   w.__world.battery.guns.push(w.__E.makeGun(w.__world.L.W * 0.32));
   w.__world.battery.guns.push(w.__E.makeGun(w.__world.L.W * 0.68));
   w.__world.gunUnlocks.rail = true;
+  w.__world.gunUnlocks.ion = true;
   w.__E.setGunType(w.__world, 1, 'rail');
+  w.__E.setGunType(w.__world, 2, 'ion');
   w.__world.battery.guns[0].heat = 0.7;
   w.__E.spawnPickup(w.__world, 440, 380, 'spread');
   w.__world.shake = 0.5;

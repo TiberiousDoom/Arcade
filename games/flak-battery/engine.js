@@ -96,6 +96,11 @@ export const KIND = {
   splitter: { hp: 6, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 9, splits: true },
   // Drops a power-up on death. Worth breaking your rhythm for.
   carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 5, carries: true },
+  // Warded all the way around rather than on one face — flanking (what beats
+  // `shielded`) does nothing here. `ionResist` is a flat multiplier on
+  // incoming damage from anything but the ion cannon: heavily resistant,
+  // not immune, so it is still (very slowly) chippable without one.
+  hardened: { hp: 8, r: 14, col: '#5fc9d6', ring: '#2e6b73', score: 240, scrap: 11, ionResist: 0.12 },
   head:     { hp: 14, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 14 },
 };
 
@@ -121,7 +126,7 @@ export const SPLIT_MARGIN = 3;
  *  bonus, armored is just tougher, volatile teaches chain reactions, shielded
  *  forces flanking, regen punishes chip damage, splitter changes the board. */
 export const KIND_UNLOCK = {
-  std: 1, carrier: 2, armored: 3, volatile: 4, shielded: 5, regen: 7, splitter: 9,
+  std: 1, carrier: 2, armored: 3, volatile: 4, shielded: 5, regen: 7, splitter: 9, hardened: 11,
 };
 
 /** Kinds available on a given wave, in unlock order. Head is always present and
@@ -138,6 +143,7 @@ export function kindForIndex(i, count = Infinity, wave = Infinity) {
   if (has('armored') && i % 7 === 3) return 'armored';
   if (has('volatile') && i % 11 === 6) return 'volatile';
   if (has('shielded') && i % 9 === 5) return 'shielded';
+  if (has('hardened') && i % 19 === 9) return 'hardened';
   if (has('regen') && i % 17 === 11) return 'regen';
   if (has('carrier') && i % 6 === 4) return 'carrier';
   return 'std';
@@ -459,7 +465,7 @@ export function createWorld(opts = {}) {
     chains: [], shots: [], bits: [], floaters: [],
     wave: 1, score: 0, scrap: 0, lives: 3,
     upgrades: newUpgrades(),
-    gunUnlocks: { auto: false, rail: false, mortar: false },
+    gunUnlocks: { auto: false, rail: false, mortar: false, ion: false },
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
     shake: 0, hitStop: 0,
     // extra hit radius, set by the shell from the input device (see
@@ -573,7 +579,7 @@ export function hydrate(w, snap) {
   w.waveClear = !!snap.waveClear; w.clearTimer = snap.clearTimer ?? 0;
   w.shopOpen = !!snap.shopOpen;
   w.upgrades = { ...newUpgrades(), ...(snap.upgrades || {}) };
-  w.gunUnlocks = { auto: false, rail: false, mortar: false, ...(snap.gunUnlocks || {}) };
+  w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false, ...(snap.gunUnlocks || {}) };
   w.effects = { ...(snap.effects || {}) };
   w.shieldCharges = snap.shieldCharges ?? 0;
   w.dropSeed = snap.dropSeed ?? 987654321;
@@ -617,7 +623,7 @@ export function resetRun(w) {
   w.pickups = []; w.effects = {}; w.shieldCharges = 0; w.dropSeed = 987654321;
   w.shake = 0; w.hitStop = 0;
   w.shopOpen = false;
-  w.gunUnlocks = { auto: false, rail: false, mortar: false };
+  w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false };
   w.battery = makeBattery(w.L, 1);
   w.cannon = w.battery;
   w.cannon.x = w.L.W / 2;
@@ -706,6 +712,7 @@ function fireGun(w, gun) {
     bounces: S.bounces + (hasEffect(w, 'ricochet') ? 4 : 0),
     r: S.shotR,
     arc: G.arc ? true : false,
+    gun: gun.type,   // which mount fired this — damageSeg checks it against 'ion'
   };
   w.shots.push(shot);
 
@@ -763,6 +770,9 @@ export const GUN_TYPES = {
   auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', unlock: 120 },
   rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', unlock: 160 },
   mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', unlock: 200, arc: true },
+  // The one gun `hardened` doesn't shrug off — damageSeg checks the shot's
+  // `gun` field for the literal string 'ion', not a stat on this table.
+  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', unlock: 260 },
 };
 export const GUN_KEYS = Object.keys(GUN_TYPES);
 
@@ -980,12 +990,20 @@ function decapitate(w, ci) {
   return true;
 }
 
-/** Apply damage. Returns true if the segment died. */
-export function damageSeg(w, ci, i, dmg) {
+/** Apply damage. Returns true if the segment died. `shot` is optional (the
+ *  bomb call site has none) — only used to check `ionResist` against the
+ *  gun that fired, everything else about damage is unaffected by it. */
+export function damageSeg(w, ci, i, dmg, shot) {
   const ch = w.chains[ci];
   if (!ch) return false;
   const seg = ch.segs[i];
   if (!seg) return false;
+
+  // warded all the way around: any gun but the ion cannon does a fraction
+  // of normal damage. Independent of the head-shielding logic below and of
+  // `shielded`'s frontal deflection — this is a different mechanic entirely.
+  const K0 = KIND[seg.kind];
+  if (K0.ionResist && shot?.gun !== 'ion') dmg *= K0.ionResist;
 
   // the head is shielded by whatever body is still behind it
   if (seg.kind === 'head') {
@@ -1191,7 +1209,7 @@ export function stepShots(w, dt) {
             w.fx.push('FOCUS', sp.x, sp.y - 14, '#ffd9a8');
           }
           b.lastHitAt[seg.id] = b.clock;
-          damageSeg(w, ci, i, dmg);
+          damageSeg(w, ci, i, dmg, p);
           if (p.pierce > 0) p.pierce--;
           else { w.shots.splice(k, 1); hit = true; }
           break outer;

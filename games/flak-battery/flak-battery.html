@@ -304,6 +304,7 @@ makeHelp({
     'Cutting mid-chain shoves the snake backwards.',
     'Plated segments glance shots off the front — hit the flank.',
     'The head is armoured by its body: the ring around it thins as you clear behind it. Drop the head and the whole serpent dies with it.',
+    'Warded hulls shrug off most guns almost entirely — an ion cannon is the only real answer.',
     'Keyboard: arrows and Space.',
   ],
 });
@@ -501,6 +502,7 @@ function gunBlurb(type) {
   if (type === 'auto') return 'Fires fast, hits light. Good against soft, crowded rows.';
   if (type === 'rail') return 'Slow, punches through several segments at once.';
   if (type === 'mortar') return 'Lobs a heavy round; reaches over the front rank.';
+  if (type === 'ion') return 'The only thing that cuts through a hardened hull.';
   return G.name;
 }
 
@@ -715,6 +717,25 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
     return;
   }
 
+  if (K.ionResist) {
+    // a lattice ward covering the whole plate, not one face — unlike
+    // `shielded`'s directional plate, this reads as "warded all around"
+    // rather than "block this side"
+    ctx.strokeStyle = 'rgba(150,235,255,.55)';
+    ctx.lineWidth = 1;
+    for (const xx of [-long * 0.22, 0, long * 0.22]) {
+      ctx.beginPath();
+      ctx.moveTo(xx, -wide * 0.36); ctx.lineTo(xx, wide * 0.36);
+      ctx.stroke();
+    }
+    for (const yy of [-wide * 0.22, wide * 0.22]) {
+      ctx.beginPath();
+      ctx.moveTo(-long * 0.34, yy); ctx.lineTo(long * 0.34, yy);
+      ctx.stroke();
+    }
+    return;
+  }
+
   if (K.splits) {
     // hinge seam across the short axis, pulsing
     const pulse = 0.55 + 0.45 * Math.sin(now / 200);
@@ -866,9 +887,13 @@ function draw() {
   // your ordnance is spherical, like everything on the defenders' side, and
   // it is the brightest thing on the board because it is the thing you aim
   for (const p of world.shots) {
-    ctx.fillStyle = T.col;
+    // every gun's shot otherwise takes the shared overdrive tint; the ion
+    // cannon is the one exception, so its bolts read distinctly even before
+    // they land on something that visibly shrugs off everything else
+    const col = p.gun === 'ion' ? E.GUN_TYPES.ion.col : T.col;
+    ctx.fillStyle = col;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
-    glowDot(ctx, p.x, p.y, p.r, T.col);
+    glowDot(ctx, p.x, p.y, p.r, col);
     glowDot(ctx, p.x, p.y, p.r * .5, '#ffffff');
   }
   for (const b of world.bits) {

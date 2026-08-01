@@ -778,6 +778,60 @@ test('the shield arc is frontal, not full coverage', () => {
   assert.equal(E.isDeflected(seg, heading, -Math.cos(a) * 520, Math.sin(a) * 520), false);
 });
 
+/* ---------- ion cannon vs hardened hulls ---------- */
+
+function hardenedChain() {
+  const K = E.KIND.hardened;
+  return { segs: [{ id: 1, kind: 'hardened', hp: K.hp, maxhp: K.hp, r: K.r, flash: 0, deflect: 0 }],
+           s: 400, speed: 0, spacing: 30, recoil: 0, split: false };
+}
+
+test('a hardened segment resists non-ion damage', () => {
+  const w = E.createWorld();
+  const K = E.KIND.hardened;
+  w.chains = [hardenedChain()];
+  E.damageSeg(w, 0, 0, 10, { gun: 'standard' });
+  assert.ok(Math.abs(w.chains[0].segs[0].hp - (K.hp - 10 * K.ionResist)) < 1e-9,
+    'only a fraction of normal damage got through');
+});
+
+test('the ion cannon does full damage to a hardened segment', () => {
+  const w = E.createWorld();
+  const K = E.KIND.hardened;
+  w.chains = [hardenedChain()];
+  E.damageSeg(w, 0, 0, 3, { gun: 'ion' });   // non-lethal, so the segment survives to check
+  assert.equal(w.chains[0].segs[0].hp, K.hp - 3, 'no resistance against the ion cannon');
+});
+
+test('damage with no shot at all (a bomb) is treated as non-ion', () => {
+  const w = E.createWorld();
+  const K = E.KIND.hardened;
+  w.chains = [hardenedChain()];
+  E.damageSeg(w, 0, 0, 10);
+  assert.ok(Math.abs(w.chains[0].segs[0].hp - (K.hp - 10 * K.ionResist)) < 1e-9);
+});
+
+test('ion resistance is independent of shielded deflection', () => {
+  // isDeflected only ever fires for `shield: true` kinds; hardened carries no
+  // such flag, so a frontal shot still lands on it — it is merely resisted,
+  // never bounced away the way a shielded plate's is
+  const heading = { x: 1, y: 0 };
+  assert.equal(E.isDeflected({ kind: 'hardened' }, heading, -520, 0), false);
+});
+
+test('the ion cannon unlocks through the same economy as the other gun types', () => {
+  const w = E.createWorld();
+  w.scrap = E.GUN_TYPES.ion.unlock;
+  assert.equal(w.gunUnlocks.ion, false);
+  assert.equal(E.unlockGun(w, 'ion'), true);
+  assert.equal(w.gunUnlocks.ion, true);
+  assert.equal(w.scrap, 0);
+});
+
+test('hardened is introduced last, after every other kind', () => {
+  assert.equal(E.KIND_UNLOCK.hardened, Math.max(...Object.values(E.KIND_UNLOCK)));
+});
+
 test('segment heading follows the path direction', () => {
   const ch = chain(4, 0, 300);
   const h = E.segHeading(path, pathLen, ch, 0);

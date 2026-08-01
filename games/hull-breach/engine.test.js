@@ -531,6 +531,155 @@ test('the fx.power hook fires on a pickup, and its absence is safe', () => {
   assert.doesNotThrow(() => E.applyPowerup(bare, 'life'));
 });
 
+/* ---------- upgrades ---------- */
+
+test('every branch has one more tier entry than it has costs', () => {
+  for (const b of E.BRANCHES) {
+    assert.equal(E.UPGRADES[b].tiers.length, E.UPGRADES[b].costs.length + 1);
+  }
+});
+
+test('costs escalate within every branch', () => {
+  for (const b of E.BRANCHES) {
+    const costs = E.UPGRADES[b].costs;
+    for (let i = 1; i < costs.length; i++) assert.ok(costs[i] > costs[i - 1]);
+  }
+});
+
+test('a new run starts with an empty tree', () => {
+  const w = E.createWorld();
+  for (const b of E.BRANCHES) assert.equal(w.upgrades[b], 0);
+  assert.equal(w.salvage, 0);
+});
+
+test('destroying a brick earns salvage alongside score', () => {
+  const w = emptyWorld();
+  w.bricks = [{ x: 100, y: 100, w: 50, h: 20, row: 0, col: 0, hp: 1, maxhp: 1, alive: true, flash: 0 }];
+  w.balls = [{ x: 125, y: 118, vx: 0, vy: -200, r: L.BALL_R }];
+  E.step(w, 1 / 30);
+  assert.equal(w.salvage, E.brickSalvage(1));
+});
+
+test('buying spends salvage and raises the tier', () => {
+  const w = E.createWorld();
+  w.salvage = 1000;
+  const cost = E.upgradeCost(w.upgrades, 'paddle');
+  assert.equal(E.buyUpgrade(w, 'paddle'), true);
+  assert.equal(w.upgrades.paddle, 1);
+  assert.equal(w.salvage, 1000 - cost);
+});
+
+test('you cannot buy what you cannot afford', () => {
+  const w = E.createWorld();
+  w.salvage = 0;
+  assert.equal(E.buyUpgrade(w, 'paddle'), false);
+  assert.equal(w.upgrades.paddle, 0);
+});
+
+test('a branch cannot be pushed past its last tier', () => {
+  const w = E.createWorld();
+  w.salvage = 100000;
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 'catch');
+  assert.equal(w.upgrades.catch, E.MAX_TIER);
+  assert.equal(E.upgradeCost(w.upgrades, 'catch'), null);
+  assert.equal(E.canAfford(w, 'catch'), false);
+  assert.equal(E.buyUpgrade(w, 'catch'), false);
+});
+
+test('unknown branches are rejected', () => {
+  const w = E.createWorld();
+  w.salvage = 1000;
+  assert.equal(E.buyUpgrade(w, 'nope'), false);
+});
+
+test('stats resolve from the current tiers', () => {
+  const w = E.createWorld();
+  assert.equal(E.stats(w).paddleMult, 1.0);
+  w.salvage = 1000;
+  E.buyUpgrade(w, 'paddle');
+  assert.equal(E.stats(w).paddleMult, E.UPGRADES.paddle.tiers[1].paddleMult);
+});
+
+test('each branch changes something the others do not', () => {
+  const w = E.createWorld();
+  w.salvage = 1000;
+  const before = E.stats(w);
+  E.buyUpgrade(w, 'paddle');
+  assert.notEqual(E.stats(w).paddleMult, before.paddleMult);
+  assert.equal(E.stats(w).angleMult, before.angleMult);
+  assert.equal(E.stats(w).dropRMult, before.dropRMult);
+});
+
+test('the paddle upgrade widens the paddle once the next level applies it', () => {
+  // paddle.w is a cached field, recomputed at level/effect transitions rather
+  // than read live every frame (same as the existing `wide` effect) — buying
+  // in the between-levels shop takes effect when `nextLevel` runs right after
+  const w = E.createWorld();
+  const base = w.paddle.w;
+  w.salvage = 1000;
+  E.buyUpgrade(w, 'paddle');
+  E.nextLevel(w);
+  assert.ok(w.paddle.w > base, 'paddle widened once the tier was picked up');
+});
+
+test('the steer upgrade widens the paddle bounce angle', () => {
+  const w = emptyWorld();
+  const shootOffCenter = (world) => {
+    world.balls = [{ x: world.paddle.x + world.paddle.w / 2, y: world.L.PADDLE_Y - 1, vx: 0, vy: 200, r: world.L.BALL_R }];
+    E.step(world, 1 / 30);
+    return Math.atan2(world.balls[0].vx, -world.balls[0].vy);
+  };
+  const angleBefore = shootOffCenter(w);
+  w.salvage = 1000;
+  E.buyUpgrade(w, 'steer');
+  const angleAfter = shootOffCenter(w);
+  assert.ok(angleAfter > angleBefore, 'a fully off-center hit leaves at a wider angle once steer is upgraded');
+});
+
+test('the catch upgrade widens the capsule catch radius', () => {
+  const w = decoy(emptyWorld());   // a decoy brick, or the empty field flags levelClear and gates step()
+  const p = w.paddle, L = w.L;
+  // a gap bigger than the base catch radius (11) but smaller than tier-1's
+  // (11 * 1.3 = 14.3), so this is a miss before the upgrade and a catch after
+  const y = L.PADDLE_Y - (E.DROP_R + 2);
+  w.drops = [{ kind: 'wide', x: p.x, y, vy: 0 }];
+  w.balls = [{ x: 400, y: 300, vx: 0, vy: -300, r: L.BALL_R }];   // avoid the empty-balls loseLife path
+  E.step(w, 1 / 1000);
+  assert.equal(w.drops.length, 1, 'setup: outside the base catch radius');
+
+  w.salvage = 1000;
+  E.buyUpgrade(w, 'catch');
+  E.step(w, 1 / 1000);
+  assert.equal(w.drops.length, 0, 'caught once the radius is upgraded');
+});
+
+test('resetGame wipes the upgrade tree and salvage; nextLevel does not', () => {
+  for (const advance of [E.resetGame, E.nextLevel]) {
+    const w = E.createWorld();
+    w.salvage = 500;
+    E.buyUpgrade(w, 'paddle');
+    const tierBefore = w.upgrades.paddle;
+    advance(w);
+    if (advance === E.resetGame) {
+      assert.equal(w.upgrades.paddle, 0);
+      assert.equal(w.salvage, 0);
+    } else {
+      assert.equal(w.upgrades.paddle, tierBefore, 'nextLevel leaves the tree alone');
+    }
+  }
+});
+
+test('a snapshot round-trips salvage and the upgrade tree', () => {
+  const w = E.createWorld();
+  w.salvage = 240;
+  E.buyUpgrade(w, 'catch');
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  const fresh = E.createWorld();
+  assert.equal(E.hydrate(fresh, snap), true);
+  assert.equal(fresh.salvage, w.salvage);
+  assert.deepEqual(fresh.upgrades, w.upgrades);
+});
+
 /* ---------- saving a run in progress ---------- */
 
 test('a snapshot round-trips a run exactly', () => {

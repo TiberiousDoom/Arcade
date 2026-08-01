@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-07-31 (v23 feedback pass)
+Last updated: 2026-08-01 (v24 — three deferred features)
 
 ## Read this first
 
@@ -18,7 +18,7 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Drift Net** ([games/drift-net/drift-net.html](games/drift-net/drift-net.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**331 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 181, Hull Breach 58, Choke Point 46, Drift Net 44, shared 2 — plus **33 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**352 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 187, Hull Breach 73, Choke Point 46, Drift Net 44, shared 2 — plus **33 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
 ## In progress / just decided
 
@@ -197,10 +197,13 @@ The fiction was chosen to fit mechanics that already existed rather than the oth
 - **Drift Net's lore line** dropped its "you" framing per note: now "Every world it touched became a part of it, and it does not stop."
 - **Landscape support was already fully removed** in a prior session (`PORTRAIT_ONLY = true` in all four shells, manifest already `"orientation": "portrait"`) — nothing left to do there beyond the still-open question of deleting the now-dead `LAYOUT` (landscape) objects, which stays deliberately deferred (see DECISIONS.md 2026-07-27).
 
-**Deliberately not built this pass** (logged as ideas, not started):
-- Hull Breach level-select / revisit-completed-levels.
-- A shop to upgrade the ball/paddle in Hull Breach.
-- Flak Battery: an ion-cannon gun type specifically needed to pierce a new shielded-craft kind (distinct from the existing `shielded` KIND's frontal deflection).
+**Deliberately not built that pass, and now done (v24, 2026-08-01):**
+
+- **Hull Breach: salvage currency + a ball/paddle shop.** `brickSalvage(maxhp)` earns a new `w.salvage` per brick, separate from score — same split Flak Battery uses. Three branches (`paddle`/`steer`/`catch`, 3 tiers each, `UPGRADES`/`upgradeCost`/`canAfford`/`buyUpgrade`/`stats(w)`, identical shape to Flak Battery's tree) widen the paddle, widen the steering cone (`PADDLE_MAX_ANGLE` multiplier), and widen the capsule catch radius — deliberately nothing touches ball speed, which stays `levelSpeed`'s sole authority. A `#shop` panel (copied from Flak Battery's) opens on every level clear instead of the old plain "Level Cleared" banner. **Caveat:** `paddle.w` is a cached field, recomputed only at level/effect transitions (same as the existing `wide` effect) — buying in the shop takes visible effect once `nextLevel` runs right after, not instantaneously.
+- **Hull Breach: level-select.** New `shared/levels.js` (`maxLevel`/`recordLevel`, same guarded-localStorage shape as `shared/scores.js`) tracks the highest level ever reached, no fixed cap — the grid just grows, matching `brickPresent`'s actually-infinite generation. A new `#levelSelect` overlay (card-grid CSS borrowed from `index.html`) lists every level 1..max; tapping one calls `clearRun` first (so a stale resumable save can't linger) then jumps straight in. Entry point is a "Levels" button on the banner.
+- **Flak Battery: ion cannon vs. a hardened hull.** A 4th `GUN_TYPES.ion` entry, and a new `KIND.hardened` carrying `ionResist: 0.12` — a flat damage multiplier for anything but the ion cannon, checked in `damageSeg` against a new `shot.gun` field (`fireGun` now stamps every shot with which mount fired it). Deliberately **heavily resistant, not immune** (12% damage still gets through), and deliberately independent of `shielded`'s frontal-arc deflection (`isDeflected`) — `hardened` has no `shield` flag, so flanking does nothing for it; only the gun matters, not the angle. Visual cue is an all-around lattice ward (vs. `shielded`'s one-sided plate), and ion shots get their own cyan tint instead of the shared overdrive color every other gun's shots use.
+
+All three followed an existing pattern rather than inventing new architecture (Flak Battery's upgrade-tree shape, `scores.js`'s guarded-localStorage shape, `shielded`'s KIND-flag-plus-damageSeg-branch shape). 34 new engine tests; full suite is now 385 (352 engine/shared + 33 render/resume). Manually verified in-browser: level-select grid grows and jumps correctly, and the real shipped engine (not just the standalone test copy) confirms a standard-cannon hit on a hardened craft is resisted while an ion-cannon hit isn't.
 
 ## Open decisions (not yet settled)
 

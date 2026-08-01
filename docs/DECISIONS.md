@@ -534,6 +534,26 @@ The last two games onto the vector look, which completes the art direction acros
 
 That is the third distinct version of the same underlying mistake this week (glow instead of mass; additive cannot darken; now dark-on-dark after a body flip). The general rule, worth stating once: **converting to an emissive style inverts the background, so every foreground colour chosen against the old background has to be re-checked.** It is not enough to convert the shapes.
 
+## 2026-08-01 — Hull Breach's paddle upgrades are cached, not live, on purpose (by inheritance)
+
+Adding a salvage currency and a paddle/steer/catch upgrade tree to Hull Breach (the three features deferred from the v22 pass) surfaced a property inherited from the existing `wide` powerup rather than introduced fresh: `w.paddle.w` is a field recomputed at specific transition points (`clearEffects`, the `wide` pickup, its expiry, `relayout`, `hydrate`) — never read live from `stats(w)` every frame the way Flak Battery's `fireGun` reads its own `stats(w)` fresh on every shot.
+
+That means buying a paddle-width tier in the shop doesn't visibly widen the paddle until the next trigger point. In practice this is invisible: the shop only opens between levels, and its own "Next Level" button calls `nextLevel()` immediately after, which recomputes `paddle.w` as part of the same click. A test initially written to check the width immediately after `buyUpgrade` failed for exactly this reason, and was corrected to assert through a `nextLevel()` call — a good reminder that a passing assumption about "when does an engine field update" needs to be checked against the actual call sites, not the mental model of a *different* game's engine.
+
+## 2026-08-01 — Ion cannon: a second axis of resistance, deliberately independent of `shielded`
+
+Flak Battery already had one "this gun doesn't work here" mechanic (`shielded`'s frontal-arc deflection, beaten by flanking). The ask was for a second one specifically tied to a gun *type* rather than shot *angle* — a hardened hull only the ion cannon meaningfully hurts.
+
+Built as a wholly separate code path rather than extending `shielded`: `KIND.hardened` carries `ionResist` (a flat damage multiplier), checked in `damageSeg` against a new `shot.gun` field threaded from `fireGun`. No `shield` flag, so `isDeflected` never fires for it — flanking buys nothing, which is the point. A test pins this independence explicitly (`isDeflected({kind:'hardened'}, ...)` is always false) so the two mechanics can't accidentally merge later.
+
+**Heavily resistant, not immune** — non-ion shots still do a small fraction (12%) of normal damage. Full immunity was the more literal reading of the original note, but it produces a gun that can *literally do nothing*, which no other kind in the game does (even `armored` is just high hp, always choppable). Consistent with the project's existing damage-shaping precedent (`headDamageFactor`, `splashResist`) of "much worse, not impossible."
+
+Shot color is otherwise driven entirely by the shared overdrive tier (`OD_TIERS`), not by gun type — every existing gun's bolts already share one color regardless of `auto`/`rail`/`mortar`. Rather than restructure that for all four gun types (out of scope, and risk for no requested benefit), only the ion cannon's shots get a type-specific override, leaving the other three untouched.
+
+## 2026-08-01 — Hull Breach and Flak Battery: no new precache files beyond the obvious
+
+`shared/levels.js` (Hull Breach's level-select persistence) is a new file and went into `sw.js`'s `PRECACHE` list alongside the version bump, same discipline as `shared/pause.js` the pass before. The ion cannon and hardened-kind work touched only existing files (`engine.js`, `flak-battery.html`), so no further precache changes were needed for it — worth noting explicitly since it's easy to assume "a new feature always means a new file."
+
 ## 2026-07-31 — v22 device checklist: a per-chain position cache, not a per-frame one
 
 Flak Battery's wave-15+ chop traced to `stepShots`: every shot tested every segment of every chain, and each test called `segPos` — an O(log n) binary search over the path — fresh. With 5 guns and the spread upgrade stacking shots, that's shots × segments × log(path-length) per frame.

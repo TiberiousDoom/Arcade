@@ -14,6 +14,40 @@
 <style>
   /* Hull Breach keeps the default brass accent, on an 800x600 board. */
   :root{ --board-max:800px }
+
+  /* Refit shop, opened on a level clear — same shape as Flak Battery's,
+     minus the battery/gun-assignment section this game has no equivalent of. */
+  #shop{position:absolute;inset:0;display:none;flex-direction:column;
+    background:rgba(11,20,24,.94);padding:18px 16px;overflow-y:auto;gap:12px}
+  #shop.on{display:flex}
+  #shopHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  #shopHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,20px);text-transform:uppercase;letter-spacing:-.02em}
+  #shopSalvage{font-size:12px;color:var(--brass);font-weight:700;letter-spacing:.08em}
+  #branches{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px}
+  .branch{border:1px solid var(--line);background:#0f2027;padding:12px 13px;display:flex;flex-direction:column;gap:8px;text-align:left}
+  .branch h3{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone);font-weight:700}
+  .branch p{font-size:11px;color:var(--dim);line-height:1.5;min-height:2.6em}
+  .pips{display:flex;gap:3px}
+  .pips i{flex:1;height:5px;background:#1b3038;border-radius:1px}
+  .pips i.on{background:var(--scale)}
+  .buy{width:100%;min-height:42px;padding:12px 10px;font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.12em;
+    text-transform:uppercase;border:0;cursor:pointer;background:var(--brass);color:#1a1405;border-radius:3px}
+  .buy:disabled{background:#1b3038;color:#4d6068;cursor:default}
+  .buy.poor:disabled{background:#2a2416;color:#8a7645;border:1px solid #3d3520}
+  #shopGo{align-self:center;margin-top:2px}
+
+  /* Level-select overlay — a growing grid of every level reached so far.
+     No fixed cap: levels generate forever, so the grid just grows with you. */
+  #levelSelect{position:absolute;inset:0;display:none;flex-direction:column;
+    background:rgba(11,20,24,.96);padding:18px 16px;overflow-y:auto;gap:12px}
+  #levelSelect.on{display:flex}
+  #levelSelectHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  #levelSelectHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,20px);text-transform:uppercase;letter-spacing:-.02em}
+  #levelGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px}
+  .levelTile{min-height:52px;font:700 15px/1 'Chivo Mono',monospace;border:1px solid var(--line);
+    background:#0f2027;color:var(--bone);cursor:pointer;border-radius:3px}
+  .levelTile:hover{border-color:var(--brass)}
+  #levelSelectClose{align-self:center;margin-top:2px;background:#1b3038;color:var(--bone)}
 </style>
 
 <div id="shell">
@@ -25,6 +59,7 @@
     <div class="meta">
       <div>Level <b id="uiLevel">1</b></div>
       <div>Score <b id="uiScore">0</b></div>
+      <div>Salvage <b id="uiSalvage">0</b></div>
       <div>Balls <b id="uiLives">3</b></div>
       <div>Best <b id="uiBest">—</b></div>
     </div>
@@ -32,10 +67,24 @@
 
   <div id="stage">
     <canvas id="cv" width="800" height="600"></canvas>
+    <div id="shop">
+      <div id="shopHead">
+        <h2>Refit</h2>
+        <div id="shopSalvage">Salvage 0</div>
+      </div>
+      <div id="branches"></div>
+      <button id="shopGo">Next Level</button>
+    </div>
+    <div id="levelSelect">
+      <div id="levelSelectHead"><h2>Levels</h2></div>
+      <div id="levelGrid"></div>
+      <button id="levelSelectClose" type="button">Back</button>
+    </div>
     <div id="banner">
       <h2>Hull Breach</h2>
       <p id="hint">Slide to steer, tap to serve.</p>
       <button id="go">Begin</button>
+      <button id="levelsBtn" type="button" style="margin-left:8px;background:#1b3038;color:var(--bone)">Levels</button>
     </div>
   </div>
 
@@ -57,6 +106,7 @@ import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
 import { makePause } from '../../shared/pause.js';
+import { maxLevel, recordLevel } from '../../shared/levels.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
@@ -231,7 +281,7 @@ let started = false;
 
 $('go').addEventListener('click', () => {
   if (world.over) E.resetGame(world);
-  else if (world.levelClear) E.nextLevel(world);
+  else if (world.levelClear) { E.nextLevel(world); recordLevel(GAME_ID, world.level); }
   world.running = true;
   started = true;
   gfx.clear();               // don't let a death flash bleed into the next run
@@ -266,7 +316,7 @@ function frame(now) {
     else if (world.levelClear) {
       world.running = false;
       saveNow();                  // a cleared board is the natural place to keep
-      showBanner('Level Cleared', `Level ${world.level} down. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Next level');
+      openShop();
     }
     sync();
   }
@@ -288,8 +338,94 @@ function syncBest() {
 function sync() {
   $('uiLevel').textContent = world.level;
   $('uiScore').textContent = world.score;
+  $('uiSalvage').textContent = world.salvage;
   $('uiLives').textContent = world.lives;
 }
+
+/* ---------- level select ---------- */
+function renderLevelGrid() {
+  const host = $('levelGrid');
+  host.innerHTML = '';
+  const top = maxLevel(GAME_ID);
+  for (let n = 1; n <= top; n++) {
+    const btn = document.createElement('button');
+    btn.className = 'levelTile';
+    btn.type = 'button';
+    btn.textContent = n;
+    btn.addEventListener('click', () => startAtLevel(n));
+    host.appendChild(btn);
+  }
+}
+function openLevelSelect() { renderLevelGrid(); $('levelSelect').classList.add('on'); }
+function closeLevelSelect() { $('levelSelect').classList.remove('on'); }
+
+/** Jump straight into a specific level, clearing any resumable run first —
+ *  otherwise a stale save lingers and a later background/pagehide event
+ *  could write over it with state that doesn't match what was chosen. */
+function startAtLevel(n) {
+  clearRun(GAME_ID);
+  E.resetGame(world);
+  world.level = n;
+  world.bricks = E.buildBricks(n, world.L);
+  world.running = true;
+  started = true;
+  gfx.clear();
+  closeLevelSelect();
+  hideBanner();
+  sync();
+}
+
+$('levelsBtn').addEventListener('click', openLevelSelect);
+$('levelSelectClose').addEventListener('click', closeLevelSelect);
+
+/* ---------- shop ---------- */
+function renderShop() {
+  $('shopSalvage').textContent = 'Salvage ' + world.salvage;
+  const host = $('branches');
+  host.innerHTML = '';
+
+  for (const b of E.BRANCHES) {
+    const U = E.UPGRADES[b];
+    const tier = world.upgrades[b];
+    const cost = E.upgradeCost(world.upgrades, b);
+    const maxed = cost === null;
+    const afford = E.canAfford(world, b);
+
+    const el = document.createElement('div');
+    el.className = 'branch';
+
+    const pips = Array.from({ length: E.MAX_TIER }, (_, i) =>
+      `<i class="${i < tier ? 'on' : ''}"></i>`).join('');
+
+    el.innerHTML =
+      `<h3>${U.name}</h3>` +
+      `<div class="pips">${pips}</div>` +
+      `<p>${U.blurb}</p>`;
+
+    const btn = document.createElement('button');
+    btn.className = 'buy' + (!maxed && !afford ? ' poor' : '');
+    btn.textContent = maxed ? 'Maxed'
+      : afford ? `Buy · ${cost}`
+      : `${cost} · need ${cost - world.salvage} more`;
+    btn.disabled = maxed || !afford;
+    btn.addEventListener('click', () => {
+      if (E.buyUpgrade(world, b)) { renderShop(); sync(); }
+    });
+    el.appendChild(btn);
+    host.appendChild(el);
+  }
+}
+
+function openShop() {
+  $('shop').classList.add('on');
+  renderShop();
+}
+$('shopGo').addEventListener('click', () => {
+  $('shop').classList.remove('on');
+  E.nextLevel(world);
+  recordLevel(GAME_ID, world.level);
+  sync();
+});
 
 /* ---------- draw ---------- */
 function draw() {

@@ -91,6 +91,92 @@ export const PADDLE_MAX_ANGLE = 1.05;   // ~60° from vertical
  *  bore straight up and back down. */
 export const LAUNCH_ANGLE = 0.35;
 
+/* ---------- upgrades ---------- */
+
+/** Three branches, three tiers each, bought with salvage (earned per brick,
+ *  see `brickSalvage`) rather than score. None of them touch ball speed —
+ *  `levelSpeed` stays the sole authority on pace, per the invariant `slow`
+ *  was built to respect. Each branch is a flat multiplier on an existing
+ *  constant, resolved through `stats(w)` rather than read from the tables
+ *  directly, same convention as Flak Battery's `UPGRADES`. */
+export const UPGRADES = {
+  paddle: {
+    name: 'Paddle',
+    blurb: 'A wider bar',
+    costs: [40, 90, 160],
+    tiers: [
+      { paddleMult: 1.0 },
+      { paddleMult: 1.12 },
+      { paddleMult: 1.25 },
+      { paddleMult: 1.4 },
+    ],
+  },
+  steer: {
+    name: 'Steer',
+    blurb: 'A wider steering cone off the same paddle',
+    costs: [35, 80, 145],
+    tiers: [
+      { angleMult: 1.0 },
+      { angleMult: 1.1 },
+      { angleMult: 1.2 },
+      { angleMult: 1.3 },
+    ],
+  },
+  catch: {
+    name: 'Catch',
+    blurb: 'More forgiving capsule catches',
+    costs: [25, 60, 110],
+    tiers: [
+      { dropRMult: 1.0 },
+      { dropRMult: 1.3 },
+      { dropRMult: 1.6 },
+      { dropRMult: 2.0 },
+    ],
+  },
+};
+
+export const BRANCHES = Object.keys(UPGRADES);
+export const MAX_TIER = 3;
+
+export function newUpgrades() {
+  const u = {};
+  for (const b of BRANCHES) u[b] = 0;
+  return u;
+}
+
+/** Cost of the next tier in a branch, or null if it is already maxed. */
+export function upgradeCost(upgrades, branch) {
+  const t = upgrades[branch];
+  if (t >= MAX_TIER) return null;
+  return UPGRADES[branch].costs[t];
+}
+
+export function canAfford(w, branch) {
+  const c = upgradeCost(w.upgrades, branch);
+  return c !== null && w.salvage >= c;
+}
+
+/** Buy one tier. Returns true if the purchase went through. */
+export function buyUpgrade(w, branch) {
+  if (!BRANCHES.includes(branch)) return false;
+  const cost = upgradeCost(w.upgrades, branch);
+  if (cost === null || w.salvage < cost) return false;
+  w.salvage -= cost;
+  w.upgrades[branch]++;
+  return true;
+}
+
+/** Resolved multipliers for the current tiers. Read this rather than the
+ *  tables — paddleWidth/paddleBounce/stepDrops all go through it. */
+export function stats(w) {
+  const u = w.upgrades;
+  return {
+    ...UPGRADES.paddle.tiers[u.paddle],
+    ...UPGRADES.steer.tiers[u.steer],
+    ...UPGRADES.catch.tiers[u.catch],
+  };
+}
+
 /* ---------- bricks ---------- */
 
 /** Rows are tougher toward the top: the back rows take three hits, the front
@@ -102,6 +188,12 @@ export function brickHp(row, rows = LAYOUT.BRICK_ROWS) {
 /** Points for clearing a brick, scaled by how much armour it had. */
 export function brickScore(maxhp) {
   return maxhp * 10;
+}
+
+/** Salvage earned for clearing a brick — a separate, spendable currency
+ *  alongside score, same split Flak Battery uses (score vs scrap). */
+export function brickSalvage(maxhp) {
+  return maxhp;
 }
 
 /** Whether a cell is filled, per level. Level 1 is a solid wall; later levels
@@ -211,9 +303,15 @@ function retimeBalls(w) {
   }
 }
 
-/** Paddle width for the current effect state. */
+/** Paddle width for the current effect state, folding in the paddle upgrade. */
 function paddleWidth(w) {
-  return w.effects.wide > 0 ? w.L.PADDLE_W * WIDE_MULT : w.L.PADDLE_W;
+  const base = w.L.PADDLE_W * stats(w).paddleMult;
+  return w.effects.wide > 0 ? base * WIDE_MULT : base;
+}
+
+/** Catch radius for falling capsules, folding in the catch upgrade. */
+function catchRadius(w) {
+  return DROP_R * stats(w).dropRMult;
 }
 
 /** Split each live ball into three, fanning the copies out either side of the
@@ -262,7 +360,7 @@ export function applyPowerup(w, kind) {
 function clearEffects(w) {
   w.drops = [];
   w.effects = { wide: 0, slow: 0 };
-  w.paddle.w = w.L.PADDLE_W;
+  w.paddle.w = paddleWidth(w);
 }
 
 /* ---------- collision primitives ---------- */
@@ -318,10 +416,12 @@ export function createWorld(opts = {}) {
     drops: [],            // powerup capsules falling toward the paddle
     effects: { wide: 0, slow: 0 },   // seconds remaining on each timed effect
     level: 1, score: 0, lives: START_LIVES,
+    salvage: 0, upgrades: newUpgrades(),
     running: false, over: false,
     levelClear: false,
     fx: opts.fx || { brick() {}, bounce() {}, lose() {}, power() {} },
   };
+  w.paddle.w = paddleWidth(w);
   return w;
 }
 
@@ -334,6 +434,7 @@ export function createWorld(opts = {}) {
 export function snapshot(w) {
   return {
     level: w.level, score: w.score, lives: w.lives,
+    salvage: w.salvage, upgrades: { ...w.upgrades },
     over: w.over, levelClear: w.levelClear, held: w.held,
     paddleFrac: w.paddle.x / w.L.W,     // fraction, so it survives a board change
     effects: { ...w.effects },
@@ -357,6 +458,8 @@ export function hydrate(w, snap) {
   w.level = Math.floor(snap.level);
   w.score = snap.score ?? 0;
   w.lives = snap.lives ?? START_LIVES;
+  w.salvage = snap.salvage ?? 0;
+  w.upgrades = { ...newUpgrades(), ...(snap.upgrades || {}) };
   w.over = !!snap.over;
   w.levelClear = !!snap.levelClear;
   w.held = snap.held ?? true;
@@ -370,7 +473,7 @@ export function hydrate(w, snap) {
   }
 
   w.effects = { wide: snap.effects?.wide || 0, slow: snap.effects?.slow || 0 };
-  w.paddle.w = w.effects.wide > 0 ? w.L.PADDLE_W * WIDE_MULT : w.L.PADDLE_W;
+  w.paddle.w = paddleWidth(w);
   setPaddle(w, (snap.paddleFrac ?? 0.5) * w.L.W);
 
   w.balls = snap.balls.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, r: w.L.BALL_R }));
@@ -381,6 +484,7 @@ export function hydrate(w, snap) {
 /** Reset every run-scoped value back to a fresh level 1. */
 export function resetGame(w) {
   w.level = 1; w.score = 0; w.lives = START_LIVES;
+  w.salvage = 0; w.upgrades = newUpgrades();
   w.over = false; w.levelClear = false;
   w.bricks = buildBricks(1, w.L);
   w.balls = []; w.held = true;
@@ -490,7 +594,7 @@ function paddleBounce(w, ball) {
   const px = p.x - p.w / 2;
   if (!circleRect(ball.x, ball.y, ball.r, px, L.PADDLE_Y, p.w, L.PADDLE_H)) return;
   const offset = clamp((ball.x - p.x) / (p.w / 2), -1, 1);
-  const ang = offset * PADDLE_MAX_ANGLE;
+  const ang = offset * PADDLE_MAX_ANGLE * stats(w).angleMult;
   const spd = Math.hypot(ball.vx, ball.vy);
   ball.vx = spd * Math.sin(ang);
   ball.vy = -spd * Math.cos(ang);
@@ -515,6 +619,7 @@ function brickBounce(w, ball) {
   if (bestBrick.hp <= 0) {
     bestBrick.alive = false;
     w.score += brickScore(bestBrick.maxhp);
+    w.salvage += brickSalvage(bestBrick.maxhp);
     w.fx.brick(bestBrick.x + bestBrick.w / 2, bestBrick.y + bestBrick.h / 2, bestBrick.row);
     const kind = dropFor(w.level, bestBrick.row, bestBrick.col);
     if (kind) {
@@ -536,7 +641,7 @@ function stepDrops(w, dt) {
   for (let i = w.drops.length - 1; i >= 0; i--) {
     const d = w.drops[i];
     d.y += d.vy * dt;
-    if (circleRect(d.x, d.y, DROP_R, p.x - p.w / 2, L.PADDLE_Y, p.w, L.PADDLE_H)) {
+    if (circleRect(d.x, d.y, catchRadius(w), p.x - p.w / 2, L.PADDLE_Y, p.w, L.PADDLE_H)) {
       w.drops.splice(i, 1);
       applyPowerup(w, d.kind);
       continue;
@@ -549,7 +654,7 @@ function stepDrops(w, dt) {
 function stepEffects(w, dt) {
   if (w.effects.wide > 0) {
     w.effects.wide = Math.max(0, w.effects.wide - dt);
-    if (w.effects.wide === 0) { w.paddle.w = w.L.PADDLE_W; setPaddle(w, w.paddle.x); }
+    if (w.effects.wide === 0) { w.paddle.w = paddleWidth(w); setPaddle(w, w.paddle.x); }
   }
   if (w.effects.slow > 0) {
     w.effects.slow = Math.max(0, w.effects.slow - dt);
