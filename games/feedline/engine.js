@@ -1,4 +1,4 @@
-/* Drift Net — pure logic core.
+/* Feedline — pure logic core.
    No DOM, no canvas, no timers. The only randomness is a seeded LCG (`rand`),
    so a given seed replays a run exactly — which is what makes food placement
    testable. The HTML shell owns rendering, input, and the frame loop. */

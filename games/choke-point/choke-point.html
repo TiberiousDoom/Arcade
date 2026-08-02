@@ -38,8 +38,10 @@
   .pick b{font:700 13px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
   .pick .cost{font-size:12px;color:var(--accent-hot)}
   .pick .blurb{font-size:10px;color:var(--dim);line-height:1.3}
-  #startWave{flex:1 1 100%;min-height:52px}
-  #startWave.hide{display:none}
+  /* Start Wave and Rush Wave are both always visible now (disabled rather
+     than hidden when they don't apply), so they share the same sizing —
+     Rush Wave used to inherit .pick's taller/narrower card sizing instead. */
+  #startWave, #rushWave{flex:1 1 100%;min-height:52px}
 
   /* the tap-a-tower popup: upgrade / sell */
   #tsel{position:absolute;z-index:6;display:none;flex-direction:column;gap:6px;
@@ -85,12 +87,11 @@
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
-import { glowStroke, glowDot, inkDot, extrudeDisc, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
-import { makeHelp } from '../../shared/help.js';
+import { glowStroke, glowDot, inkDot, extrudeDisc, extrudeRect, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
-import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
-import { makePause } from '../../shared/pause.js';
+import { makeAudio } from '../../shared/audio.js';
+import { makeMenu } from '../../shared/menu.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
@@ -179,17 +180,12 @@ function syncPalette() {
     pickBtns[key].classList.toggle('on', key === selected);
     pickBtns[key].disabled = world.charge < E.TOWER_TYPES[key].cost;
   }
-  // Showing/hiding Start Wave changes the controls strip's height, and makeFit
-  // reserves that height for the board — so the board has to be re-fit when it
-  // toggles, or it keeps a size computed against the old strip and can run off
-  // the bottom of a short screen. Only on the actual edge; sync() runs per frame.
-  const wantStart = world.running && world.betweenWaves && !world.over;
-  const wantRush = world.running && world.waveActive && world.spawnQueue.length > 0;
-  if (wantStart === startBtn.classList.contains('hide') || wantRush === rushBtn.classList.contains('hide')) {
-    startBtn.classList.toggle('hide', !wantStart);
-    rushBtn.classList.toggle('hide', !wantRush);
-    if (fitStage) fitStage();
-  }
+  // Both buttons stay visible and same-sized now — startWave works mid-wave
+  // (overlapping the next wave onto the current one), so it's only truly
+  // meaningless when the run isn't live at all. Disabled, not hidden, so the
+  // controls strip never reflows and there's nothing for makeFit to re-fit.
+  startBtn.disabled = !(world.running && !world.over);
+  rushBtn.disabled = !(world.running && world.waveActive && world.spawnQueue.length > 0);
 }
 
 /* ---------- tower popup (upgrade / sell) ---------- */
@@ -324,11 +320,9 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
-mountAudioToggle({ stage: $('stage'), audio });
-const pause = makePause({ stage: $('stage') });
-
-makeHelp({
+const pause = makeMenu({
   stage: $('stage'),
+  audio,
   title: 'Choke Point',
   lore: 'They are on the ground now, and they only advance one way. Make that one way expensive.',
   rows: [
@@ -338,7 +332,7 @@ makeHelp({
   ],
   notes: [
     'Node is cheap and fast; Breaker hits hard and splashes; Coil slows — and anything slowed takes extra damage from everything else, so Coil sets targets up.',
-    'Later surges fight back: plated ones shrug off small hits, dashed ones shrug off splash, chevrons can\'t be slowed, and a cross repairs everything near it.',
+    'Later surges fight back: Shell shrugs off small hits, Phase shrugs off splash and can\'t be slowed, and Patch repairs everything near it — watch colour and size to tell them apart.',
     'Every surge that reaches the core costs an integrity point — lose them all and it\'s over.',
     'Playing again puts you on a different circuit.',
     'Keyboard: 1/2/3 pick a tower, Enter starts a wave.',
@@ -489,7 +483,7 @@ const C = () => world.L.CELL;
    whose exact position and type you have to read at a glance — smearing them
    would fight the enemy trait cues directly, and those cues are the whole
    reason a mix of towers is needed. Clean frame, no fade. It also means static
-   alphas here are literal, with none of the accumulation Drift Net compensates
+   alphas here are literal, with none of the accumulation Feedline compensates
    for. */
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -539,23 +533,23 @@ function drawPath() {
   ctx.save();
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   // a wide additive band first — this becomes the lit fringe once the channel
-  // is painted back over the middle of it
-  glowStroke(ctx, trace, '#2f5f8c', C() * .74, [[1, .22]]);
+  // is painted back over the middle of it. Widened and brightened from the
+  // first pass: the borders should read as genuinely glowing, not just tinted.
+  glowStroke(ctx, trace, '#4a8fd6', C() * .82, [[1, .32]]);
   /* ...and the channel itself painted NORMALLY on top. It has to be
      source-over: additive compositing cannot darken, so an earlier attempt to
      lay a dark inner stroke additively brightened the channel instead and left
      the path glowing like a lit ribbon — the largest, loudest thing on a board
-     where it should be the quietest. */
+     where it should be the quietest. Darker than before, so the centre reads
+     as genuinely black rather than dark blue. */
   ctx.globalCompositeOperation = 'source-over';
-  ctx.strokeStyle = '#0d1e29';
+  ctx.strokeStyle = '#050a0d';
   ctx.lineWidth = C() * .6;
   ctx.beginPath(); trace(ctx); ctx.stroke();
   ctx.restore();
-  // dashed centre line, so direction of flow still reads
-  ctx.save();
-  ctx.setLineDash([7, 9]);
-  glowStroke(ctx, trace, '#6fb7e8', 1.4, GLOW_PASSES_CHEAP, .55);
-  ctx.restore();
+  // No dashed centre line any more — the glowing borders alone read as a
+  // channel, and the dashes fought the "even darker centre" the border glow
+  // is meant to set up.
 }
 
 function drawCore() {
@@ -569,7 +563,7 @@ function drawCore() {
 
 /* Towers are exactly what `extrude` is for: discrete objects sitting on a dark
    board, where a dark body with a lit rim and a face offset behind reads as a
-   solid installation bolted to the grid. (Contrast Drift Net's head, where the
+   solid installation bolted to the grid. (Contrast Feedline's head, where the
    same treatment punched a hole in a glowing tube.) */
 function drawTower(t) {
   const cell = C();
@@ -596,9 +590,11 @@ function drawTower(t) {
   }
 
   // tier pips, kept as hard little marks rather than glows — they are counted,
-  // not admired, and a halo would blur one into the next
+  // not admired, and a halo would blur one into the next. Sat below-left of
+  // the body before, which the tower's own rim partly covered; shifted
+  // further down and left to clear it entirely.
   for (let i = 0; i <= t.tier; i++) {
-    glowDot(ctx, cx - rr + 3 + i * 6, cy + rr - 2, 1.9, col);
+    glowDot(ctx, cx - rr - 4 + i * 6, cy + rr + 6, 1.9, col);
   }
 }
 
@@ -620,7 +616,7 @@ function drawEnemy(e) {
      in a flat blue that is almost exactly Shell's own colour, so "held up" and
      "plated" were indistinguishable — and which of the two you're looking at
      changes what you should build. */
-  /* A halo AROUND a full-strength body, never instead of one. Drift Net's food
+  /* A halo AROUND a full-strength body, never instead of one. Feedline's food
      shipped with a shrunken opaque core wrapped in haze and became genuinely
      hard to find; these are smaller, there are more of them, and they have to
      be told apart, so the solid disc stays exactly the size it was and only
@@ -634,48 +630,21 @@ function drawEnemy(e) {
   const half = s / 2;
   const face = (c) => c.rect(p.x - half, p.y - half, s, s);
 
-  glowStroke(ctx, face, col, 3, [[1.6, .10], [1, .22]]);
-  ctx.fillStyle = col;
-  ctx.beginPath(); face(ctx); ctx.fill();
+  // Same dark-body/lit-rim/offset-back treatment as the towers now, square
+  // instead of round — the two sides of the board read as one art style, and
+  // colour + size (already distinct per type via `col`/`e.r`) carry all the
+  // distinguishing work. The old per-trait glyphs (a plating border, a dashed
+  // shell, a chevron, a cross) are gone: they were extra identification this
+  // didn't need once the render style itself was doing the job.
+  extrudeRect(ctx, p.x - half, p.y - half, s, s, col, {
+    depth: Math.max(2, s * .12), width: 1.6,
+    body: 'rgba(24,44,56,.98)', back: 'rgba(13,26,34,.98)',
+  });
   if (e.slow > 0) {
     ctx.fillStyle = 'rgba(150,220,255,.5)';
     ctx.beginPath(); face(ctx); ctx.fill();
   }
 
-  /* Traits have to be legible at a glance or "my towers aren't working" reads
-     as a bug rather than as the wrong tool for this enemy. Each gets a distinct
-     silhouette cue rather than only a colour, since colour alone is already
-     doing the job of naming the type.
-     These are drawn hard-edged and unglowed on purpose: a halo on a 3px chevron
-     turns it into a smudge, and telling Shell from Phase from Patch is the
-     single most load-bearing readability job on this board. */
-  if (T.armor) {
-    // plating: a heavy inset border, suggesting something to punch through
-    ctx.strokeStyle = '#bcd8f0'; ctx.lineWidth = 2.5;
-    ctx.strokeRect(p.x - half + 2.5, p.y - half + 2.5, s - 5, s - 5);
-  }
-  if (T.splashResist) {
-    // insulated: a dashed shell outside the body, suggesting damage sliding off
-    ctx.strokeStyle = '#e6d5f5'; ctx.lineWidth = 1.5;
-    ctx.setLineDash([3, 3]);
-    ctx.strokeRect(p.x - half - 3, p.y - half - 3, s + 6, s + 6);
-    ctx.setLineDash([]);
-  }
-  if (T.slowImmune) {
-    // a small chevron: this one will not be held up
-    ctx.strokeStyle = '#e6d5f5'; ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(p.x - 3, p.y - 4); ctx.lineTo(p.x + 3, p.y); ctx.lineTo(p.x - 3, p.y + 4);
-    ctx.stroke();
-  }
-  if (T.heals) {
-    // a cross, the universal "this is repairing things"
-    ctx.strokeStyle = '#0b1418'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y);
-    ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x, p.y + 4);
-    ctx.stroke();
-  }
   // being mended, so damage visibly coming back is explained
   if (e.healed > 0) {
     ctx.strokeStyle = `rgba(95,201,164,${Math.min(1, e.healed * 5)})`;

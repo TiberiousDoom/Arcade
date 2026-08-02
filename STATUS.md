@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-01 (v24 — three deferred features)
+Last updated: 2026-08-02 (v25 — economy/art/UI round, Feedline rename)
 
 ## Read this first
 
@@ -15,20 +15,20 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). [flak-battery-standalone.html](games/flak-battery/flak-battery-standalone.html) is a *generated* single-file build — never edit it directly, run `node games/flak-battery/build.mjs`.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, armoured back rows, four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
-- **Drift Net** ([games/drift-net/drift-net.html](games/drift-net/drift-net.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
+- **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**352 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 187, Hull Breach 73, Choke Point 46, Drift Net 44, shared 2 — plus **33 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**365 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 197, Hull Breach 73, Choke Point 49, Feedline 44, shared 2 — plus **33 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
 ## In progress / just decided
 
-- Built Drift Net under `games/drift-net/` — first grid/tick game, and the one that showed the engine/shell *seam* is legitimately per-game (Drift Net's engine owns its tick clock; Hull Breach's takes no input at all). The pure-logic principle is what's shared, not the `step` signature.
+- Built Feedline under `games/feedline/` (originally `games/drift-net/`) — first grid/tick game, and the one that showed the engine/shell *seam* is legitimately per-game (Feedline's engine owns its tick clock; Hull Breach's takes no input at all). The pure-logic principle is what's shared, not the `step` signature.
 - Built Hull Breach fresh under `games/hull-breach/` on the engine/shell split — second game in the layout, and confirmation the pattern works for something other than Flak Battery.
 - Scrapped the old `arcade_games.html` (monolithic five-game cabinet). It was pulled from a larger personal site — depended on missing nav/theme chrome (`index.html`, `tracker.html`, `shared/theme.css`) and a live high-score backend (secret `SCRIPT_URL`/`API_TOKEN`) we don't have — and used the one-big-file structure we've decided against. See [docs/DECISIONS.md](docs/DECISIONS.md).
 - **`shared/` extracted** — `theme.css`, `fit.js`, `fx.js`, with all three shells rewired and verified in a browser. Two things were deliberately left unshared (banner logic, engine `step()` signatures) — see shared/README.md.
 - **The PWA layer is in** — `manifest.webmanifest`, `sw.js`, `shared/pwa.js`, and a generated icon set. Verified offline by stopping the server: pages load, fonts render, games play, and an uncached URL falls back to the cabinet.
 - **The cabinet exists** — `index.html` ties the three games together, so this is an app rather than three loose pages. Plain links, no router, no framework.
-- **Portrait layouts** added to Hull Breach and Drift Net, so all three games are phone-shaped. Verified at a 375x812 viewport: Hull Breach uses 88% of viewport height, Drift Net 83%, and a drag in Hull Breach's thumb band steers the paddle without covering the court.
+- **Portrait layouts** added to Hull Breach and Feedline, so all three games are phone-shaped. Verified at a 375x812 viewport: Hull Breach uses 88% of viewport height, Feedline 83%, and a drag in Hull Breach's thumb band steers the paddle without covering the court.
 - **Fonts are self-hosted** from `shared/fonts/`; nothing loads from the Google Fonts CDN any more, which was the last thing standing between the games and working offline.
 - **Flak Battery's missing `build.mjs` now exists**, so the standalone single-file build is generated rather than hand-synced. This was forced by the extraction: the standalone has to inline the shared files too, and `render-test.mjs` tests the standalone — a stale one meant the render test was silently checking old code. Regenerate with `node games/flak-battery/build.mjs`.
 - Fixed a pre-existing Windows bug in `render-test.mjs` (it used `URL.pathname`, which yields `/C:/...` with percent-encoded spaces). The render test had evidently never run on this machine; it passes now.
@@ -40,7 +40,7 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 1. ~~**Extract `shared/`**~~ — **done.** `shared/theme.css`, `shared/fit.js`, `shared/fx.js`, all three shells rewired. See [shared/README.md](shared/README.md).
 2. ~~**Self-host the fonts**~~ — **done.** `shared/fonts/` holds Chivo Mono (variable 300–700) and Archivo Black, latin subset, both OFL-1.1 with licenses shipped. Verified: the served games now make **zero** external requests, and the standalone makes zero subresource requests of any kind.
-3. ~~**Portrait layouts for Hull Breach and Drift Net**~~ — **done.** Both have `LAYOUT_TALL`, picked at load by aspect ratio. Hull Breach gained a `FLOOR`/`THUMB` split and height-scaled ball speed; Drift Net needed neither (per-cell pacing). Safe-area insets added to `shared/theme.css`. All three games now handle portrait.
+3. ~~**Portrait layouts for Hull Breach and Feedline**~~ — **done.** Both have `LAYOUT_TALL`, picked at load by aspect ratio. Hull Breach gained a `FLOOR`/`THUMB` split and height-scaled ball speed; Feedline needed neither (per-cell pacing). Safe-area insets added to `shared/theme.css`. All three games now handle portrait.
 4. ~~**The cabinet**~~ — **done.** `index.html` at the repo root lists the three games; each game header has a `← Arcade` link back. The standalone build strips that link, since it travels alone.
 5. ~~**PWA manifest + service worker**~~ — **done.** Installable, and verified genuinely offline: with the server stopped, every page still loads, renders with the right fonts, and plays.
 
@@ -80,7 +80,7 @@ From a real phone, via the Pages deploy:
 - In landscape a thumb covered the paddle, with dead space either side → the side gutters are now live control surface (drag there to steer; tap the board to jump the paddle).
 - Flak Battery's portrait board was nearly square (880x800) and wasted a third of the screen → now 600x1150 with ten rows.
 - Trim buttons ate scarce screen for little gain → removed.
-- Drift Net's swipe threshold swallowed deliberate flicks (24px → 10px).
+- Feedline's swipe threshold swallowed deliberate flicks (24px → 10px).
 - Flak Battery's aim needed ~500px of drag to cross its arc, more than a phone is wide → gain roughly doubled, now ~245px.
 - Instructions overflowed the banner and were written for mouse and keyboard → moved behind a `?` button per game, rewritten for tap and swipe.
 
@@ -88,7 +88,7 @@ From a real phone, via the Pages deploy:
 
 - Instructions were still too detailed → cut to three short lines plus two notes per game.
 - Flak Battery's map appeared to reverse on rotate → its portrait board had ten rows against landscape's seven, and the path serpentines, so the same path fraction landed in a row running the opposite way. Row counts now match (7 both ways); the extra portrait height goes into row spacing.
-- Drift Net did not feel like it kept your place → the grids are now exact **transposes** (32x18 / 18x32), so rotation transposes every cell and is lossless. Turning the phone turns the board.
+- Feedline did not feel like it kept your place → the grids are now exact **transposes** (32x18 / 18x32), so rotation transposes every cell and is lossless. Turning the phone turns the board.
 - All three games now **pause on rotate** with a "Turned / Resume" banner rather than dropping you back in mid-flight.
 - Gutter drag and the new aim gain were both confirmed good on device — left alone.
 
@@ -148,13 +148,13 @@ Readability had to keep up, since "my towers aren't working" must read as *wrong
 
 **Not done, deliberately:** projectiles (worth more once the above is played — travel time makes leading targets and placement angles matter, multiplying these changes rather than standing alone) and the between-waves choice. Difficulty numbers are still untuned by play.
 
-## Art direction: vector/CRT, piloted on Drift Net (2026-07-30)
+## Art direction: vector/CRT, piloted on Feedline (2026-07-30)
 
 Decided against sprites and for an emissive vector look built in Canvas 2D — see `docs/crt-demo.html` (live at `/Arcade/docs/crt-demo.html`) for the four techniques compared, and DECISIONS.md for why.
 
 `shared/glow.js` holds the primitives: `glowStroke` (multi-pass emissive stroke — everything else builds on it), `glowDot`, `inkDot`, `extrude`/`extrudeDisc`/`extrudeRect`, `fadeFrame`, `scanlines`. All reduced-motion aware.
 
-**Drift Net is the pilot.** Its wire is now one continuous glowing polyline rather than per-cell shapes — truer to the name, and four stroke passes for the whole body instead of eight per cell, which on a long wire is the difference between a handful of draws a frame and several hundred.
+**Feedline is the pilot.** Its wire is now one continuous glowing polyline rather than per-cell shapes — truer to the name, and four stroke passes for the whole body instead of eight per cell, which on a long wire is the difference between a handful of draws a frame and several hundred.
 
 `tools/screenshot.mjs` renders a real frame to a PNG through the render harness. Art cannot be judged from a headless browser at all — rAF is throttled until the page stops compositing, so screenshots come back blank.
 
@@ -168,12 +168,12 @@ The four games are one story, and were renamed to match it. **You play the invas
 
 | # | game | you are | was |
 |---|---|---|---|
-| 1 | **Drift Net** | the invader — a connected body that grows by taking worlds | Live Wire |
+| 1 | **Feedline** | the invader — a connected body that grows by taking worlds | Live Wire |
 | 2 | **Flak Battery** | planetary anti-air as the fleet descends | Serpent Battery |
 | 3 | **Choke Point** | ground defence once they have landed | Circuit Breaker |
 | 4 | **Hull Breach** | the counter-attack against their hull | Angle Iron |
 
-The fiction was chosen to fit mechanics that already existed rather than the other way round: Drift Net already grows and wins by covering the board, Flak Battery already faces a descending chain, Choke Point already funnels a column toward a core you defend, and Hull Breach was already a sphere against rectangular plates. Two existing mechanics gained a meaning for free — killing Flak Battery's head ending the formation is now a command ship, and Choke Point's Patch is a repair drone.
+The fiction was chosen to fit mechanics that already existed rather than the other way round: Feedline already grows and wins by covering the board, Flak Battery already faces a descending chain, Choke Point already funnels a column toward a core you defend, and Hull Breach was already a sphere against rectangular plates. Two existing mechanics gained a meaning for free — killing Flak Battery's head ending the formation is now a command ship, and Choke Point's Patch is a repair drone.
 
 **The invaders are never named.** Colder, and it avoids the collection sounding like it wants to be a franchise.
 
@@ -181,7 +181,7 @@ The fiction was chosen to fit mechanics that already existed rather than the oth
 
 **Game IDs and directories were renamed too**, at the owner's request, knowingly discarding all personal bests and saved runs — there is one player and he didn't mind. If that ever changes, note that `shared/scores.js` and `shared/resume.js` both key off the game id, and the cabinet derives that id from a CSS class, so a future rename needs a real migration with a fallback read of the old key.
 
-**The visual half landed in v20**, once the v17 trait cues were confirmed readable on device. Invaders are cubes, defenders are spheres, absolutely — Drift Net is a chain of cubes on a tether, Flak Battery a column of square craft, Choke Point square ground units against round emplacements. Hull Breach needed no change: its ball was already a sphere, and its bricks stay rectangular *plates* because they are hull armour rather than craft.
+**The visual half landed in v20**, once the v17 trait cues were confirmed readable on device. Invaders are cubes, defenders are spheres, absolutely — Feedline is a chain of cubes on a tether, Flak Battery a column of square craft, Choke Point square ground units against round emplacements. Hull Breach needed no change: its ball was already a sphere, and its bricks stay rectangular *plates* because they are hull armour rather than craft.
 
 **The art direction is complete across all four games** as of v22. Flak Battery is a column of lit cube craft with glowing spherical ordnance; Hull Breach is lit hull plating with a trailing interceptor. Neither takes phosphor trails — both boards are mostly static, and static content accumulates under a fade; Hull Breach trails only the ball instead, tracked in the shell.
 
@@ -194,7 +194,7 @@ The fiction was chosen to fit mechanics that already existed rather than the oth
 - **Choke Point rework:** bounties cut ~35%, per-type upgrade specialization (Node → fire rate, Breaker → range, Coil → splash), Patch's heal unlock pulled from wave 11 to 8 with a bigger radius/rate, a range ring now shows on an already-built tower's popup (not just placement preview), drag-and-drop placement alongside tap-to-build, and a new "Rush Wave" button that pulls the active wave's remaining spawns in immediately.
 - **Flak Battery:** fixed the wave-15+ chop — `stepShots` was doing an O(shots × segments) scan with an uncached path lookup per pair every frame; segment positions are now cached per chain per frame (invalidated on any mid-frame splice). Also: chain length ramps steeper (cap reached by wave 7, not 11), scrap trimmed ~25-30% and mount costs raised (all 5 emplacements no longer affordable by wave 7), HP text bumped to 11px with an outline, the head's ring replaced with four corner brackets (less "target reticle"), and "DECAPITATED" reworded to "COMMAND SHIP DOWN" to match the command-ship framing.
 - **Hull Breach:** brick damage now reads in discrete brightness bands instead of a continuous alpha fade, capsule glyphs bumped to 16px with a stroke outline, `MAX_BALLS` cut from 6 to 4 (six independent balls was chaos, not fun), and level 1 — previously the one layout with *no gaps* (a solid wall) — swapped for the checkerboard pattern so the opener isn't the hardest shape in the rotation.
-- **Drift Net's lore line** dropped its "you" framing per note: now "Every world it touched became a part of it, and it does not stop."
+- **Feedline's lore line** dropped its "you" framing per note: now "Every world it touched became a part of it, and it does not stop."
 - **Landscape support was already fully removed** in a prior session (`PORTRAIT_ONLY = true` in all four shells, manifest already `"orientation": "portrait"`) — nothing left to do there beyond the still-open question of deleting the now-dead `LAYOUT` (landscape) objects, which stays deliberately deferred (see DECISIONS.md 2026-07-27).
 
 **Deliberately not built that pass, and now done (v24, 2026-08-01):**
@@ -205,6 +205,17 @@ The fiction was chosen to fit mechanics that already existed rather than the oth
 
 All three followed an existing pattern rather than inventing new architecture (Flak Battery's upgrade-tree shape, `scores.js`'s guarded-localStorage shape, `shielded`'s KIND-flag-plus-damageSeg-branch shape). 34 new engine tests; full suite is now 385 (352 engine/shared + 33 render/resume). Manually verified in-browser: level-select grid grows and jumps correctly, and the real shipped engine (not just the standalone test copy) confirms a standard-cannon hit on a hardened craft is resisted while an ion-cannon hit isn't.
 
+## Round 3 feedback — economy, art, UI consolidation, rename (v25, 2026-08-02)
+
+- **One settings menu, everywhere.** `shared/pause.js`, `shared/help.js`, and `shared/audio.js`'s `mountAudioToggle` — three separate always-visible corner buttons overlapping the board — are gone, replaced by one `shared/menu.js` (`makeMenu`). Opening it pauses the run (same `{paused, pause(), resume(), toggle()}` contract as the old `pause.js`), and the panel holds mute, controls reference, and (Hull Breach only, via `onLevels`) a Levels entry. `pause.js`/`help.js` are deleted; `audio.js` keeps `makeAudio()`, just not the button.
+- **Header safe-area was only half-fixed.** `shared/theme.css`'s `body` padding covered bottom/left/right insets but never `top` — added `env(safe-area-inset-top)` at the base rule and both media-query overrides.
+- **Choke Point:** Breaker now has its own steeper upgrade-cost curve (separate `upgradeBase`/`upgradeStep` per tower type) so it stops crowding out Node once charge piles up; bounties cut again; `rushWave` is now a gradual fast-forward (compresses remaining gaps, doesn't dump the wave at once); `startWave` now works **mid-wave**, overlapping wave N+1 onto wave N rather than refusing — a real behavior change, the old "cannot start mid-wave" test was rewritten to assert the new overlap instead. Enemy art now uses the same dark-body/lit-rim/offset-back treatment as the towers (`extrudeRect`), dropping the per-trait glyphs (armor border, splash-resist dash, slow-immune chevron, heals cross) — colour and size carry the distinction now. Tower tier pips shifted down-left to clear the body. Road art: dropped the dashed centerline, widened and brightened the edge glow, darkened the channel further.
+- **Flak Battery:** scrap and upgrade/mount costs cut further; base hp and the wave-length ramp both steepened (a zero-upgrade run was reaching wave 10+ unaided); `recoilGain`'s blowback softened (~40% less at the worst case). **Ion cannon reworked**: it now bypasses `shielded`'s frontal-arc deflection (hits from any angle) instead of resisting `hardened`'s damage; `hardened` is a plain tough kind again, and the railgun gets a damage bonus against it instead. New **multi-barrel** upgrade (`buyBarrel`/`barrelCost`, battery-wide, up to 3) — each mount fires that many rounds per volley off one shared heat pool. Fixed a real bug: shot colour used to be read live off the battery's current overdrive tier every frame, so a shot fired while cool would flip red mid-flight the instant the streak climbed — colour (and gun-type) is now baked onto the shot at fire time. Segments, the road, and the gun/barrel art all scaled up (draw-size only; collision radii untouched).
+- **Drift Net → Feedline.** Full rename (directory, file names, game id, manifest/cabinet/docs), following the existing 2-prior-renames precedent — discards the old personal-best under `drift-net`, same as before. Gained a settings section in its menu: a swipe-sensitivity slider and a swipe/virtual-d-pad input-mode choice, both stored in localStorage; keyboard keeps working regardless of mode.
+- **Hull Breach:** fixed the level-select stacking bug (`#levelSelect` now `z-index:8`, so the opening banner can never paint over it) and wired it into the new menu (`onLevels`) so it's reachable mid-run, not just from the opening banner.
+
+**Noted for next time, not acted on:** the Flak Battery standalone build (`flak-battery-standalone.html`, `build.mjs`) was an early single-file test artifact — per the owner, it no longer needs to be maintained and can be retired (delete the file, `build.mjs`, its precache-exclusion note in `sw.js`, and repoint `render-test.mjs`/`resume-test.mjs` at `flak-battery.html` directly, matching the other three games' render-test pattern).
+
 ## Open decisions (not yet settled)
 
 - ~~Flak Battery's aim rework is untested on a device~~ — **settled 2026-07-29.** Confirmed good on a real phone. `AIM_ASSIST_R` (9) and `TRAVERSE_MAX` (5.6) stand; treat them as tuned unless something later disagrees.
@@ -213,8 +224,8 @@ All three followed an existing pattern rather than inventing new architecture (F
 - Choke Point has still never been checked on a real device.
 - ~~Hull Breach has no powerups~~ — **done 2026-07-27** (see below). Laser is deliberately still out.
 - Choke Point towers are **hitscan** (instant zap). Projectiles (travelling shots) were deferred — a visual/feel upgrade, not a mechanics one.
-- ~~No render smoke test for Hull Breach, Drift Net, or Choke Point~~ — **done 2026-07-29.** All four games now have one, sharing `tools/inline.mjs` (recursive module inlining) and `tools/render-harness.mjs` (jsdom + node-canvas boot). 19 render tests. Building this immediately found a live bug: the standalone build had been throwing at boot since v9, because the old hand-written inliner deleted `help.js`'s new nested import of `version.js`.
-- ~~"Continue where you left off"~~ — **done 2026-07-29** for Choke Point, Flak Battery and Hull Breach. `shared/resume.js` (storage, build-stamping, defensive reads) plus engine-side `snapshot()`/`hydrate()` in each. **Drift Net is deliberately excluded**: it is one-life score-attack, where resuming a run is contrary to the genre.
+- ~~No render smoke test for Hull Breach, Feedline, or Choke Point~~ — **done 2026-07-29.** All four games now have one, sharing `tools/inline.mjs` (recursive module inlining) and `tools/render-harness.mjs` (jsdom + node-canvas boot). 19 render tests. Building this immediately found a live bug: the standalone build had been throwing at boot since v9, because the old hand-written inliner deleted `help.js`'s new nested import of `version.js`.
+- ~~"Continue where you left off"~~ — **done 2026-07-29** for Choke Point, Flak Battery and Hull Breach. `shared/resume.js` (storage, build-stamping, defensive reads) plus engine-side `snapshot()`/`hydrate()` in each. **Feedline is deliberately excluded**: it is one-life score-attack, where resuming a run is contrary to the genre.
   - Saves are guarded on a shell-level `started` flag, **not** `world.running` — the states most worth saving (shop open, level cleared) are exactly the ones where the game is paused, and checking `running` there deleted the save instead of writing it.
   - Flak Battery: `assistR` is deliberately not stored (it describes the *device*, not the run, so a phone save must not carry touch aim-assist onto a desktop), in-flight shots and particles are dropped, and `reserveSegIds` pushes the id counter past restored ids — `battery.lastHitAt` is keyed by segment id, so a reused id would hand a new segment a stranger's convergence timing.
   - Hull Breach: bricks are stored as damage per cell and the paddle as a fraction of board width, so a save restores correctly onto the other board shape.

@@ -13,7 +13,7 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
  *  That is what makes rotation lossless: turning the phone maps every cell
  *  (c, r) -> (r, c), and because cells are square the transposed path has the
  *  *same total length*, so an enemy's distance along it carries straight over
- *  with no rescaling. See `relayout`, and Drift Net for the same trick. */
+ *  with no rescaling. See `relayout`, and Feedline for the same trick. */
 /*  Note CELL is a *resolution* knob, not an on-screen size one: the shell's
  *  makeFit scales the whole canvas to the stage, so a cell's physical size is
  *  screen-width / COLS. Bigger squares on a phone therefore means *fewer*
@@ -141,14 +141,20 @@ export function pathCells(L, routeIndex = 0) {
 export const TOWER_TYPES = {
   node: {
     name: 'Node', cost: 12, col: '#6fb7e8', blurb: 'Cheap — upgrades for fire rate',
+    upgradeBase: 1.4, upgradeStep: 0.9,
     tiers: [
       { range: 92, rate: 0.5, dmg: 4, splash: 0, slow: 0 },
       { range: 96, rate: 0.32, dmg: 5, splash: 0, slow: 0 },
       { range: 100, rate: 0.2, dmg: 6, splash: 0, slow: 0 },
     ],
   },
+  // Steeper cost curve than Node/Coil, deliberately: at the shared formula,
+  // Breaker's raw power made it affordable everywhere once charge piled up,
+  // crowding Node out entirely instead of leaving it the answer for single
+  // durable targets (and Phase, which already resists Breaker's splash).
   breaker: {
-    name: 'Breaker', cost: 32, col: '#e0503c', blurb: 'Splash — upgrades for reach',
+    name: 'Breaker', cost: 48, col: '#e0503c', blurb: 'Splash — upgrades for reach',
+    upgradeBase: 2.0, upgradeStep: 2.0,
     tiers: [
       { range: 120, rate: 1.4, dmg: 24, splash: 44, slow: 0 },
       { range: 150, rate: 1.35, dmg: 28, splash: 46, slow: 0 },
@@ -157,6 +163,7 @@ export const TOWER_TYPES = {
   },
   coil: {
     name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Slows — upgrades for splash',
+    upgradeBase: 1.4, upgradeStep: 0.9,
     tiers: [
       { range: 84, rate: 0.8, dmg: 2, splash: 0, slow: 0.4, slowDur: 1.2 },
       { range: 88, rate: 0.76, dmg: 3, splash: 30, slow: 0.5, slowDur: 1.4 },
@@ -168,17 +175,19 @@ export const TOWER_KEYS = Object.keys(TOWER_TYPES);
 export const MAX_TIER = 2;   // index of the last tier (0-based); three tiers total
 
 /** Cost of the next upgrade for a tower, or null if maxed. Scales off the base
- *  cost so pricier towers cost more to level. */
+ *  cost so pricier towers cost more to level — and each type's own
+ *  `upgradeBase`/`upgradeStep`, so the curve itself can differ by type. */
 export function upgradeCost(tower) {
   if (tower.tier >= MAX_TIER) return null;
-  return Math.round(TOWER_TYPES[tower.type].cost * (1.4 + tower.tier * 0.9));
+  const T = TOWER_TYPES[tower.type];
+  return Math.round(T.cost * (T.upgradeBase + tower.tier * T.upgradeStep));
 }
 
 /** Charge returned when a tower is sold: half of everything sunk into it. */
 export function sellValue(tower) {
   const T = TOWER_TYPES[tower.type];
   let spent = T.cost;
-  for (let t = 0; t < tower.tier; t++) spent += Math.round(T.cost * (1.4 + t * 0.9));
+  for (let t = 0; t < tower.tier; t++) spent += Math.round(T.cost * (T.upgradeBase + t * T.upgradeStep));
   return Math.floor(spent * 0.5);
 }
 
@@ -205,27 +214,27 @@ export function stats(tower) {
  *    heals        repairs nearby enemies, which makes target priority matter
  *                 rather than just total damage
  */
-// Bounties scaled down (~65% of the original table) so the economy takes
-// longer to snowball — full upgrades shouldn't be affordable by wave 7.
+// Bounties cut twice now: ~65% of the original table last pass, and further
+// here — feedback said charge still piled up too fast even after that cut.
 export const ENEMY_TYPES = {
-  surge: { name: 'Surge', hp: 20, speed: 62, bounty: 2, r: 12, col: '#e6e9e2' },
-  spark: { name: 'Spark', hp: 12, speed: 112, bounty: 3, r: 9, col: '#c9a227' },
-  load:  { name: 'Load',  hp: 92, speed: 40, bounty: 5, r: 19, col: '#7f8fa0' },
+  surge: { name: 'Surge', hp: 20, speed: 62, bounty: 1, r: 12, col: '#e6e9e2' },
+  spark: { name: 'Spark', hp: 12, speed: 112, bounty: 2, r: 9, col: '#c9a227' },
+  load:  { name: 'Load',  hp: 92, speed: 40, bounty: 3, r: 19, col: '#7f8fa0' },
   // many, tiny and quick: the case splash damage is *for*
   swarm: { name: 'Swarm', hp: 7, speed: 128, bounty: 1, r: 7, col: '#d8763a' },
   // plated: chips a flat amount off every hit, so a tier-0 Node barely dents it
   // while a Breaker hardly notices. Deliberately 3 and not higher — at 6 it
   // exceeded Node's base damage outright, which made Node permanently useless
   // here rather than something worth *upgrading* to make viable.
-  shell: { name: 'Shell', hp: 70, speed: 46, bounty: 7, r: 17, col: '#4d7fb3', armor: 3 },
+  shell: { name: 'Shell', hp: 70, speed: 46, bounty: 4, r: 17, col: '#4d7fb3', armor: 3 },
   // insulated against splash, and quick — punish leaning on Breaker
-  phase: { name: 'Phase', hp: 34, speed: 104, bounty: 6, r: 10, col: '#b58fd0',
+  phase: { name: 'Phase', hp: 34, speed: 104, bounty: 4, r: 10, col: '#b58fd0',
            splashResist: 0.8, slowImmune: true },
   // repairs its neighbours. Towers shoot the furthest-along enemy, so a patch
   // trailing the pack is safe unless you build to reach it. Heal rate/radius
   // raised and unlock pulled earlier so it's a real nuisance, not a no-op —
   // at wave 11 with a 96px/7hp-per-sec heal it was over before it mattered.
-  patch: { name: 'Patch', hp: 44, speed: 54, bounty: 6, r: 13, col: '#5fc9a4', heals: 12 },
+  patch: { name: 'Patch', hp: 44, speed: 54, bounty: 4, r: 13, col: '#5fc9a4', heals: 12 },
 };
 export const ENEMY_KEYS = Object.keys(ENEMY_TYPES);
 
@@ -375,31 +384,49 @@ export function sellTower(w, i) {
 /* ---------- waves ---------- */
 
 /** Begin the next wave. Queues its spawns onto a timeline; `step` releases them
- *  as their time comes due. No-op while a wave is already running. */
+ *  as their time comes due. Works mid-wave too: "start the next wave early"
+ *  means exactly that — wave N+1's spawns are appended onto the existing
+ *  queue, timed from right now, so both waves' enemies are on the board
+ *  together, rather than N+1 queuing silently behind N. */
 export function startWave(w) {
-  if (w.over || w.waveActive) return false;
+  if (w.over) return false;
+  const overlapping = w.waveActive;
   w.wave++;
-  w.clock = 0;
-  w.spawnQueue = [];
-  let t = 0;
+  const startAt = overlapping ? w.clock : 0;
+  let t = startAt;
+  const spawns = [];
   for (const g of wavePlan(w.wave)) {
-    for (let i = 0; i < g.count; i++) { w.spawnQueue.push({ type: g.type, at: t }); t += g.gap; }
+    for (let i = 0; i < g.count; i++) { spawns.push({ type: g.type, at: t }); t += g.gap; }
     t += 0.6;   // a breath between groups
   }
-  // spawn order by time, so interleaving groups still release correctly
-  w.spawnQueue.sort((a, b) => a.at - b.at);
+  if (overlapping) {
+    w.spawnQueue.push(...spawns);
+    // spawn order by time, so interleaving groups (old wave + new) still
+    // release correctly
+    w.spawnQueue.sort((a, b) => a.at - b.at);
+  } else {
+    w.clock = 0;
+    w.spawnQueue = spawns;
+  }
   w.waveActive = true;
   w.betweenWaves = false;
   return true;
 }
 
-/** Pull the active wave's remaining spawns in immediately, for players who'd
- *  rather fight the rest of the wave now than wait out its spawn gaps. Does
- *  not touch enemies already on the board, and does not start a new wave —
- *  `startWave`'s "no-op mid-wave" contract is unchanged. */
+/** Pull the active wave's remaining spawns in sooner, for players who'd
+ *  rather fight the rest of the wave now than wait out its spawn gaps. A
+ *  gradual fast-forward, not an instant dump: each call compresses the
+ *  remaining gap before every still-pending spawn, so multiple taps ramp
+ *  the pace up rather than releasing the whole rest of the wave on one tick.
+ *  Does not touch enemies already on the board. */
+export const RUSH_COMPRESSION = 0.45;   // remaining gap shrinks to this fraction per tap
+
 export function rushWave(w) {
   if (w.over || !w.waveActive || !w.spawnQueue.length) return false;
-  for (const s of w.spawnQueue) s.at = Math.min(s.at, w.clock);
+  for (const s of w.spawnQueue) {
+    const remaining = s.at - w.clock;
+    if (remaining > 0) s.at = w.clock + remaining * RUSH_COMPRESSION;
+  }
   return true;
 }
 
@@ -623,7 +650,7 @@ export function hydrate(w, snap) {
  *  and the path is the same length, so every enemy's `dist` carries over
  *  untouched — as do charge, integrity, wave and score. Turning the phone turns
  *  the board, which is also the least surprising thing that could happen. Same
- *  approach as Drift Net. */
+ *  approach as Feedline. */
 export function relayout(w, L2) {
   // the run's own circuit has to come across too — rebuilding at route 0 would
   // silently swap the board mid-run and strand every tower off the new path

@@ -193,6 +193,18 @@ test('upgrading costs charge and raises the tier; maxes out', () => {
   assert.equal(E.upgradeTower(w, 0), false, 'cannot go past max');
 });
 
+test('breaker costs meaningfully more to max than node or coil, relative to its base cost', () => {
+  const totalMaxCost = (type) => {
+    const t = { type, tier: 0 };
+    let total = E.TOWER_TYPES[type].cost;
+    while (E.upgradeCost(t) !== null) { total += E.upgradeCost(t); t.tier++; }
+    return total;
+  };
+  const ratio = (type) => totalMaxCost(type) / E.TOWER_TYPES[type].cost;
+  assert.ok(ratio('breaker') > ratio('node') * 1.3, 'breaker\'s curve is steeper, not just its base cost');
+  assert.ok(ratio('breaker') > ratio('coil') * 1.3);
+});
+
 test('selling refunds part of what was sunk in and frees the cell', () => {
   const w = richWorld();
   const cell = firstBuildable(w);
@@ -590,7 +602,41 @@ test('startWave queues spawns and step releases them over time', () => {
   assert.equal(w.enemies.length, 0, 'nothing out yet');
   E.step(w, 0.01);
   assert.equal(w.enemies.length, 1, 'the first surge is released at t=0');
-  assert.equal(E.startWave(w), false, 'cannot start a wave mid-wave');
+});
+
+test('startWave works mid-wave, overlapping rather than queuing after', () => {
+  const w = E.createWorld();
+  E.startWave(w);
+  E.step(w, 5);   // let some of wave 1 release and the clock advance
+  const releasedSoFar = w.enemies.length;
+  const remainingWave1 = w.spawnQueue.length;
+
+  assert.equal(E.startWave(w), true, 'starting early works mid-wave');
+  assert.equal(w.wave, 2);
+  assert.ok(w.waveActive, 'still (or again) active');
+  // wave 2's spawns are appended, not a replacement — the old queue's
+  // still-pending entries survive alongside the new ones
+  assert.ok(w.spawnQueue.length > remainingWave1,
+    'wave 2 spawns were appended onto whatever wave 1 had left');
+  assert.equal(w.enemies.length, releasedSoFar, 'nothing already on the board was touched');
+});
+
+test('rushWave compresses remaining gaps gradually, not to zero at once', () => {
+  const w = E.createWorld();
+  E.startWave(w);
+  const before = w.spawnQueue.map(s => s.at);
+  assert.equal(E.rushWave(w), true);
+  const after = w.spawnQueue.map(s => s.at);
+  // every remaining gap shrank, but not to w.clock — this is a fast-forward,
+  // not the old instant-dump behaviour
+  for (let i = 0; i < before.length; i++) {
+    assert.ok(after[i] <= before[i], `spawn ${i} moved sooner or stayed`);
+  }
+  assert.ok(after.some(at => at > w.clock + 1e-9), 'not everything landed on the current tick');
+
+  // repeated taps keep compressing toward now
+  for (let i = 0; i < 20; i++) E.rushWave(w);
+  assert.ok(w.spawnQueue.every(s => s.at - w.clock < 1), 'converges toward immediate with enough taps');
 });
 
 test('clearing a wave flags betweenWaves and pays a bonus', () => {

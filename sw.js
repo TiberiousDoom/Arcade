@@ -11,7 +11,7 @@
    static, versioned by hand, and the whole point is offline play. Stale-while-
    revalidate would spare the version bump but would also serve one stale run
    after every update, which is worse for a game than a manual discipline. */
-const CACHE_VERSION = 'arcade-v24';
+const CACHE_VERSION = 'arcade-v25';
 
 /* Relative URLs, resolved against this file's location — so the app still
    works when served from a subpath (a GitHub Pages project site, say) rather
@@ -24,8 +24,7 @@ const PRECACHE = [
   './shared/theme.css',
   './shared/fit.js',
   './shared/fx.js',
-  './shared/help.js',
-  './shared/pause.js',
+  './shared/menu.js',
   './shared/audio.js',
   './shared/pwa.js',
   './shared/scores.js',
@@ -47,8 +46,8 @@ const PRECACHE = [
   './games/flak-battery/engine.js',
   './games/hull-breach/hull-breach.html',
   './games/hull-breach/engine.js',
-  './games/drift-net/drift-net.html',
-  './games/drift-net/engine.js',
+  './games/feedline/feedline.html',
+  './games/feedline/engine.js',
   './games/choke-point/choke-point.html',
   './games/choke-point/engine.js',
 ];

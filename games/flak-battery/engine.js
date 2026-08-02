@@ -80,28 +80,34 @@ export function atS(path, pathLen, s) {
 // Scrap trimmed ~25-30% across the board: at the old rates a run could afford
 // all 5 gun mounts by wave 7, well before the upgrade tree gave it anything
 // to weigh that against.
+// Base hp raised across the board (feedback: a run reached wave 10+ with
+// zero upgrades bought — the unaided difficulty was too soft independent of
+// the shop). Carrier is left alone; it's a bonus pickup, not a threat.
+// Scrap cut again on top of that (a run could max the whole shop by wave 20
+// even after the previous nerf) — longer waves already mean more kills, so
+// per-kill income needed to come down to compensate.
 export const KIND = {
-  std:      { hp: 3, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 2 },
-  armored:  { hp: 10, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 6 },
-  volatile: { hp: 2, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 4 },
+  std:      { hp: 4, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 1 },
+  armored:  { hp: 13, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 4 },
+  volatile: { hp: 3, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 3 },
   // Plated on the leading face: shots from the front glance off, so you must
   // either come at it from the side via a wall bounce or clear a neighbour
   // first to expose the flank.
-  shielded: { hp: 5, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 7, shield: true },
+  shielded: { hp: 6, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 5, shield: true },
   // Heals while it lives. Ignore it and it undoes your chip damage; it never
   // heals past its cap and never comes back once destroyed.
-  regen:    { hp: 6, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 6, regen: 1.1 },
+  regen:    { hp: 8, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 4, regen: 1.1 },
   // Rare. Killing it splits the chain into two independent snakes instead of
   // paying recoil — a trap that doubles the threat, or a scoring gamble.
-  splitter: { hp: 6, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 9, splits: true },
+  splitter: { hp: 7, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 7, splits: true },
   // Drops a power-up on death. Worth breaking your rhythm for.
-  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 5, carries: true },
-  // Warded all the way around rather than on one face — flanking (what beats
-  // `shielded`) does nothing here. `ionResist` is a flat multiplier on
-  // incoming damage from anything but the ion cannon: heavily resistant,
-  // not immune, so it is still (very slowly) chippable without one.
-  hardened: { hp: 8, r: 14, col: '#5fc9d6', ring: '#2e6b73', score: 240, scrap: 11, ionResist: 0.12 },
-  head:     { hp: 14, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 14 },
+  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 4, carries: true },
+  // Just plain tough — no special resistance of its own. The railgun is
+  // simply the efficient tool against it (`railBonus`, checked in
+  // `damageSeg`), the same way armored favours a heavy hitter without being
+  // literally immune to anything else.
+  hardened: { hp: 10, r: 14, col: '#5fc9d6', ring: '#2e6b73', score: 240, scrap: 8, railBonus: 1.8 },
+  head:     { hp: 24, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 11 },
 };
 
 /** Shots landing within this angle of a shielded segment's leading face are
@@ -156,7 +162,10 @@ export function kindForIndex(i, count = Infinity, wave = Infinity) {
  *  faster* — never tougher to chew through. Same shape as Choke Point's
  *  `hpScale`, and capped so a very long run doesn't turn every segment into a
  *  sponge that outlasts the wave timer. */
-export const HP_PER_WAVE = 0.14;
+// Steepened from 0.14: base hp values above cover part of "hits needed per
+// square went up," this covers the rest — a run with zero upgrades needs to
+// feel the wave count climbing, not just longer chains at wave-1 toughness.
+export const HP_PER_WAVE = 0.20;
 export const HP_SCALE_MAX = 4.0;
 
 export function hpScale(wave) {
@@ -194,9 +203,10 @@ export function reserveSegIds(id) {
  *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
  *  56-segment chain spans 1650px of a ~5750px path, so it still fits the board
  *  comfortably without the tail overlapping the head. */
-// Ramp steeper than before (18+6/wave, was 14+4/wave) so chains get longer
-// sooner — the cap is unchanged, just reached by wave 7 instead of wave 11.
-export const waveCount = (wave) => Math.min(18 + wave * 6, 56);
+// Ramp steeper again (20+8/wave, was 18+6/wave) and the cap raised alongside
+// it (72, was 56) — feedback found the chain wasn't growing fast enough to
+// feel like escalating danger even with the previous steepening.
+export const waveCount = (wave) => Math.min(20 + wave * 8, 72);
 /** Path length of the standard layout, used as the default reference. */
 export const REF_PATH_LEN = buildPath(LAYOUT).pathLen;
 
@@ -239,10 +249,12 @@ export function isDeflected(seg, heading, vx, vy) {
 /* ---------- recoil ---------- */
 
 /** Time bought by cutting at index `headSide` in a chain that has
- *  `remaining` segments left afterward. Cuts nearer the head pay more. */
+ *  `remaining` segments left afterward. Cuts nearer the head pay more.
+ *  Softened from (0.5 + ratio*2.2): the blowback on a near-head cut was
+ *  reading as too punishing a penalty rather than a manageable trade-off. */
 export function recoilGain(spacing, headSide, remaining) {
   if (headSide <= 0 || remaining <= 0) return 0;
-  return spacing * (0.5 + (headSide / remaining) * 2.2);
+  return spacing * (0.35 + (headSide / remaining) * 1.3);
 }
 
 /* ---------- overdrive ---------- */
@@ -356,7 +368,7 @@ export const UPGRADES = {
   barrel: {
     name: 'Barrel',
     blurb: 'Damage per shot, then projectile size',
-    costs: [30, 65, 115, 185, 280],
+    costs: [42, 91, 161, 259, 392],
     tiers: [
       { dmg: 1.0, shotR: 3.2 },
       { dmg: 1.3, shotR: 3.2 },
@@ -369,7 +381,7 @@ export const UPGRADES = {
   chamber: {
     name: 'Chamber',
     blurb: 'Heat capacity and cooling — holds Overdrive longer',
-    costs: [28, 60, 108, 172, 262],
+    costs: [39, 84, 151, 241, 367],
     tiers: [
       { heatPerShot: 1.00, cool: 1.00, lock: 1.00 },
       { heatPerShot: 0.90, cool: 1.15, lock: 0.92 },
@@ -382,7 +394,7 @@ export const UPGRADES = {
   optics: {
     name: 'Optics',
     blurb: 'Projectile speed, then a longer intercept read',
-    costs: [32, 68, 120, 192, 290],
+    costs: [45, 95, 168, 269, 406],
     tiers: [
       { shotSpeed: 520, predict: 1.6 },
       { shotSpeed: 585, predict: 1.8 },
@@ -395,7 +407,7 @@ export const UPGRADES = {
   munitions: {
     name: 'Munitions',
     blurb: 'Extra pierce and wall bounces',
-    costs: [35, 74, 130, 208, 312],
+    costs: [49, 104, 182, 291, 437],
     tiers: [
       { pierce: 0, bounces: 2 },
       { pierce: 0, bounces: 3 },
@@ -466,6 +478,7 @@ export function createWorld(opts = {}) {
     wave: 1, score: 0, scrap: 0, lives: 3,
     upgrades: newUpgrades(),
     gunUnlocks: { auto: false, rail: false, mortar: false, ion: false },
+    barrels: 1,
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
     shake: 0, hitStop: 0,
     // extra hit radius, set by the shell from the input device (see
@@ -544,6 +557,7 @@ export function snapshot(w) {
     shopOpen: w.shopOpen,
     upgrades: { ...w.upgrades },
     gunUnlocks: { ...w.gunUnlocks },
+    barrels: w.barrels,
     effects: { ...w.effects },
     shieldCharges: w.shieldCharges,
     dropSeed: w.dropSeed,
@@ -580,6 +594,7 @@ export function hydrate(w, snap) {
   w.shopOpen = !!snap.shopOpen;
   w.upgrades = { ...newUpgrades(), ...(snap.upgrades || {}) };
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false, ...(snap.gunUnlocks || {}) };
+  w.barrels = clamp(Math.floor(snap.barrels ?? 1), 1, MAX_BARRELS);
   w.effects = { ...(snap.effects || {}) };
   w.shieldCharges = snap.shieldCharges ?? 0;
   w.dropSeed = snap.dropSeed ?? 987654321;
@@ -624,6 +639,7 @@ export function resetRun(w) {
   w.shake = 0; w.hitStop = 0;
   w.shopOpen = false;
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false };
+  w.barrels = 1;
   w.battery = makeBattery(w.L, 1);
   w.cannon = w.battery;
   w.cannon.x = w.L.W / 2;
@@ -644,6 +660,24 @@ export function buyMount(w) {
 export function mountCost(w) {
   const n = w.battery.guns.length;
   return n >= MAX_MOUNTS ? null : MOUNT_COST[n];
+}
+
+/** A top-tier upgrade: every mount fires this many barrels per volley
+ *  instead of one, all sharing that mount's own heat/cooldown. Battery-wide
+ *  (like mount count), not per-gun — there is one dial, not five. */
+export const MAX_BARRELS = 3;
+export const BARREL_COST = [260, 460];   // cost of the 2nd and 3rd barrel
+
+export function barrelCost(w) {
+  return w.barrels >= MAX_BARRELS ? null : BARREL_COST[w.barrels - 1];
+}
+
+export function buyBarrel(w) {
+  const cost = barrelCost(w);
+  if (cost === null || w.scrap < cost) return false;
+  w.scrap -= cost;
+  w.barrels++;
+  return true;
 }
 
 /** Unlock a gun type for assignment. One-time purchase. */
@@ -690,46 +724,55 @@ function fireGun(w, gun) {
   const tp = aimPoint(w);
   const ang = Math.atan2(tp.y - muzzleY, tp.x - muzzleX);
 
+  // A multi-barrel mount fires all its barrels in one volley, at a small
+  // angular fan, sharing this one heat/cooldown pool — the natural balancing
+  // lever for barrel count is that 3 barrels costs 3x the heat of 1, with no
+  // new per-barrel state needed.
   gun.cool = T.rate * G.rate * (hasEffect(w, 'rapid') ? 0.55 : 1);
-  gun.heat = clamp(gun.heat + HEAT_PER_SHOT * S.heatPerShot, 0, 1);
+  gun.heat = clamp(gun.heat + HEAT_PER_SHOT * S.heatPerShot * w.barrels, 0, 1);
   if (gun.heat >= 1) {
     gun.locked = LOCK_TIME * S.lock; gun.heat = 1;
     // overheating one gun drops the shared streak, but not all the way — the
-    // battery keeps firing on its other barrels
+    // battery keeps firing on its other mounts
     b.streak = Math.max(0, b.streak - 4);
     b.od = tierForStreak(b.streak);
     w.fx.push('OVERHEAT', muzzleX, muzzleY - 60, '#e0503c');
   }
 
   const spd = S.shotSpeed * G.spd;
-  const shot = {
-    x: muzzleX + Math.cos(ang) * b.len,
-    y: muzzleY + Math.sin(ang) * b.len,
-    vx: Math.cos(ang) * spd,
-    vy: Math.sin(ang) * spd,
+  const makeShot = (a) => ({
+    x: muzzleX + Math.cos(a) * b.len,
+    y: muzzleY + Math.sin(a) * b.len,
+    vx: Math.cos(a) * spd,
+    vy: Math.sin(a) * spd,
     dmg: T.dmg * S.dmg * G.dmg,
     pierce: T.pierce + S.pierce + G.pierce + (hasEffect(w, 'pierce') ? 2 : 0),
     bounces: S.bounces + (hasEffect(w, 'ricochet') ? 4 : 0),
     r: S.shotR,
     arc: G.arc ? true : false,
-    gun: gun.type,   // which mount fired this — damageSeg checks it against 'ion'
-  };
+    gun: gun.type,      // which mount fired this — damageSeg/isDeflected check this
+    // The colour to draw this shot, baked in at fire time rather than read
+    // live off the battery every frame — a shot fired while cool must stay
+    // the colour it was fired at, not flip to red mid-flight the instant the
+    // battery's streak climbs into Critical after it launched. The ion
+    // cannon keeps its own colour regardless of tier, same as it always has.
+    col: gun.type === 'ion' ? G.col : T.col,
+  });
+
+  const offsets = BARREL_OFFSETS[w.barrels] ?? BARREL_OFFSETS[1];
+  const shot = makeShot(ang + offsets[0]);
   w.shots.push(shot);
+  for (let i = 1; i < offsets.length; i++) w.shots.push(makeShot(ang + offsets[i]));
 
   if (hasEffect(w, 'spread')) {
-    for (const off of [-0.16, 0.16]) {
-      const a = ang + off;
-      w.shots.push({
-        ...shot,
-        x: muzzleX + Math.cos(a) * b.len,
-        y: muzzleY + Math.sin(a) * b.len,
-        vx: Math.cos(a) * spd,
-        vy: Math.sin(a) * spd,
-      });
-    }
+    for (const off of [-0.16, 0.16]) w.shots.push(makeShot(ang + off));
   }
   return shot;
 }
+
+/** Angular fan for a mount's barrels — one entry per barrel, fired in the
+ *  same volley off the one heat/cooldown pool. */
+const BARREL_OFFSETS = { 1: [0], 2: [-0.09, 0.09], 3: [-0.15, 0, 0.15] };
 
 /** Fire the whole battery. Every ready gun looses a shot toward the shared
  *  aim point. Returns the number of guns that fired. */
@@ -770,8 +813,9 @@ export const GUN_TYPES = {
   auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', unlock: 120 },
   rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', unlock: 160 },
   mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', unlock: 200, arc: true },
-  // The one gun `hardened` doesn't shrug off — damageSeg checks the shot's
-  // `gun` field for the literal string 'ion', not a stat on this table.
+  // The one gun `shielded` can't deflect — the collision loop checks the
+  // shot's `gun` field for the literal string 'ion' before ever calling
+  // isDeflected, not a stat on this table.
   ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', unlock: 260 },
 };
 export const GUN_KEYS = Object.keys(GUN_TYPES);
@@ -780,7 +824,7 @@ export const GUN_KEYS = Object.keys(GUN_TYPES);
  *  dead centre; more mounts fan outward symmetrically. */
 export const MOUNT_X = [0.5, 0.32, 0.68, 0.18, 0.82];
 export const MAX_MOUNTS = 5;
-export const MOUNT_COST = [0, 100, 190, 320, 480];   // cost of the Nth mount
+export const MOUNT_COST = [0, 130, 247, 416, 624];   // cost of the Nth mount
 
 /** How close two hits must land in time to count as convergence. */
 export const CONVERGE_WINDOW = 0.12;
@@ -991,7 +1035,7 @@ function decapitate(w, ci) {
 }
 
 /** Apply damage. Returns true if the segment died. `shot` is optional (the
- *  bomb call site has none) — only used to check `ionResist` against the
+ *  bomb call site has none) — only used to check `railBonus` against the
  *  gun that fired, everything else about damage is unaffected by it. */
 export function damageSeg(w, ci, i, dmg, shot) {
   const ch = w.chains[ci];
@@ -999,11 +1043,12 @@ export function damageSeg(w, ci, i, dmg, shot) {
   const seg = ch.segs[i];
   if (!seg) return false;
 
-  // warded all the way around: any gun but the ion cannon does a fraction
-  // of normal damage. Independent of the head-shielding logic below and of
-  // `shielded`'s frontal deflection — this is a different mechanic entirely.
+  // the railgun is simply the efficient tool against a hardened hull — a
+  // damage bonus, not a resistance any other gun lacks. Independent of the
+  // head-shielding logic below and of `shielded`'s frontal deflection, which
+  // the ion cannon bypasses entirely at the collision-loop call site instead.
   const K0 = KIND[seg.kind];
-  if (K0.ionResist && shot?.gun !== 'ion') dmg *= K0.ionResist;
+  if (K0.railBonus && shot?.gun === 'rail') dmg *= K0.railBonus;
 
   // the head is shielded by whatever body is still behind it
   if (seg.kind === 'head') {
@@ -1185,7 +1230,10 @@ export function stepShots(w, dt) {
         if (sp.off) continue;
         if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r + w.assistR) {
           const heading = segHeading(w.path, w.pathLen, ch, i);
-          if (isDeflected(seg, heading, p.vx, p.vy)) {
+          // the ion cannon bypasses shielded's frontal-arc deflection outright —
+          // it hits from any angle, which is what makes it the answer for
+          // shielded rather than just another gun a player has to flank with
+          if (p.gun !== 'ion' && isDeflected(seg, heading, p.vx, p.vy)) {
             // glances off the plate: the shot bounces away and the streak
             // survives, since the player did make contact
             seg.deflect = 0.15;

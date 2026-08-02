@@ -10,15 +10,15 @@
 
    Needs `npm install --no-save jsdom canvas`.
 
-     node tools/screenshot.mjs games/drift-net/drift-net.html out.png
-     node tools/screenshot.mjs games/drift-net/drift-net.html out.png --frames 400
+     node tools/screenshot.mjs games/feedline/feedline.html out.png
+     node tools/screenshot.mjs games/feedline/feedline.html out.png --frames 400
 
    Options:
      --frames N   how many frames to drive before capturing (default 240)
      --width N    backing canvas width  (default 460)
      --height N   backing canvas height (default 820)
      --no-start   skip pressing Begin, to capture the opening banner
-     --grow N     Drift Net only: pad the wire out, so the art can be judged on
+     --grow N     Feedline only: pad the wire out, so the art can be judged on
                   a long one rather than the four cells it starts with
 */
 import { writeFileSync } from 'node:fs';
@@ -58,7 +58,7 @@ for (let i = 0; i < frames; i++) { t += 1000 / 60; g.frame(t); }
 /* Composite onto the board colour before saving. Most shells clear to
    transparent and let the page background show through, so a raw capture has an
    alpha channel — which renders as WHITE in most viewers and makes a dark game
-   look like a blown-out negative. Drift Net happens to escape this because its
+   look like a blown-out negative. Feedline happens to escape this because its
    phosphor fade paints an opaque background every frame.
 
    Painted *underneath* with `destination-over` rather than onto a second

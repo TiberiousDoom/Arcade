@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Drift Net</title>
+<title>Feedline</title>
 <link rel="manifest" href="../../manifest.webmanifest">
 <meta name="theme-color" content="#0b1418">
 <link rel="icon" href="../../shared/icons/favicon-32.png" sizes="32x32" type="image/png">
@@ -19,13 +19,35 @@
     --accent-ink:#06201a;
     --board-max:800px;
   }
+
+  /* settings panel: sensitivity slider + input-mode radios, inserted into
+     the shared menu via its `extra` slot */
+  .menuSettings{display:flex;flex-direction:column;gap:10px;
+    padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .menuSettings h3{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .menuSettings label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--bone)}
+  .menuSettings input[type=range]{flex:1}
+  .modeRow{display:flex;gap:16px}
+
+  /* on-screen d-pad, shown only in dpad input mode */
+  #dpad{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+    display:none;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);
+    gap:4px;z-index:3}
+  #dpad.on{display:grid}
+  #dpad button{padding:0;font-size:16px;background:rgba(15,32,39,.85);color:var(--bone);
+    border:1px solid var(--line)}
+  #dpad button:hover{background:rgba(15,32,39,1)}
+  #dpad .up{grid-column:2;grid-row:1}
+  #dpad .left{grid-column:1;grid-row:2}
+  #dpad .right{grid-column:3;grid-row:2}
+  #dpad .down{grid-column:2;grid-row:3}
 </style>
 
 <div id="shell">
   <header>
     <div class="titles">
       <a class="back" href="../../index.html">&larr; Arcade</a>
-      <h1>Drift <span>Net</span></h1>
+      <h1>Feed<span>line</span></h1>
     </div>
     <div class="meta">
       <div>Score <b id="uiScore">0</b></div>
@@ -36,8 +58,14 @@
 
   <div id="stage">
     <canvas id="cv" width="800" height="600"></canvas>
+    <div id="dpad">
+      <button type="button" class="up" data-dx="0" data-dy="-1" aria-label="Up">&uarr;</button>
+      <button type="button" class="left" data-dx="-1" data-dy="0" aria-label="Left">&larr;</button>
+      <button type="button" class="right" data-dx="1" data-dy="0" aria-label="Right">&rarr;</button>
+      <button type="button" class="down" data-dx="0" data-dy="1" aria-label="Down">&darr;</button>
+    </div>
     <div id="banner">
-      <h2>Drift Net</h2>
+      <h2>Feedline</h2>
       <p id="hint">Swipe to steer.</p>
       <button id="go">Begin</button>
     </div>
@@ -55,10 +83,9 @@ import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { glowStroke, glowDot, inkDot, fadeFrame, scanlines, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
-import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
-import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
-import { makePause } from '../../shared/pause.js';
+import { makeAudio } from '../../shared/audio.js';
+import { makeMenu } from '../../shared/menu.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
@@ -120,12 +147,31 @@ addEventListener('keydown', e => {
   E.turn(world, d[0], d[1]);
 });
 
+/* ---------- settings: swipe sensitivity + input mode ----------
+   Both stored in localStorage, guarded the same way shared/scores.js is —
+   a setting that fails to persist is not worth crashing a game over. */
+const SENS_KEY = 'arcade:feedline:sensitivity';
+const MODE_KEY = 'arcade:feedline:inputmode';
+
+function readSensitivity() {
+  try {
+    const v = parseInt(localStorage.getItem(SENS_KEY), 10);
+    return Number.isFinite(v) ? Math.min(40, Math.max(4, v)) : 10;
+  } catch { return 10; }
+}
+function writeSensitivity(v) { try { localStorage.setItem(SENS_KEY, String(v)); } catch {} }
+function readInputMode() {
+  try { return localStorage.getItem(MODE_KEY) === 'dpad' ? 'dpad' : 'swipe'; } catch { return 'swipe'; }
+}
+function writeInputMode(m) { try { localStorage.setItem(MODE_KEY, m); } catch {} }
+
 /* Touch: a swipe picks the dominant axis. Wire is unplayable on a phone
    without this, and a grid game makes the gesture unambiguous. */
 let swipe = null;
-// Lowered from 24 after real-device testing — deliberate flicks were being
-// swallowed. Low enough to feel immediate, high enough that a tap is not a turn.
-const SWIPE_MIN = 10;
+// Lowered from a hardcoded 24 after real-device testing, then made a stored,
+// player-adjustable value — what felt right on one phone did not on another.
+let SWIPE_MIN = readSensitivity();
+let inputMode = readInputMode();
 
 // Listen on the stage, not just the canvas, so a swipe that starts in the
 // side gutters (landscape, where the board cannot fill the width) still steers.
@@ -148,6 +194,21 @@ surface.addEventListener('pointerup', e => {
 surface.addEventListener('pointercancel', () => { swipe = null; });
 for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
   cv.addEventListener(ev, e => e.preventDefault());
+}
+
+/* Virtual d-pad — an alternative to swipe, not a replacement: swipe and
+   keyboard both keep working regardless of which mode is picked, so this is
+   purely an extra input surface shown when the player prefers it. */
+const dpad = $('dpad');
+function syncInputMode() { dpad.classList.toggle('on', inputMode === 'dpad'); }
+syncInputMode();
+for (const btn of dpad.querySelectorAll('button')) {
+  const dx = Number(btn.dataset.dx), dy = Number(btn.dataset.dy);
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (!world.running && !world.over) start();
+    E.turn(world, dx, dy);
+  });
 }
 
 /* ---------- banner ---------- */
@@ -187,12 +248,38 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
-mountAudioToggle({ stage: $('stage'), audio });
-const pause = makePause({ stage: $('stage') });
+// settings panel content, handed to the shared menu's `extra` slot
+const settingsEl = document.createElement('div');
+settingsEl.className = 'menuSettings';
+settingsEl.innerHTML = `
+  <h3>Settings</h3>
+  <label>Swipe sensitivity
+    <input type="range" id="sensRange" min="4" max="40" step="1" value="${SWIPE_MIN}">
+  </label>
+  <div class="modeRow">
+    <label><input type="radio" name="inputMode" value="swipe"> Swipe</label>
+    <label><input type="radio" name="inputMode" value="dpad"> D-pad</label>
+  </div>
+`;
+settingsEl.querySelector('#sensRange').addEventListener('input', e => {
+  SWIPE_MIN = Number(e.target.value);
+  writeSensitivity(SWIPE_MIN);
+});
+for (const radio of settingsEl.querySelectorAll('[name=inputMode]')) {
+  radio.checked = radio.value === inputMode;
+  radio.addEventListener('change', e => {
+    if (!e.target.checked) return;
+    inputMode = e.target.value;
+    writeInputMode(inputMode);
+    syncInputMode();
+  });
+}
 
-makeHelp({
+const pause = makeMenu({
   stage: $('stage'),
-  title: 'Drift Net',
+  audio,
+  extra: settingsEl,
+  title: 'Feedline',
   lore: 'Every world it touched became a part of it, and it does not stop.',
   rows: [
     ['Steer', 'Swipe anywhere. A short flick is enough.'],
@@ -231,7 +318,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-const GAME_ID = 'drift-net';
+const GAME_ID = 'feedline';
 
 function syncBest() {
   const b = best(GAME_ID);

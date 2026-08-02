@@ -126,11 +126,10 @@
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
 import { glowStroke, glowDot, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
-import { makeHelp } from '../../shared/help.js';
 import { best, submit } from '../../shared/scores.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
-import { makeAudio, mountAudioToggle } from '../../shared/audio.js';
-import { makePause } from '../../shared/pause.js';
+import { makeAudio } from '../../shared/audio.js';
+import { makeMenu } from '../../shared/menu.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -288,11 +287,9 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
-mountAudioToggle({ stage: $('stage'), audio });
-const pause = makePause({ stage: $('stage') });
-
-makeHelp({
+const pause = makeMenu({
   stage: $('stage'),
+  audio,
   title: 'Flak Battery',
   lore: 'They came down in one unbroken column. This is the last emplacement still firing.',
   rows: [
@@ -302,9 +299,9 @@ makeHelp({
   ],
   notes: [
     'Cutting mid-chain shoves the snake backwards.',
-    'Plated segments glance shots off the front — hit the flank.',
+    'Plated segments glance shots off the front — hit the flank, or fire the ion cannon, which cuts through from any angle.',
     'The head is armoured by its body: the ring around it thins as you clear behind it. Drop the head and the whole serpent dies with it.',
-    'Warded hulls shrug off most guns almost entirely — an ion cannon is the only real answer.',
+    'Hardened hulls are just tough — a railgun is the efficient tool against them.',
     'Keyboard: arrows and Space.',
   ],
 });
@@ -454,6 +451,27 @@ function renderBattery() {
   mount.appendChild(mBtn);
   host.appendChild(mount);
 
+  // multi-barrel card — a top-tier upgrade, battery-wide: every mount fires
+  // this many barrels per volley instead of one, off its own heat/cooldown
+  const barCost = E.barrelCost(world);
+  const barrel = document.createElement('div');
+  barrel.className = 'branch';
+  const barDots = Array.from({ length: E.MAX_BARRELS }, (_, i) =>
+    `<i class="${i < world.barrels ? 'on' : ''}"></i>`).join('');
+  barrel.innerHTML =
+    `<h3>Barrels</h3>` +
+    `<div class="pips">${barDots}</div>` +
+    `<p>Every mount fires this many rounds per volley, sharing its heat.</p>`;
+  const barBtn = document.createElement('button');
+  barBtn.className = 'buy';
+  barBtn.textContent = barCost === null ? 'Maxed' : `Add Barrel · ${barCost}`;
+  barBtn.disabled = barCost === null || world.scrap < barCost;
+  barBtn.addEventListener('click', () => {
+    if (E.buyBarrel(world)) { renderShop(); sync(); }
+  });
+  barrel.appendChild(barBtn);
+  host.appendChild(barrel);
+
   // gun-type unlock cards
   for (const type of E.GUN_KEYS) {
     if (type === 'standard') continue;
@@ -557,7 +575,10 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
      read as a single armoured body — but the fiction is a column of individual
      craft, and a chain of cubes says that better as well as matching the other
      games. Kept slightly long so the direction of travel still reads. */
-  const long = seg.r * 2.3, wide = seg.r * 2.0;
+  // Scaled up from 2.3/2.0 — feedback wanted the column, the road, and the
+  // battery all bigger. Draw-size only: seg.r itself (the collision radius)
+  // is untouched, so this doesn't change hitboxes or difficulty.
+  const long = seg.r * 2.8, wide = seg.r * 2.4;
   const corner = 0;
 
   ctx.save();
@@ -572,6 +593,18 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
      than fading the body: a hurt craft should look like its lights are going
      out, not like it is turning transparent. */
   const lit = 1 - dmgT * 0.55;
+
+  // A second, darker face offset behind the front one — the same
+  // dark-body/lit-rim/offset-back depth cue Choke Point's towers use,
+  // worked in by hand rather than through the shared extrude() helper: that
+  // helper's rim doesn't take the damage-dimmed alpha this plate needs.
+  const depth = Math.max(2, wide * 0.16);
+  ctx.save();
+  ctx.translate(depth * 0.55, depth);
+  roundRectPath(long, wide, corner);
+  ctx.fillStyle = 'rgba(5,11,14,.95)';
+  ctx.fill();
+  ctx.restore();
 
   roundRectPath(long, wide, corner);
   ctx.fillStyle = 'rgba(9,19,24,.96)';
@@ -717,9 +750,9 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
     return;
   }
 
-  if (K.ionResist) {
-    // a lattice ward covering the whole plate, not one face — unlike
-    // `shielded`'s directional plate, this reads as "warded all around"
+  if (K.railBonus) {
+    // a reinforcing lattice over the whole plate, not one face — unlike
+    // `shielded`'s directional plate, this reads as "armoured all around"
     // rather than "block this side"
     ctx.strokeStyle = 'rgba(150,235,255,.55)';
     ctx.lineWidth = 1;
@@ -789,8 +822,9 @@ function draw() {
     ctx.translate((Math.random() - .5) * m, (Math.random() - .5) * m);
   }
 
+  // road, widened from 26 alongside the bigger column and battery
   ctx.strokeStyle = 'rgba(63,174,143,.09)';
-  ctx.lineWidth = 26; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.lineWidth = 34; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.beginPath();
   path.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
   ctx.stroke();
@@ -806,7 +840,7 @@ function draw() {
   for (const ch of world.chains) {
     if (ch.segs.length < 2) continue;
     ctx.strokeStyle = 'rgba(8,15,18,.85)';
-    ctx.lineWidth = 22; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.lineWidth = 28; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath();
     let started = false;
     for (let i = 0; i < ch.segs.length; i++) {
@@ -883,17 +917,16 @@ function draw() {
     ctx.globalAlpha = 1;
   }
 
-  const T = E.OD_TIERS[world.cannon.od];
   // your ordnance is spherical, like everything on the defenders' side, and
-  // it is the brightest thing on the board because it is the thing you aim
+  // it is the brightest thing on the board because it is the thing you aim.
+  // Colour is baked onto the shot at fire time (engine.js's fireGun) rather
+  // than read live off the battery here — a shot fired while cool must stay
+  // the colour it was fired at, not flip to red mid-flight the instant the
+  // streak climbs into Critical after it already launched.
   for (const p of world.shots) {
-    // every gun's shot otherwise takes the shared overdrive tint; the ion
-    // cannon is the one exception, so its bolts read distinctly even before
-    // they land on something that visibly shrugs off everything else
-    const col = p.gun === 'ion' ? E.GUN_TYPES.ion.col : T.col;
-    ctx.fillStyle = col;
+    ctx.fillStyle = p.col;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
-    glowDot(ctx, p.x, p.y, p.r, col);
+    glowDot(ctx, p.x, p.y, p.r, p.col);
     glowDot(ctx, p.x, p.y, p.r * .5, '#ffffff');
   }
   for (const b of world.bits) {
@@ -909,25 +942,33 @@ function draw() {
     const gang = Math.atan2(tp.y - b.y, tp.x - g.x);
     const G = E.GUN_TYPES[g.type];
     ctx.save(); ctx.translate(g.x, b.y); ctx.rotate(gang);
-    // barrel, tinted by gun type; greyed while locked, reddening with heat
+    // barrel, tinted by gun type; greyed while locked, reddening with heat.
+    // Scaled up from 10px tall / full b.len — feedback wanted the battery
+    // bigger alongside the column and the road.
     ctx.fillStyle = g.locked > 0 ? '#4a5765'
       : g.heat > 0.6 ? '#e0774d' : G.col;
-    ctx.fillRect(0, -5, b.len, 10);
-    ctx.fillStyle = '#0b1418'; ctx.fillRect(b.len - 5, -3, 3, 6);
+    ctx.fillRect(0, -6.5, b.len * 1.12, 13);
+    ctx.fillStyle = '#0b1418'; ctx.fillRect(b.len * 1.12 - 6, -4, 4, 8);
     // railgun reads longer, mortar stubbier
-    if (g.type === 'rail') { ctx.fillStyle = G.col; ctx.fillRect(b.len, -2, 8, 4); }
+    if (g.type === 'rail') { ctx.fillStyle = G.col; ctx.fillRect(b.len * 1.12, -2.5, 10, 5); }
     ctx.restore();
 
-    // mount base
-    ctx.beginPath(); ctx.arc(g.x, b.y, 14, Math.PI, 0);
+    // mount base — a darker offset face behind it first, the same
+    // dark-body/lit-rim/offset-back depth cue the segments and Choke
+    // Point's towers use
+    const baseR = 18;
+    ctx.beginPath(); ctx.arc(g.x + 3, b.y + 4, baseR, Math.PI, 0);
+    ctx.fillStyle = '#0f1b20'; ctx.fill();
+
+    ctx.beginPath(); ctx.arc(g.x, b.y, baseR, Math.PI, 0);
     ctx.fillStyle = '#23383f'; ctx.fill();
-    ctx.beginPath(); ctx.arc(g.x, b.y, 14, Math.PI, 0);
-    ctx.strokeStyle = g.locked > 0 ? '#e0503c' : G.col; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(g.x, b.y, baseR, Math.PI, 0);
+    ctx.strokeStyle = g.locked > 0 ? '#e0503c' : G.col; ctx.lineWidth = 2.4; ctx.stroke();
 
     // per-gun heat pip under the mount
     if (g.heat > 0.02) {
       ctx.fillStyle = g.heat > 0.85 ? '#e0503c' : '#3fae8f';
-      ctx.fillRect(g.x - 12, b.y + 3, 24 * g.heat, 2);
+      ctx.fillRect(g.x - 15, b.y + 4, 30 * g.heat, 2.5);
     }
   }
 
@@ -959,7 +1000,7 @@ function draw() {
   const hit = predictHit();
   if (hit) {
     // a blocked marker warns that the shot will glance off a plate
-    ctx.strokeStyle = hit.blocked ? '#9fc4e8' : T.col;
+    ctx.strokeStyle = hit.blocked ? '#9fc4e8' : E.OD_TIERS[world.cannon.od].col;
     ctx.lineWidth = 1.5; ctx.globalAlpha = hit.blocked ? .6 : .85;
     if (hit.blocked) ctx.setLineDash([3, 4]);
     ctx.beginPath(); ctx.arc(hit.x, hit.y, 11, 0, TAU); ctx.stroke();
@@ -986,7 +1027,7 @@ function draw() {
     }
   }
 
-  ctx.font = '700 11px "Chivo Mono",monospace'; ctx.textAlign = 'center';
+  ctx.font = '700 13px "Chivo Mono",monospace'; ctx.textAlign = 'center';
   for (const f of world.floaters) {
     ctx.globalAlpha = Math.max(0, Math.min(1, f.life));
     ctx.fillStyle = f.col; ctx.fillText(f.txt, f.x, f.y);

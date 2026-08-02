@@ -2,21 +2,24 @@
 
 Append-only log of choices worth remembering, and *why*. Newest at the bottom. Keep entries short — a sentence or two of reasoning is enough for future us to avoid re-litigating this cold. See [STATUS.md](../STATUS.md) for current state and [CLAUDE.md](../CLAUDE.md) for architecture.
 
-> **Note on names.** The games have been renamed twice. Entries always use the
-> name that was current when they were written, and are never rewritten — this
-> is an append-only log of what was decided *at the time*, and back-dating names
-> would make past entries claim things that were not true when written.
+> **Note on names.** The games have been renamed three times. Entries always
+> use the name that was current when they were written, and are never
+> rewritten — this is an append-only log of what was decided *at the time*,
+> and back-dating names would make past entries claim things that were not
+> true when written.
 >
 > **2026-07-22:** Breakout → Angle Iron, Snake → Live Wire.
 >
 > **2026-07-30:** all four renamed to fit the shared setting.
 >
-> | originally | then | now |
-> |---|---|---|
-> | Snake | Live Wire | **Drift Net** |
-> | — | Serpent Battery | **Flak Battery** |
-> | — | Circuit Breaker | **Choke Point** |
-> | Breakout | Angle Iron | **Hull Breach** |
+> **2026-08-02:** Drift Net → Feedline.
+>
+> | originally | then | then | now |
+> |---|---|---|---|
+> | Snake | Live Wire | Drift Net | **Feedline** |
+> | — | Serpent Battery | — | **Flak Battery** |
+> | — | Circuit Breaker | — | **Choke Point** |
+> | Breakout | Angle Iron | — | **Hull Breach** |
 
 ## 2026-07-22 — Phone app path: PWA first, native later
 
@@ -577,3 +580,47 @@ Fix was reordering the cycle (checkerboard → pyramid → hollow frame → soli
 ## 2026-07-31 — v22 device checklist: multiball capped at 4, not 6
 
 `MAX_BALLS` was 6, and the device checklist explicitly wanted to see six trailing interceptors on screen (a visual/perf check, not a fun check) — it passed. The separate fun-vs-chaos question got the opposite answer: six independently-bouncing balls to track was reported as chaos. Lowered the cap to 4 rather than compensating with a wider paddle tied to ball count, since paddle width already has an exact-value test (`w.paddle.w === L.PADDLE_W * WIDE_MULT` after a `multi` + `wide` combo) that a ball-count-dependent formula would have broken, and a simpler dial was available anyway.
+
+## 2026-08-02 — One settings menu, not three corner buttons
+
+Feedback: the mute, pause, and help buttons "sit on top of the game board and make some areas difficult to tap on." All three were independent modules (`shared/pause.js`, `shared/help.js`, `shared/audio.js`'s `mountAudioToggle`), each mounting its own always-visible circle in a corner — three overlapping hit targets on top of tappable board area, not one.
+
+Replaced with a single `shared/menu.js` (`makeMenu`) behind one corner button. Opening it pauses the run — deliberately kept the exact contract `pause.js` used to expose (`{ paused, pause(), resume(), toggle() }`), since every shell's `frame()` loop already gates on `pause.paused` and rewiring four call sites for a renamed return shape would have been pure churn. The panel folds in `help.js`'s old rows/notes/lore content and `audio.js`'s mute toggle (which keeps its own `makeAudio()` sound engine — only the button-mounting function was superseded). An optional `onLevels` callback adds a "Levels" entry; only Hull Breach passes it.
+
+`pause.js` and `help.js` are deleted outright rather than left as dead code — nothing imports them any more, and keeping unreferenced modules around invites a future session wondering whether they're still load-bearing.
+
+## 2026-08-02 — Header safe-area was never actually complete
+
+A prior fix (the `visualViewport` scroll listener in `shared/fit.js`) addressed the header *drifting* over a long session, but feedback said it was "still partially off screen... doesn't take into account the rounded corners or the camera/speaker cutout." Checking `shared/theme.css` found the real gap: `body`'s padding used `env(safe-area-inset-*)` for bottom/left/right at every breakpoint, but never `top`. The header was never inset-aware at all — it just happened to clear the notch on phones where the header was short enough (Feedline's 3-item HUD, versus 5-6 for the other three), which read as "Feedline is fine, the others aren't" when the actual cause was header height, not a per-game difference in the fix.
+
+## 2026-08-02 — Choke Point: startWave now overlaps waves instead of refusing
+
+"Start the next wave early" was previously read as "let the player begin the between-waves countdown sooner" — but the actual ask was to let wave N+1's enemies arrive *while* wave N is still on the board, a genuine mid-wave overlap. This meant changing `startWave`'s contract, not just its UI exposure: it used to hard-refuse (`if (w.waveActive) return false`), with a test (`'cannot start a wave mid-wave'`) pinning exactly that. Rewritten to append the new wave's spawn groups onto the existing queue (timed from the current clock) when already active, instead of resetting it — both waves' enemies now coexist. The old test was rewritten to assert the new overlap rather than kept as a regression guard for behavior that was, on reflection, the thing being complained about.
+
+Rush Wave got a matching correction: it used to dump every remaining spawn onto the same tick (`s.at = min(s.at, clock)`), which is instant, not "fast-forward." Now each call compresses the remaining gap by a fixed fraction (`RUSH_COMPRESSION`), so repeated taps ramp the pace up rather than releasing the whole rest of the wave in one frame.
+
+## 2026-08-02 — Ion cannon moved from a resistance stat to a deflection bypass
+
+The original ion-cannon design (v24) gave `hardened` an `ionResist` field — a flat damage multiplier for every gun but the ion cannon. Feedback pointed out this picked the wrong kind: `shielded`'s frontal-arc deflection (bypassable today only by flanking) was the mechanic that actually wanted a gun-specific counter, and `hardened` — a kind with no directional weakness at all — didn't need one on top of just being tough.
+
+The fix swapped which kind gets the special case rather than layering a second one on top: `isDeflected`'s call site in `stepShots` now skips the check outright when `shot.gun === 'ion'`, so the ion cannon penetrates `shielded` from any angle. `hardened` lost `ionResist` and is now hp-only, like `armored`; the railgun gets a `railBonus` multiplier against it instead — the same shape the resistance check used, just attached to a different gun/kind pair. Keeping the two mechanics (angle-based deflection vs. gun-specific bonus/resistance) structurally separate, rather than merging them, is what let this be a clean swap instead of a rewrite: a test asserts `isDeflected` itself is completely unaware `hardened` or the ion cannon exist.
+
+## 2026-08-02 — Multi-barrel: battery-wide, not per-gun, and no new heat state
+
+Feedback wanted a top-tier upgrade letting emplacements fire multiple barrels. Two shapes were possible: a per-mount stat (each gun independently upgradeable to more barrels) or one battery-wide dial affecting every mount at once. Went with battery-wide, matching how mount *count* already works (`MAX_MOUNTS`/`MOUNT_COST` — one number, not per-slot), rather than introducing the repo's first per-gun-instance upgrade path.
+
+Barrels share the mount's existing single heat/cooldown pool rather than getting their own: firing 3 barrels costs 3x the heat per volley (`gun.heat += HEAT_PER_SHOT * S.heatPerShot * w.barrels`), which is the entire balancing mechanism and needed no new per-gun state. The angular fan for multiple barrels (`BARREL_OFFSETS`) reuses the same pattern the `spread` power-up already established for firing several shots off one aim angle.
+
+## 2026-08-02 — A shot's colour is baked in at fire time, not read live
+
+Reported as a bug: "projectiles fired from a cool barrel will turn red when the barrel later heats up." The shell's draw loop computed every shot's colour fresh each frame from `world.cannon.od` (the battery's *current* overdrive tier) — so a shot's displayed colour reflected the state of the battery *now*, regardless of what tier was active when it was actually fired. `fireGun` already baked `dmg`/`pierce` onto the shot object at fire time (so a shot's damage doesn't change after launch); colour just hadn't gotten the same treatment. Fixed by adding `shot.col` at creation (`gun.type === 'ion' ? G.col : T.col`, preserving the ion cannon's own fixed colour) and having the shell read `p.col` instead of recomputing. Worth remembering as a category: anything about to be baked onto an object at creation time should get *all* of its presentation state baked in together, not just the fields a test happened to check.
+
+## 2026-08-02 — Drift Net → Feedline
+
+Renamed for the third time (see the name-history note at the top of this file). Followed the same playbook as the 2026-07-30 all-four rename: full rename (directory, file names, internal game id, manifest entry, cabinet card, docs), accepting the loss of personal-bests keyed under the old id — there is one player, and it was already accepted once.
+
+Caught in the process: the cabinet card's lore paragraph on `index.html` still had the "you are the thing that arrived" framing that the in-game help panel's lore line had already dropped a session earlier — the two copies had drifted because the fix only touched the file it was reported against. Worth a general note: when a copy fix is requested against one surface, grep for the same string elsewhere before assuming it's the only copy.
+
+## 2026-08-02 — Flak Battery's standalone build is being retired (not yet done)
+
+Noted here rather than acted on: the owner confirmed `flak-battery-standalone.html`/`build.mjs` — an early single-file distribution experiment predating the other three games — no longer needs to be maintained. Next session: delete the standalone file and `build.mjs`, remove its precache-exclusion comment from `sw.js`, and repoint `games/flak-battery/render-test.mjs`/`resume-test.mjs` at `flak-battery.html` directly (in-memory inlining via `tools/inline.mjs`, matching how the other three games' render tests already work without a checked-in standalone artifact).

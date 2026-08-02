@@ -10,7 +10,7 @@ are no accounts, ads, tracking, or network calls of any kind.
 |---|---|
 | **Flak Battery** | A chain of segments crawls a serpentine path toward your guns. Cut it mid-chain to force recoil, bank hits into Overdrive, spend scrap on the battery between waves. |
 | **Hull Breach** | A brick-breaker where the paddle is your aim: where the ball lands across it decides the angle it leaves. Back rows take three hits. |
-| **Drift Net** | A lengthening wire on a grid. Longer and faster with every meal; you may cross where your tail is leaving, and the gold bonus won't wait. |
+| **Feedline** | A lengthening wire on a grid. Longer and faster with every meal; you may cross where your tail is leaving, and the gold bonus won't wait. |
 
 Installable to a phone home screen (it's a PWA) and playable with touch,
 mouse, or keyboard, in portrait or landscape.

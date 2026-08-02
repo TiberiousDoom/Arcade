@@ -72,8 +72,12 @@ body{
   font-family:'Chivo Mono',ui-monospace,monospace;
   display:flex;align-items:center;justify-content:center;
   padding:16px;overflow:hidden;
-  /* clear the home indicator and any notch — the games run full-bleed and
-     would otherwise put the losing edge of the board under the gesture bar */
+  /* clear the home indicator, any notch/dynamic-island, and rounded corners —
+     the games run full-bleed and would otherwise put the losing edge of the
+     board under the gesture bar, or the header under the top cutout. Top was
+     missing here for a while: bottom/left/right were covered but the header
+     still crept under a notch on phones with one. */
+  padding-top:calc(16px + env(safe-area-inset-top,0px));
   padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
   padding-left:calc(16px + env(safe-area-inset-left,0px));
   padding-right:calc(16px + env(safe-area-inset-right,0px));
@@ -138,98 +142,64 @@ button{
 button:hover{background:var(--accent-hot)}
 button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 
-/* ---- the "?" help button and its panel ---- */
-#helpBtn{
+/* ---- the single menu button, replacing the old help/mute/pause trio ----
+   Three always-visible corner buttons used to sit on top of the board and
+   overlap tappable game area. One button now opens a panel holding all of
+   it — opening the panel pauses the run, same as the old pause button did. */
+#menuBtn{
   position:absolute;top:8px;right:8px;z-index:5;
-  /* 40px is the smallest comfortable touch target; the visible dot is smaller */
+  /* 40px is the smallest comfortable touch target; the visible glyph is smaller */
   width:40px;height:40px;padding:0;
   background:transparent;color:var(--dim);
   border:1px solid var(--line);border-radius:50%;
-  font:700 14px/1 'Chivo Mono',monospace;letter-spacing:0;
+  font:700 16px/1 'Chivo Mono',monospace;letter-spacing:0;
   display:flex;align-items:center;justify-content:center;
 }
-#helpBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
+#menuBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
+#menuBtn.on{color:var(--accent);border-color:var(--accent)}
 
-/* ---- the mute toggle, matched to the "?" button but top-left ---- */
-#muteBtn{
-  position:absolute;top:8px;left:8px;z-index:5;
-  width:40px;height:40px;padding:0;
-  background:transparent;color:var(--dim);
-  border:1px solid var(--line);border-radius:50%;
-  font:700 15px/1 'Chivo Mono',monospace;letter-spacing:0;
-  display:flex;align-items:center;justify-content:center;
-}
-#muteBtn:hover{color:var(--bone);border-color:var(--dim)}
-/* muted: dim the note and strike it through, so state is legible at a glance */
-#muteBtn.off{color:#3a4b52}
-#muteBtn.off::after{
-  content:'';position:absolute;left:9px;right:9px;top:50%;height:1.5px;
-  background:currentColor;transform:rotate(-45deg);
-}
-
-/* ---- the pause toggle, matched to the "?" button but sitting beside it ---- */
-#pauseBtn{
-  position:absolute;top:8px;right:56px;z-index:5;
-  width:40px;height:40px;padding:0;
-  background:transparent;color:var(--dim);
-  border:1px solid var(--line);border-radius:50%;
-  font:700 13px/1 'Chivo Mono',monospace;letter-spacing:0;
-  display:flex;align-items:center;justify-content:center;
-}
-#pauseBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
-#pauseBtn.on{color:var(--accent);border-color:var(--accent)}
-
-#pauseOverlay{
-  position:absolute;inset:0;z-index:4;display:none;
-  align-items:center;justify-content:center;
-  background:rgba(11,20,24,.85);cursor:pointer;
-}
-#pauseOverlay.on{display:flex}
-#pauseOverlay span{
-  font-family:'Archivo Black',sans-serif;
-  font-size:clamp(18px,5vw,30px);text-transform:uppercase;letter-spacing:.04em;
-  color:var(--bone);
-}
-
-#helpPanel{
+#menuPanel{
   position:absolute;inset:0;z-index:6;display:none;
   flex-direction:column;gap:12px;
   background:rgba(11,20,24,.97);
   padding:22px 20px;overflow-y:auto;
   text-align:left;
 }
-#helpPanel.on{display:flex}
-#helpPanel h2{
+#menuPanel.on{display:flex}
+#menuPanel h2{
   font-family:'Archivo Black',sans-serif;
   font-size:clamp(14px,4vw,18px);text-transform:uppercase;letter-spacing:-.01em;
 }
-#helpPanel dl{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;align-items:baseline}
-#helpPanel dt{
+.menuActions{display:flex;flex-wrap:wrap;gap:8px}
+.menuActions button{padding:10px 18px}
+#menuMute.off{color:#3a4b52;background:#1b3038}
+#menuPanel dl{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;align-items:baseline}
+#menuPanel dt{
   font-size:10px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--accent);font-weight:700;white-space:nowrap;
 }
-#helpPanel dd{font-size:12px;line-height:1.55;color:var(--bone)}
-#helpPanel ul{list-style:none;display:flex;flex-direction:column;gap:6px;margin-top:2px}
-#helpPanel li{
+#menuPanel dd{font-size:12px;line-height:1.55;color:var(--bone)}
+#menuPanel ul{list-style:none;display:flex;flex-direction:column;gap:6px;margin-top:2px}
+#menuPanel li{
   font-size:11px;line-height:1.5;color:var(--dim);
   padding-left:12px;position:relative;
 }
-#helpPanel li::before{content:'—';position:absolute;left:0;color:var(--line)}
-#helpClose{align-self:flex-start;margin-top:auto;padding:10px 20px}
+#menuPanel li::before{content:'—';position:absolute;left:0;color:var(--line)}
 /* one line of setting under the panel title — present, but clearly not
    instructions, so it can be skipped without missing anything playable */
-#helpPanel .lore{
+#menuPanel .lore{
   font-size:11px;line-height:1.6;color:var(--dim);font-style:italic;
   border-left:2px solid var(--line);padding-left:10px;margin:-2px 0 4px;
 }
 /* the build string, deliberately the quietest thing in the panel */
-#helpPanel .build{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--line);margin-top:10px}
+#menuPanel .build{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--line);margin-top:auto}
 
 footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
 
 @media (max-width:560px){
   body{
     padding:8px;
+    padding-top:calc(8px + env(safe-area-inset-top,0px));
     padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
     padding-left:calc(8px + env(safe-area-inset-left,0px));
     padding-right:calc(8px + env(safe-area-inset-right,0px));
@@ -243,7 +213,7 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
    there is dead space either side of it; the shell spreads to full width and
    that space becomes somewhere to rest a thumb without covering the board. */
 @media (max-height:520px) and (orientation:landscape){
-  body{padding:4px;padding-left:calc(4px + env(safe-area-inset-left,0px));padding-right:calc(4px + env(safe-area-inset-right,0px))}
+  body{padding:4px;padding-top:calc(4px + env(safe-area-inset-top,0px));padding-left:calc(4px + env(safe-area-inset-left,0px));padding-right:calc(4px + env(safe-area-inset-right,0px))}
   #shell{max-width:none;gap:4px}
   header{padding-bottom:4px}
   h1{font-size:13px}
@@ -455,28 +425,34 @@ function atS(path, pathLen, s) {
 // Scrap trimmed ~25-30% across the board: at the old rates a run could afford
 // all 5 gun mounts by wave 7, well before the upgrade tree gave it anything
 // to weigh that against.
+// Base hp raised across the board (feedback: a run reached wave 10+ with
+// zero upgrades bought — the unaided difficulty was too soft independent of
+// the shop). Carrier is left alone; it's a bonus pickup, not a threat.
+// Scrap cut again on top of that (a run could max the whole shop by wave 20
+// even after the previous nerf) — longer waves already mean more kills, so
+// per-kill income needed to come down to compensate.
 const KIND = {
-  std:      { hp: 3, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 2 },
-  armored:  { hp: 10, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 6 },
-  volatile: { hp: 2, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 4 },
+  std:      { hp: 4, r: 13, col: '#3fae8f', ring: '#1d6f5b', score: 60,  scrap: 1 },
+  armored:  { hp: 13, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 4 },
+  volatile: { hp: 3, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 3 },
   // Plated on the leading face: shots from the front glance off, so you must
   // either come at it from the side via a wall bounce or clear a neighbour
   // first to expose the flank.
-  shielded: { hp: 5, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 7, shield: true },
+  shielded: { hp: 6, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 5, shield: true },
   // Heals while it lives. Ignore it and it undoes your chip damage; it never
   // heals past its cap and never comes back once destroyed.
-  regen:    { hp: 6, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 6, regen: 1.1 },
+  regen:    { hp: 8, r: 13, col: '#8f5fb8', ring: '#573a70', score: 180, scrap: 4, regen: 1.1 },
   // Rare. Killing it splits the chain into two independent snakes instead of
   // paying recoil — a trap that doubles the threat, or a scoring gamble.
-  splitter: { hp: 6, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 9, splits: true },
+  splitter: { hp: 7, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 7, splits: true },
   // Drops a power-up on death. Worth breaking your rhythm for.
-  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 5, carries: true },
-  // Warded all the way around rather than on one face — flanking (what beats
-  // `shielded`) does nothing here. `ionResist` is a flat multiplier on
-  // incoming damage from anything but the ion cannon: heavily resistant,
-  // not immune, so it is still (very slowly) chippable without one.
-  hardened: { hp: 8, r: 14, col: '#5fc9d6', ring: '#2e6b73', score: 240, scrap: 11, ionResist: 0.12 },
-  head:     { hp: 14, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 14 },
+  carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 4, carries: true },
+  // Just plain tough — no special resistance of its own. The railgun is
+  // simply the efficient tool against it (`railBonus`, checked in
+  // `damageSeg`), the same way armored favours a heavy hitter without being
+  // literally immune to anything else.
+  hardened: { hp: 10, r: 14, col: '#5fc9d6', ring: '#2e6b73', score: 240, scrap: 8, railBonus: 1.8 },
+  head:     { hp: 24, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 11 },
 };
 
 /** Shots landing within this angle of a shielded segment's leading face are
@@ -531,7 +507,10 @@ function kindForIndex(i, count = Infinity, wave = Infinity) {
  *  faster* — never tougher to chew through. Same shape as Choke Point's
  *  `hpScale`, and capped so a very long run doesn't turn every segment into a
  *  sponge that outlasts the wave timer. */
-const HP_PER_WAVE = 0.14;
+// Steepened from 0.14: base hp values above cover part of "hits needed per
+// square went up," this covers the rest — a run with zero upgrades needs to
+// feel the wave count climbing, not just longer chains at wave-1 toughness.
+const HP_PER_WAVE = 0.20;
 const HP_SCALE_MAX = 4.0;
 
 function hpScale(wave) {
@@ -569,9 +548,10 @@ function reserveSegIds(id) {
  *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
  *  56-segment chain spans 1650px of a ~5750px path, so it still fits the board
  *  comfortably without the tail overlapping the head. */
-// Ramp steeper than before (18+6/wave, was 14+4/wave) so chains get longer
-// sooner — the cap is unchanged, just reached by wave 7 instead of wave 11.
-const waveCount = (wave) => Math.min(18 + wave * 6, 56);
+// Ramp steeper again (20+8/wave, was 18+6/wave) and the cap raised alongside
+// it (72, was 56) — feedback found the chain wasn't growing fast enough to
+// feel like escalating danger even with the previous steepening.
+const waveCount = (wave) => Math.min(20 + wave * 8, 72);
 /** Path length of the standard layout, used as the default reference. */
 const REF_PATH_LEN = buildPath(LAYOUT).pathLen;
 
@@ -614,10 +594,12 @@ function isDeflected(seg, heading, vx, vy) {
 /* ---------- recoil ---------- */
 
 /** Time bought by cutting at index `headSide` in a chain that has
- *  `remaining` segments left afterward. Cuts nearer the head pay more. */
+ *  `remaining` segments left afterward. Cuts nearer the head pay more.
+ *  Softened from (0.5 + ratio*2.2): the blowback on a near-head cut was
+ *  reading as too punishing a penalty rather than a manageable trade-off. */
 function recoilGain(spacing, headSide, remaining) {
   if (headSide <= 0 || remaining <= 0) return 0;
-  return spacing * (0.5 + (headSide / remaining) * 2.2);
+  return spacing * (0.35 + (headSide / remaining) * 1.3);
 }
 
 /* ---------- overdrive ---------- */
@@ -731,7 +713,7 @@ const UPGRADES = {
   barrel: {
     name: 'Barrel',
     blurb: 'Damage per shot, then projectile size',
-    costs: [30, 65, 115, 185, 280],
+    costs: [42, 91, 161, 259, 392],
     tiers: [
       { dmg: 1.0, shotR: 3.2 },
       { dmg: 1.3, shotR: 3.2 },
@@ -744,7 +726,7 @@ const UPGRADES = {
   chamber: {
     name: 'Chamber',
     blurb: 'Heat capacity and cooling — holds Overdrive longer',
-    costs: [28, 60, 108, 172, 262],
+    costs: [39, 84, 151, 241, 367],
     tiers: [
       { heatPerShot: 1.00, cool: 1.00, lock: 1.00 },
       { heatPerShot: 0.90, cool: 1.15, lock: 0.92 },
@@ -757,7 +739,7 @@ const UPGRADES = {
   optics: {
     name: 'Optics',
     blurb: 'Projectile speed, then a longer intercept read',
-    costs: [32, 68, 120, 192, 290],
+    costs: [45, 95, 168, 269, 406],
     tiers: [
       { shotSpeed: 520, predict: 1.6 },
       { shotSpeed: 585, predict: 1.8 },
@@ -770,7 +752,7 @@ const UPGRADES = {
   munitions: {
     name: 'Munitions',
     blurb: 'Extra pierce and wall bounces',
-    costs: [35, 74, 130, 208, 312],
+    costs: [49, 104, 182, 291, 437],
     tiers: [
       { pierce: 0, bounces: 2 },
       { pierce: 0, bounces: 3 },
@@ -841,6 +823,7 @@ function createWorld(opts = {}) {
     wave: 1, score: 0, scrap: 0, lives: 3,
     upgrades: newUpgrades(),
     gunUnlocks: { auto: false, rail: false, mortar: false, ion: false },
+    barrels: 1,
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
     shake: 0, hitStop: 0,
     // extra hit radius, set by the shell from the input device (see
@@ -919,6 +902,7 @@ function snapshot(w) {
     shopOpen: w.shopOpen,
     upgrades: { ...w.upgrades },
     gunUnlocks: { ...w.gunUnlocks },
+    barrels: w.barrels,
     effects: { ...w.effects },
     shieldCharges: w.shieldCharges,
     dropSeed: w.dropSeed,
@@ -955,6 +939,7 @@ function hydrate(w, snap) {
   w.shopOpen = !!snap.shopOpen;
   w.upgrades = { ...newUpgrades(), ...(snap.upgrades || {}) };
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false, ...(snap.gunUnlocks || {}) };
+  w.barrels = clamp(Math.floor(snap.barrels ?? 1), 1, MAX_BARRELS);
   w.effects = { ...(snap.effects || {}) };
   w.shieldCharges = snap.shieldCharges ?? 0;
   w.dropSeed = snap.dropSeed ?? 987654321;
@@ -999,6 +984,7 @@ function resetRun(w) {
   w.shake = 0; w.hitStop = 0;
   w.shopOpen = false;
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false };
+  w.barrels = 1;
   w.battery = makeBattery(w.L, 1);
   w.cannon = w.battery;
   w.cannon.x = w.L.W / 2;
@@ -1019,6 +1005,24 @@ function buyMount(w) {
 function mountCost(w) {
   const n = w.battery.guns.length;
   return n >= MAX_MOUNTS ? null : MOUNT_COST[n];
+}
+
+/** A top-tier upgrade: every mount fires this many barrels per volley
+ *  instead of one, all sharing that mount's own heat/cooldown. Battery-wide
+ *  (like mount count), not per-gun — there is one dial, not five. */
+const MAX_BARRELS = 3;
+const BARREL_COST = [260, 460];   // cost of the 2nd and 3rd barrel
+
+function barrelCost(w) {
+  return w.barrels >= MAX_BARRELS ? null : BARREL_COST[w.barrels - 1];
+}
+
+function buyBarrel(w) {
+  const cost = barrelCost(w);
+  if (cost === null || w.scrap < cost) return false;
+  w.scrap -= cost;
+  w.barrels++;
+  return true;
 }
 
 /** Unlock a gun type for assignment. One-time purchase. */
@@ -1065,46 +1069,55 @@ function fireGun(w, gun) {
   const tp = aimPoint(w);
   const ang = Math.atan2(tp.y - muzzleY, tp.x - muzzleX);
 
+  // A multi-barrel mount fires all its barrels in one volley, at a small
+  // angular fan, sharing this one heat/cooldown pool — the natural balancing
+  // lever for barrel count is that 3 barrels costs 3x the heat of 1, with no
+  // new per-barrel state needed.
   gun.cool = T.rate * G.rate * (hasEffect(w, 'rapid') ? 0.55 : 1);
-  gun.heat = clamp(gun.heat + HEAT_PER_SHOT * S.heatPerShot, 0, 1);
+  gun.heat = clamp(gun.heat + HEAT_PER_SHOT * S.heatPerShot * w.barrels, 0, 1);
   if (gun.heat >= 1) {
     gun.locked = LOCK_TIME * S.lock; gun.heat = 1;
     // overheating one gun drops the shared streak, but not all the way — the
-    // battery keeps firing on its other barrels
+    // battery keeps firing on its other mounts
     b.streak = Math.max(0, b.streak - 4);
     b.od = tierForStreak(b.streak);
     w.fx.push('OVERHEAT', muzzleX, muzzleY - 60, '#e0503c');
   }
 
   const spd = S.shotSpeed * G.spd;
-  const shot = {
-    x: muzzleX + Math.cos(ang) * b.len,
-    y: muzzleY + Math.sin(ang) * b.len,
-    vx: Math.cos(ang) * spd,
-    vy: Math.sin(ang) * spd,
+  const makeShot = (a) => ({
+    x: muzzleX + Math.cos(a) * b.len,
+    y: muzzleY + Math.sin(a) * b.len,
+    vx: Math.cos(a) * spd,
+    vy: Math.sin(a) * spd,
     dmg: T.dmg * S.dmg * G.dmg,
     pierce: T.pierce + S.pierce + G.pierce + (hasEffect(w, 'pierce') ? 2 : 0),
     bounces: S.bounces + (hasEffect(w, 'ricochet') ? 4 : 0),
     r: S.shotR,
     arc: G.arc ? true : false,
-    gun: gun.type,   // which mount fired this — damageSeg checks it against 'ion'
-  };
+    gun: gun.type,      // which mount fired this — damageSeg/isDeflected check this
+    // The colour to draw this shot, baked in at fire time rather than read
+    // live off the battery every frame — a shot fired while cool must stay
+    // the colour it was fired at, not flip to red mid-flight the instant the
+    // battery's streak climbs into Critical after it launched. The ion
+    // cannon keeps its own colour regardless of tier, same as it always has.
+    col: gun.type === 'ion' ? G.col : T.col,
+  });
+
+  const offsets = BARREL_OFFSETS[w.barrels] ?? BARREL_OFFSETS[1];
+  const shot = makeShot(ang + offsets[0]);
   w.shots.push(shot);
+  for (let i = 1; i < offsets.length; i++) w.shots.push(makeShot(ang + offsets[i]));
 
   if (hasEffect(w, 'spread')) {
-    for (const off of [-0.16, 0.16]) {
-      const a = ang + off;
-      w.shots.push({
-        ...shot,
-        x: muzzleX + Math.cos(a) * b.len,
-        y: muzzleY + Math.sin(a) * b.len,
-        vx: Math.cos(a) * spd,
-        vy: Math.sin(a) * spd,
-      });
-    }
+    for (const off of [-0.16, 0.16]) w.shots.push(makeShot(ang + off));
   }
   return shot;
 }
+
+/** Angular fan for a mount's barrels — one entry per barrel, fired in the
+ *  same volley off the one heat/cooldown pool. */
+const BARREL_OFFSETS = { 1: [0], 2: [-0.09, 0.09], 3: [-0.15, 0, 0.15] };
 
 /** Fire the whole battery. Every ready gun looses a shot toward the shared
  *  aim point. Returns the number of guns that fired. */
@@ -1145,8 +1158,9 @@ const GUN_TYPES = {
   auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', unlock: 120 },
   rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', unlock: 160 },
   mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', unlock: 200, arc: true },
-  // The one gun `hardened` doesn't shrug off — damageSeg checks the shot's
-  // `gun` field for the literal string 'ion', not a stat on this table.
+  // The one gun `shielded` can't deflect — the collision loop checks the
+  // shot's `gun` field for the literal string 'ion' before ever calling
+  // isDeflected, not a stat on this table.
   ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', unlock: 260 },
 };
 const GUN_KEYS = Object.keys(GUN_TYPES);
@@ -1155,7 +1169,7 @@ const GUN_KEYS = Object.keys(GUN_TYPES);
  *  dead centre; more mounts fan outward symmetrically. */
 const MOUNT_X = [0.5, 0.32, 0.68, 0.18, 0.82];
 const MAX_MOUNTS = 5;
-const MOUNT_COST = [0, 100, 190, 320, 480];   // cost of the Nth mount
+const MOUNT_COST = [0, 130, 247, 416, 624];   // cost of the Nth mount
 
 /** How close two hits must land in time to count as convergence. */
 const CONVERGE_WINDOW = 0.12;
@@ -1366,7 +1380,7 @@ function decapitate(w, ci) {
 }
 
 /** Apply damage. Returns true if the segment died. `shot` is optional (the
- *  bomb call site has none) — only used to check `ionResist` against the
+ *  bomb call site has none) — only used to check `railBonus` against the
  *  gun that fired, everything else about damage is unaffected by it. */
 function damageSeg(w, ci, i, dmg, shot) {
   const ch = w.chains[ci];
@@ -1374,11 +1388,12 @@ function damageSeg(w, ci, i, dmg, shot) {
   const seg = ch.segs[i];
   if (!seg) return false;
 
-  // warded all the way around: any gun but the ion cannon does a fraction
-  // of normal damage. Independent of the head-shielding logic below and of
-  // `shielded`'s frontal deflection — this is a different mechanic entirely.
+  // the railgun is simply the efficient tool against a hardened hull — a
+  // damage bonus, not a resistance any other gun lacks. Independent of the
+  // head-shielding logic below and of `shielded`'s frontal deflection, which
+  // the ion cannon bypasses entirely at the collision-loop call site instead.
   const K0 = KIND[seg.kind];
-  if (K0.ionResist && shot?.gun !== 'ion') dmg *= K0.ionResist;
+  if (K0.railBonus && shot?.gun === 'rail') dmg *= K0.railBonus;
 
   // the head is shielded by whatever body is still behind it
   if (seg.kind === 'head') {
@@ -1560,7 +1575,10 @@ function stepShots(w, dt) {
         if (sp.off) continue;
         if (Math.hypot(p.x - sp.x, p.y - sp.y) < seg.r + p.r + w.assistR) {
           const heading = segHeading(w.path, w.pathLen, ch, i);
-          if (isDeflected(seg, heading, p.vx, p.vy)) {
+          // the ion cannon bypasses shielded's frontal-arc deflection outright —
+          // it hits from any angle, which is what makes it the answer for
+          // shielded rather than just another gun a player has to flank with
+          if (p.gun !== 'ion' && isDeflected(seg, heading, p.vx, p.vy)) {
             // glances off the plate: the shot bounces away and the streak
             // survives, since the player did make contact
             seg.deflect = 0.15;
@@ -1677,7 +1695,7 @@ function nextWave(w) {
   w.running = true;
 }
 
-return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, KIND_UNLOCK, kindsForWave, kindForIndex, HP_PER_WAVE, HP_SCALE_MAX, hpScale, makeChain, _segId, nextSegId, reserveSegIds, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, AIM_ASSIST_R, TRAVERSE_MAX, slewAim, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, snapshot, hydrate, resetRun, buyMount, mountCost, unlockGun, setGunType, aimPoint, fireGun, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, headDamageFactor, decapitate, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
+return { TAU, clamp, LAYOUT, LAYOUT_TALL, buildPath, atS, KIND, SHIELD_ARC, MAX_CHAINS, SPLIT_MARGIN, KIND_UNLOCK, kindsForWave, kindForIndex, HP_PER_WAVE, HP_SCALE_MAX, hpScale, makeChain, _segId, nextSegId, reserveSegIds, waveCount, REF_PATH_LEN, TRAVERSAL_S, waveSpeed, segPos, segHeading, isDeflected, recoilGain, OD_TIERS, OD_NEED, tierForStreak, AIM_MIN, AIM_MAX, clampAim, AIM_FINE, AIM_COARSE_MULT, AIM_RAMP, aimGain, AIM_ASSIST_R, TRAVERSE_MAX, slewAim, aimDelta, TRIM_MIN, TRIM_MAX, TRIM_RAMP, trimRate, TAP_MAX, HEAT_PER_SHOT, HEAT_COOL, HEAT_COOL_LOCKED, LOCK_TIME, UPGRADES, BRANCHES, MAX_TIER, newUpgrades, upgradeCost, canAfford, buyUpgrade, stats, fullTreeCost, createWorld, relayout, spawnWave, snapshot, hydrate, resetRun, buyMount, mountCost, MAX_BARRELS, BARREL_COST, barrelCost, buyBarrel, unlockGun, setGunType, aimPoint, fireGun, BARREL_OFFSETS, fire, registerHit, registerMiss, GUN_TYPES, GUN_KEYS, MOUNT_X, MAX_MOUNTS, MOUNT_COST, CONVERGE_WINDOW, CONVERGE_BONUS, makeGun, makeBattery, POWERUPS, POWERUP_KEYS, DROP_TABLE, PICKUP_FALL, PICKUP_R, BOMB_RADIUS, BOMB_DMG, CATCH_BAND, rollDrop, spawnPickup, applyPowerup, hasEffect, stepPickups, splitChain, headDamageFactor, decapitate, damageSeg, stepChains, queueShot, stepCannon, stepShots, checkBreach, breach, step, nextWave };
 })();
 const __mod_1 = (() => {
 /* Fit a fixed-size game board into whatever space is left on screen.
@@ -1975,96 +1993,7 @@ function scanlines(ctx, w, h, { gap = 3, strength = 0.28 } = {}) {
 
 return { GLOW_PASSES, GLOW_PASSES_CHEAP, glowStroke, glowDot, inkDot, extrude, extrudeDisc, cube, extrudeRect, fadeFrame, scanlines };
 })();
-const __mod_4 = (() => {
-/* The single source of truth for "which build is this?".
-
-   This exists because of a real problem, not for decoration: the service worker
-   serves cache-first without revalidating, so a phone can happily keep running
-   an old build after a deploy, and there was no way to tell by looking. Now the
-   help panel and the cabinet both show this string, so "is my phone on the new
-   code?" is answerable in two taps.
-
-   Deliberately ONE app-wide version rather than a version per game. Four
-   hand-maintained numbers with no release process behind them would drift
-   immediately, and a player does not care that Drift Net is at 1.3.0 — the only
-   question anyone actually asks is which deploy they are looking at.
-
-   Keep this in lockstep with `CACHE_VERSION` in sw.js: the worker's cache name
-   is what decides whether a client gets new files at all, so a build the user
-   can see and a cache they can't must never disagree. `version.test.js` reads
-   sw.js and fails if the two drift, so this is enforced rather than hoped for —
-   bump both together. */
-const BUILD = 'v24';
-
-/** Short human label, e.g. "Arcade v22". */
-const BUILD_LABEL = `Arcade ${BUILD}`;
-
-return { BUILD, BUILD_LABEL };
-})();
 const __mod_3 = (() => {
-/* A "?" button in the corner of the board that opens the instructions.
-
-   Instructions used to live in the opening banner, which meant they were long,
-   they pushed the Play button down, and on a phone they simply ran off the
-   bottom of the screen. Behind a button they can be as detailed as they like
-   and cost no space until asked for. */
-
-const { BUILD_LABEL } = __mod_4;
-
-/**
- * @param stage    the positioned element the button and panel are placed in
- * @param title    heading for the panel
- * @param rows     [[term, description], …] — the controls table
- * @param notes    array of short strings shown under the table
- * @param lore     one line of setting, shown under the title. The four games
- *                 share a story, and this is the whole of how it gets told
- *                 in-game — deliberately one sentence a player can ignore,
- *                 rather than cutscenes nobody asked for.
- */
-function makeHelp({ stage, title, rows = [], notes = [], lore = '' }) {
-  const btn = document.createElement('button');
-  btn.id = 'helpBtn';
-  btn.type = 'button';
-  btn.textContent = '?';
-  btn.setAttribute('aria-label', 'How to play');
-  btn.setAttribute('aria-expanded', 'false');
-
-  const panel = document.createElement('div');
-  panel.id = 'helpPanel';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'How to play');
-
-  panel.innerHTML =
-    `<h2>${title}</h2>` +
-    (lore ? `<p class="lore">${lore}</p>` : '') +
-    `<dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>` +
-    (notes.length ? `<ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
-    `<button type="button" id="helpClose">Got it</button>` +
-    // which build this is. Here rather than next to the title because it is a
-    // diagnostic — the answer to "did my phone actually pick up the new code?"
-    // — and not something a player needs while playing.
-    `<p class="build">${BUILD_LABEL}</p>`;
-
-  stage.append(btn, panel);
-
-  const set = (open) => {
-    panel.classList.toggle('on', open);
-    btn.setAttribute('aria-expanded', String(open));
-  };
-  const toggle = () => set(!panel.classList.contains('on'));
-
-  btn.addEventListener('click', toggle);
-  panel.querySelector('#helpClose').addEventListener('click', () => set(false));
-  // tapping the backdrop dismisses, but taps on the text inside must not
-  panel.addEventListener('click', e => { if (e.target === panel) set(false); });
-  addEventListener('keydown', e => { if (e.key === 'Escape') set(false); });
-
-  return { open: () => set(true), close: () => set(false), toggle };
-}
-
-return { makeHelp };
-})();
-const __mod_5 = (() => {
 /* Personal bests, kept in localStorage.
 
    Deliberately local-only: no account, no server, no identifier of any kind.
@@ -2133,14 +2062,40 @@ function clear(game) {
 
 return { KEY, memory, warned, readRaw, writeRaw, best, submit, clear };
 })();
-const __mod_6 = (() => {
+const __mod_5 = (() => {
+/* The single source of truth for "which build is this?".
+
+   This exists because of a real problem, not for decoration: the service worker
+   serves cache-first without revalidating, so a phone can happily keep running
+   an old build after a deploy, and there was no way to tell by looking. Now the
+   help panel and the cabinet both show this string, so "is my phone on the new
+   code?" is answerable in two taps.
+
+   Deliberately ONE app-wide version rather than a version per game. Four
+   hand-maintained numbers with no release process behind them would drift
+   immediately, and a player does not care that Feedline is at 1.3.0 — the only
+   question anyone actually asks is which deploy they are looking at.
+
+   Keep this in lockstep with `CACHE_VERSION` in sw.js: the worker's cache name
+   is what decides whether a client gets new files at all, so a build the user
+   can see and a cache they can't must never disagree. `version.test.js` reads
+   sw.js and fails if the two drift, so this is enforced rather than hoped for —
+   bump both together. */
+const BUILD = 'v25';
+
+/** Short human label, e.g. "Arcade v22". */
+const BUILD_LABEL = `Arcade ${BUILD}`;
+
+return { BUILD, BUILD_LABEL };
+})();
+const __mod_4 = (() => {
 /* Mid-run saves — "continue where you left off".
 
    Scores were easy: one number, write it when a run ends. A run in progress is
    the whole world, and it has to survive the app being closed on a phone, which
    happens constantly and without warning.
 
-   Deliberately NOT in every game. Drift Net is one-life score-attack: being able
+   Deliberately NOT in every game. Feedline is one-life score-attack: being able
    to resume a run is contrary to the genre, and a save would make its ladder
    meaningless. Choke Point and Flak Battery have long runs where losing
    progress genuinely stings, and Hull Breach is level-based, so those three get
@@ -2152,7 +2107,7 @@ const __mod_6 = (() => {
    localStorage is allowed to fail. Same split, and the same defensive posture,
    as shared/scores.js. */
 
-const { BUILD } = __mod_4;
+const { BUILD } = __mod_5;
 
 const KEY = (gameId) => `arcade:run:${gameId}`;
 
@@ -2212,7 +2167,7 @@ function hasRun(gameId) { return loadRun(gameId) !== null; }
 
 return { KEY, read, write, remove, saveRun, loadRun, clearRun, hasRun };
 })();
-const __mod_7 = (() => {
+const __mod_6 = (() => {
 /* Sound effects, synthesized on the fly with WebAudio.
 
    No audio files ship. Every blip is a few oscillators and an envelope, which
@@ -2306,7 +2261,7 @@ function makeAudio() {
       noise(0.05, { f: 1800, gain: 0.12 });
     },
 
-    // Drift Net
+    // Feedline
     eat() { tone(520, 700, 0.07, { type: 'square', gain: 0.2 }); },
     bonus() {
       tone(660, 660, 0.08, { type: 'triangle', gain: 0.22 });
@@ -2326,73 +2281,115 @@ function makeAudio() {
   };
 }
 
-/** Add a speaker toggle to a game's stage, matched to the "?" help button.
- *  Resumes audio on the first interaction with the page, since a browser will
- *  not let it play before then. */
-function mountAudioToggle({ stage, audio }) {
-  const btn = document.createElement('button');
-  btn.id = 'muteBtn';
-  btn.type = 'button';
-  btn.textContent = '♪';
-  const label = () => {
-    btn.classList.toggle('off', audio.muted);
-    btn.setAttribute('aria-label', audio.muted ? 'Unmute' : 'Mute');
-    btn.setAttribute('aria-pressed', String(audio.muted));
-  };
-  label();
-  btn.addEventListener('click', () => { audio.toggle(); label(); });
-  stage.append(btn);
-
-  const wake = () => audio.resume();
-  addEventListener('pointerdown', wake, { once: true });
-  addEventListener('keydown', wake, { once: true });
-  return btn;
-}
-
-return { MUTE_KEY, readMuted, writeMuted, makeAudio, mountAudioToggle };
+return { MUTE_KEY, readMuted, writeMuted, makeAudio };
 })();
-const __mod_8 = (() => {
-/* A pause button in the corner of the board, matched to the "?" help button.
+const __mod_7 = (() => {
+/* One corner button + panel, replacing the old three (help/mute/pause).
 
-   No game had a player-triggered pause before this — only internal booleans
-   that halted the loop behind a shop/banner. This is the first one a player
-   can reach directly, mid-run. */
+   Those were independent modules each mounting an always-visible button on
+   top of the board, which meant three overlapping hit targets a thumb could
+   catch instead of the game underneath. This folds all three into one menu:
+   opening it pauses the run (the same contract shared/pause.js used to
+   provide — shells still gate their frame loop on `paused`/`pause()`/
+   `resume()`/`toggle()`), and the panel holds the mute toggle, the controls
+   reference (what shared/help.js used to show behind its own button), and
+   — only where a game passes `onLevels` — a way into level-select. */
 
-function makePause({ stage, onToggle }) {
+const { BUILD_LABEL } = __mod_5;
+
+/**
+ * @param stage    the positioned element the button and panel are placed in
+ * @param audio    the object returned by shared/audio.js's makeAudio()
+ * @param title    heading for the panel
+ * @param rows     [[term, description], …] — the controls table
+ * @param notes    array of short strings shown under the table
+ * @param lore     one line of setting, shown under the title (see help.js's
+ *                 old doc comment — still one sentence, still skippable)
+ * @param onLevels optional — if passed, a "Levels" button appears and calls
+ *                 this instead of resuming when tapped (Hull Breach only)
+ * @param extra    optional — an HTMLElement of game-specific settings
+ *                 (Feedline's sensitivity slider and input-mode choice),
+ *                 inserted between the action row and the controls table
+ */
+function makeMenu({ stage, audio, title, rows = [], notes = [], lore = '', onLevels, extra }) {
   const btn = document.createElement('button');
-  btn.id = 'pauseBtn';
+  btn.id = 'menuBtn';
   btn.type = 'button';
-  btn.textContent = '❚❚';
-  btn.setAttribute('aria-label', 'Pause');
-  btn.setAttribute('aria-pressed', 'false');
+  btn.textContent = '☰';
+  btn.setAttribute('aria-label', 'Menu');
+  btn.setAttribute('aria-expanded', 'false');
 
-  const overlay = document.createElement('div');
-  overlay.id = 'pauseOverlay';
-  overlay.innerHTML = '<span>Paused</span>';
+  const panel = document.createElement('div');
+  panel.id = 'menuPanel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Menu');
 
-  stage.append(btn, overlay);
+  const resumeBtn = document.createElement('button');
+  resumeBtn.type = 'button';
+  resumeBtn.id = 'menuResume';
+  resumeBtn.textContent = 'Resume';
+
+  const muteBtn = document.createElement('button');
+  muteBtn.type = 'button';
+  muteBtn.id = 'menuMute';
+  const syncMute = () => {
+    muteBtn.textContent = audio.muted ? 'Unmute' : 'Mute';
+    muteBtn.classList.toggle('off', audio.muted);
+  };
+  syncMute();
+  muteBtn.addEventListener('click', () => { audio.toggle(); syncMute(); });
+
+  const actions = document.createElement('div');
+  actions.className = 'menuActions';
+  actions.append(resumeBtn, muteBtn);
+
+  if (onLevels) {
+    const levelsBtn = document.createElement('button');
+    levelsBtn.type = 'button';
+    levelsBtn.id = 'menuLevels';
+    levelsBtn.textContent = 'Levels';
+    levelsBtn.addEventListener('click', () => { set(false); onLevels(); });
+    actions.append(levelsBtn);
+  }
+
+  panel.innerHTML =
+    `<h2>${title}</h2>` +
+    (lore ? `<p class="lore">${lore}</p>` : '');
+  panel.appendChild(actions);
+  if (extra) panel.appendChild(extra);
+  panel.insertAdjacentHTML('beforeend',
+    `<dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>` +
+    (notes.length ? `<ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
+    // which build this is — a diagnostic, not something a player needs while playing
+    `<p class="build">${BUILD_LABEL}</p>`);
+
+  stage.append(btn, panel);
 
   let paused = false;
-  const set = (v) => {
-    paused = v;
-    overlay.classList.toggle('on', paused);
-    btn.classList.toggle('on', paused);
-    btn.textContent = paused ? '▶' : '❚❚';
-    btn.setAttribute('aria-pressed', String(paused));
-    btn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
-    if (onToggle) onToggle(paused);
+  const set = (open) => {
+    paused = open;
+    panel.classList.toggle('on', open);
+    btn.classList.toggle('on', open);
+    btn.setAttribute('aria-expanded', String(open));
   };
   const toggle = () => set(!paused);
 
   btn.addEventListener('click', toggle);
-  // tapping the overlay resumes, same "tap the backdrop to dismiss" as help
-  overlay.addEventListener('click', () => set(false));
+  resumeBtn.addEventListener('click', () => set(false));
+  // tapping the backdrop dismisses, but taps on the panel's own content must not
+  panel.addEventListener('click', e => { if (e.target === panel) set(false); });
   addEventListener('keydown', e => { if (e.key === 'Escape' && paused) set(false); });
+
+  // audio can't play until the user has interacted with the page at all —
+  // resume it on the first gesture, same as the old mute button did
+  const wake = () => audio.resume();
+  addEventListener('pointerdown', wake, { once: true });
+  addEventListener('keydown', wake, { once: true });
 
   return { get paused() { return paused; }, pause: () => set(true), resume: () => set(false), toggle };
 }
 
-return { makePause };
+return { makeMenu };
 })();
 
 const E = __mod_0;
@@ -2401,15 +2398,13 @@ const { makeFit } = __mod_1;
 
 const { glowStroke, glowDot, GLOW_PASSES_CHEAP } = __mod_2;
 
-const { makeHelp } = __mod_3;
+const { best, submit } = __mod_3;
 
-const { best, submit } = __mod_5;
+const { saveRun, loadRun, clearRun } = __mod_4;
 
-const { saveRun, loadRun, clearRun } = __mod_6;
+const { makeAudio } = __mod_6;
 
-const { makeAudio, mountAudioToggle } = __mod_7;
-
-const { makePause } = __mod_8;
+const { makeMenu } = __mod_7;
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -2567,11 +2562,9 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
-mountAudioToggle({ stage: $('stage'), audio });
-const pause = makePause({ stage: $('stage') });
-
-makeHelp({
+const pause = makeMenu({
   stage: $('stage'),
+  audio,
   title: 'Flak Battery',
   lore: 'They came down in one unbroken column. This is the last emplacement still firing.',
   rows: [
@@ -2581,9 +2574,9 @@ makeHelp({
   ],
   notes: [
     'Cutting mid-chain shoves the snake backwards.',
-    'Plated segments glance shots off the front — hit the flank.',
+    'Plated segments glance shots off the front — hit the flank, or fire the ion cannon, which cuts through from any angle.',
     'The head is armoured by its body: the ring around it thins as you clear behind it. Drop the head and the whole serpent dies with it.',
-    'Warded hulls shrug off most guns almost entirely — an ion cannon is the only real answer.',
+    'Hardened hulls are just tough — a railgun is the efficient tool against them.',
     'Keyboard: arrows and Space.',
   ],
 });
@@ -2733,6 +2726,27 @@ function renderBattery() {
   mount.appendChild(mBtn);
   host.appendChild(mount);
 
+  // multi-barrel card — a top-tier upgrade, battery-wide: every mount fires
+  // this many barrels per volley instead of one, off its own heat/cooldown
+  const barCost = E.barrelCost(world);
+  const barrel = document.createElement('div');
+  barrel.className = 'branch';
+  const barDots = Array.from({ length: E.MAX_BARRELS }, (_, i) =>
+    `<i class="${i < world.barrels ? 'on' : ''}"></i>`).join('');
+  barrel.innerHTML =
+    `<h3>Barrels</h3>` +
+    `<div class="pips">${barDots}</div>` +
+    `<p>Every mount fires this many rounds per volley, sharing its heat.</p>`;
+  const barBtn = document.createElement('button');
+  barBtn.className = 'buy';
+  barBtn.textContent = barCost === null ? 'Maxed' : `Add Barrel · ${barCost}`;
+  barBtn.disabled = barCost === null || world.scrap < barCost;
+  barBtn.addEventListener('click', () => {
+    if (E.buyBarrel(world)) { renderShop(); sync(); }
+  });
+  barrel.appendChild(barBtn);
+  host.appendChild(barrel);
+
   // gun-type unlock cards
   for (const type of E.GUN_KEYS) {
     if (type === 'standard') continue;
@@ -2836,7 +2850,10 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
      read as a single armoured body — but the fiction is a column of individual
      craft, and a chain of cubes says that better as well as matching the other
      games. Kept slightly long so the direction of travel still reads. */
-  const long = seg.r * 2.3, wide = seg.r * 2.0;
+  // Scaled up from 2.3/2.0 — feedback wanted the column, the road, and the
+  // battery all bigger. Draw-size only: seg.r itself (the collision radius)
+  // is untouched, so this doesn't change hitboxes or difficulty.
+  const long = seg.r * 2.8, wide = seg.r * 2.4;
   const corner = 0;
 
   ctx.save();
@@ -2851,6 +2868,18 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
      than fading the body: a hurt craft should look like its lights are going
      out, not like it is turning transparent. */
   const lit = 1 - dmgT * 0.55;
+
+  // A second, darker face offset behind the front one — the same
+  // dark-body/lit-rim/offset-back depth cue Choke Point's towers use,
+  // worked in by hand rather than through the shared extrude() helper: that
+  // helper's rim doesn't take the damage-dimmed alpha this plate needs.
+  const depth = Math.max(2, wide * 0.16);
+  ctx.save();
+  ctx.translate(depth * 0.55, depth);
+  roundRectPath(long, wide, corner);
+  ctx.fillStyle = 'rgba(5,11,14,.95)';
+  ctx.fill();
+  ctx.restore();
 
   roundRectPath(long, wide, corner);
   ctx.fillStyle = 'rgba(9,19,24,.96)';
@@ -2996,9 +3025,9 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
     return;
   }
 
-  if (K.ionResist) {
-    // a lattice ward covering the whole plate, not one face — unlike
-    // `shielded`'s directional plate, this reads as "warded all around"
+  if (K.railBonus) {
+    // a reinforcing lattice over the whole plate, not one face — unlike
+    // `shielded`'s directional plate, this reads as "armoured all around"
     // rather than "block this side"
     ctx.strokeStyle = 'rgba(150,235,255,.55)';
     ctx.lineWidth = 1;
@@ -3068,8 +3097,9 @@ function draw() {
     ctx.translate((Math.random() - .5) * m, (Math.random() - .5) * m);
   }
 
+  // road, widened from 26 alongside the bigger column and battery
   ctx.strokeStyle = 'rgba(63,174,143,.09)';
-  ctx.lineWidth = 26; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.lineWidth = 34; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.beginPath();
   path.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
   ctx.stroke();
@@ -3085,7 +3115,7 @@ function draw() {
   for (const ch of world.chains) {
     if (ch.segs.length < 2) continue;
     ctx.strokeStyle = 'rgba(8,15,18,.85)';
-    ctx.lineWidth = 22; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.lineWidth = 28; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath();
     let started = false;
     for (let i = 0; i < ch.segs.length; i++) {
@@ -3162,17 +3192,16 @@ function draw() {
     ctx.globalAlpha = 1;
   }
 
-  const T = E.OD_TIERS[world.cannon.od];
   // your ordnance is spherical, like everything on the defenders' side, and
-  // it is the brightest thing on the board because it is the thing you aim
+  // it is the brightest thing on the board because it is the thing you aim.
+  // Colour is baked onto the shot at fire time (engine.js's fireGun) rather
+  // than read live off the battery here — a shot fired while cool must stay
+  // the colour it was fired at, not flip to red mid-flight the instant the
+  // streak climbs into Critical after it already launched.
   for (const p of world.shots) {
-    // every gun's shot otherwise takes the shared overdrive tint; the ion
-    // cannon is the one exception, so its bolts read distinctly even before
-    // they land on something that visibly shrugs off everything else
-    const col = p.gun === 'ion' ? E.GUN_TYPES.ion.col : T.col;
-    ctx.fillStyle = col;
+    ctx.fillStyle = p.col;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
-    glowDot(ctx, p.x, p.y, p.r, col);
+    glowDot(ctx, p.x, p.y, p.r, p.col);
     glowDot(ctx, p.x, p.y, p.r * .5, '#ffffff');
   }
   for (const b of world.bits) {
@@ -3188,25 +3217,33 @@ function draw() {
     const gang = Math.atan2(tp.y - b.y, tp.x - g.x);
     const G = E.GUN_TYPES[g.type];
     ctx.save(); ctx.translate(g.x, b.y); ctx.rotate(gang);
-    // barrel, tinted by gun type; greyed while locked, reddening with heat
+    // barrel, tinted by gun type; greyed while locked, reddening with heat.
+    // Scaled up from 10px tall / full b.len — feedback wanted the battery
+    // bigger alongside the column and the road.
     ctx.fillStyle = g.locked > 0 ? '#4a5765'
       : g.heat > 0.6 ? '#e0774d' : G.col;
-    ctx.fillRect(0, -5, b.len, 10);
-    ctx.fillStyle = '#0b1418'; ctx.fillRect(b.len - 5, -3, 3, 6);
+    ctx.fillRect(0, -6.5, b.len * 1.12, 13);
+    ctx.fillStyle = '#0b1418'; ctx.fillRect(b.len * 1.12 - 6, -4, 4, 8);
     // railgun reads longer, mortar stubbier
-    if (g.type === 'rail') { ctx.fillStyle = G.col; ctx.fillRect(b.len, -2, 8, 4); }
+    if (g.type === 'rail') { ctx.fillStyle = G.col; ctx.fillRect(b.len * 1.12, -2.5, 10, 5); }
     ctx.restore();
 
-    // mount base
-    ctx.beginPath(); ctx.arc(g.x, b.y, 14, Math.PI, 0);
+    // mount base — a darker offset face behind it first, the same
+    // dark-body/lit-rim/offset-back depth cue the segments and Choke
+    // Point's towers use
+    const baseR = 18;
+    ctx.beginPath(); ctx.arc(g.x + 3, b.y + 4, baseR, Math.PI, 0);
+    ctx.fillStyle = '#0f1b20'; ctx.fill();
+
+    ctx.beginPath(); ctx.arc(g.x, b.y, baseR, Math.PI, 0);
     ctx.fillStyle = '#23383f'; ctx.fill();
-    ctx.beginPath(); ctx.arc(g.x, b.y, 14, Math.PI, 0);
-    ctx.strokeStyle = g.locked > 0 ? '#e0503c' : G.col; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(g.x, b.y, baseR, Math.PI, 0);
+    ctx.strokeStyle = g.locked > 0 ? '#e0503c' : G.col; ctx.lineWidth = 2.4; ctx.stroke();
 
     // per-gun heat pip under the mount
     if (g.heat > 0.02) {
       ctx.fillStyle = g.heat > 0.85 ? '#e0503c' : '#3fae8f';
-      ctx.fillRect(g.x - 12, b.y + 3, 24 * g.heat, 2);
+      ctx.fillRect(g.x - 15, b.y + 4, 30 * g.heat, 2.5);
     }
   }
 
@@ -3238,7 +3275,7 @@ function draw() {
   const hit = predictHit();
   if (hit) {
     // a blocked marker warns that the shot will glance off a plate
-    ctx.strokeStyle = hit.blocked ? '#9fc4e8' : T.col;
+    ctx.strokeStyle = hit.blocked ? '#9fc4e8' : E.OD_TIERS[world.cannon.od].col;
     ctx.lineWidth = 1.5; ctx.globalAlpha = hit.blocked ? .6 : .85;
     if (hit.blocked) ctx.setLineDash([3, 4]);
     ctx.beginPath(); ctx.arc(hit.x, hit.y, 11, 0, TAU); ctx.stroke();
@@ -3265,7 +3302,7 @@ function draw() {
     }
   }
 
-  ctx.font = '700 11px "Chivo Mono",monospace'; ctx.textAlign = 'center';
+  ctx.font = '700 13px "Chivo Mono",monospace'; ctx.textAlign = 'center';
   for (const f of world.floaters) {
     ctx.globalAlpha = Math.max(0, Math.min(1, f.life));
     ctx.fillStyle = f.col; ctx.fillText(f.txt, f.x, f.y);

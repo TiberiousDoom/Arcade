@@ -20,11 +20,12 @@ test('the shell boots without throwing', async () => {
   assert.ok(g.world, 'the world exists, so the module ran to completion');
 });
 
-test('every enemy type renders, with each trait cue drawn', async () => {
+test('every enemy type renders, slow/heal overlays included', async () => {
   const g = await bootAndStart(SHELL);
   const { world, E } = g;
-  // one of everything, half of them slowed and one mid-repair, so the trait
-  // cues, the frost overlay and the heal flash all execute
+  // one of everything, half of them slowed and one mid-repair, so the frost
+  // overlay and the heal flash both execute (per-trait glyphs were dropped —
+  // colour and size carry the distinction now, matching the tower art style)
   world.enemies = E.ENEMY_KEYS.map((type, i) => ({
     type, dist: 80 + i * 120, hp: 30, maxhp: 60, speed: 0, r: E.ENEMY_TYPES[type].r,
     slow: i % 2 ? 0.8 : 0, slowStrength: 0.5, healed: i === 0 ? 0.18 : 0,

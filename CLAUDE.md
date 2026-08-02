@@ -10,7 +10,7 @@ Four games live here:
 
 1. **Flak Battery** (`games/flak-battery/`) — a tower-defense/shooter with a pure-logic engine (`engine.js`) covered by a large unit-test suite. The first game in the `games/<name>/` layout, and the template every other game follows.
 2. **Hull Breach** (`games/hull-breach/`) — a fresh, smaller build on the same engine/shell split. Good starting point for seeing the pattern without Flak Battery's volume.
-3. **Drift Net** (`games/drift-net/`) — the first grid/tick-based game rather than continuous physics. Worth reading if you want to see how far the engine/shell split bends for a different genre.
+3. **Feedline** (`games/feedline/`) — the first grid/tick-based game rather than continuous physics. Worth reading if you want to see how far the engine/shell split bends for a different genre.
 4. **Choke Point** (`games/choke-point/`) — a grid tower-defense: build auto-firing towers to stop surges flowing along a fixed path. Placement + economy rather than reflex, and the fullest example of the shared-module wiring (fit, fx, help, scores, audio, plus a controls strip).
 
 An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invaders cabinet — those were its names) was scrapped — see [docs/DECISIONS.md](docs/DECISIONS.md). Those games will be rebuilt from scratch under `games/` on the engine/shell pattern when we get to them.
@@ -97,9 +97,9 @@ There is no lint config in the repo.
 - **[engine.test.js](games/hull-breach/engine.test.js)** is organized by subsystem (brick field geometry → collision primitives → paddle → launch → ball dynamics → bricks → lives/level flow → full-run sanity), same convention as Flak Battery.
 - Hull Breach has a **render smoke test** ([render-test.mjs](games/hull-breach/render-test.mjs)) but **no standalone build** — the test inlines the shell in memory via `tools/inline.mjs`, so it gets the safety net without a checked-in artifact to keep in sync. Only Flak Battery has a standalone, because only it is meant to travel as a single file.
 
-## Architecture: Drift Net (`games/drift-net/`)
+## Architecture: Feedline (`games/feedline/`)
 
-- **[engine.js](games/drift-net/engine.js)** — grid/tick model rather than continuous physics. The board is a 32×24 grid of 25px cells (800×600, same as Hull Breach, so the two could share a cabinet frame without rescaling), or `LAYOUT_TALL`'s 18×34 in portrait, picked by the shell the same way Hull Breach does it.
+- **[engine.js](games/feedline/engine.js)** — grid/tick model rather than continuous physics. The board is a 32×24 grid of 25px cells (800×600, same as Hull Breach, so the two could share a cabinet frame without rescaling), or `LAYOUT_TALL`'s 18×34 in portrait, picked by the shell the same way Hull Breach does it.
   - **No pace rescaling, unlike Hull Breach** — the tick rate is seconds *per cell*, so reaction time per move is already board-independent. A portrait grid is just a slightly shorter game to fill. There's a test asserting both layouts tick at the same rate.
   - **No thumb band either**: steering is a flick, not a hold, so a finger is never parked over the board.
 - **The engine owns the tick clock.** `step(w, dt)` accumulates time and fires as many ticks as have come due; `tick(w)` is exported separately so tests can drive exact discrete steps. Pace lives in the engine because *pace is the difficulty curve here* (`tickRate` shortens with every meal) — it's a game rule, not a rendering concern. This is the opposite call from Hull Breach, where the shell drives everything.
@@ -110,8 +110,8 @@ There is no lint config in the repo.
   - `turn()` buffers up to `MAX_QUEUE` (2) direction changes and validates each against the **last queued** direction, not the current one — otherwise a fast up-then-left jink inside one tick would be wrongly rejected as a reversal.
   - Filling the board is a **win** (`w.won`), reached when `spawnFood` finds no free cell. One life, no levels — the genre convention.
   - `tickProgress(w)` exists purely so the shell can interpolate the head sliding out of its previous cell and the tail retracting; derived from engine state so the animation can't drift from the simulation.
-- **[drift-net.html](games/drift-net/drift-net.html)** adds swipe input (dominant-axis flick) alongside arrows/WASD — the first touch control in the repo, since Drift Net is unplayable on a phone without it.
-- **[engine.test.js](games/drift-net/engine.test.js)** — board/setup → determinism → movement → turning → eating/growth → bonus → death → time accumulator → win → reset → full-run invariants (no duplicated cells, body stays contiguous).
+- **[feedline.html](games/feedline/feedline.html)** adds swipe input (dominant-axis flick) alongside arrows/WASD — the first touch control in the repo, since Feedline is unplayable on a phone without it.
+- **[engine.test.js](games/feedline/engine.test.js)** — board/setup → determinism → movement → turning → eating/growth → bonus → death → time accumulator → win → reset → full-run invariants (no duplicated cells, body stays contiguous).
 
 ## Architecture: Choke Point (`games/choke-point/`)
 
@@ -120,13 +120,13 @@ earlier games rather than inventing anything.
 
 - **[engine.js](games/choke-point/engine.js)** — pure logic, seeded LCG only.
   - **Enemy movement is Flak Battery's arc-length model**: `buildPath(L)` turns a fixed `route` of `[col,row]` waypoints into a polyline with cumulative `s`, and `atS(path, pathLen, s)` gives the pixel position at any distance. An enemy is just a `dist` that grows by `speed·dt`.
-  - **Rotation is Drift Net's transpose trick.** `LAYOUT_TALL` is the exact transpose of `LAYOUT` (COLS×ROWS ↔ ROWS×COLS, same square `CELL`), and the route is transposed cell-for-cell. Because cells are square the two paths have an **identical length**, so `relayout` maps towers `(c,r)→(r,c)` and leaves every enemy's `dist` untouched — lossless, and no pace rescaling needed (a flat px/s speed is already layout-independent). Tests pin the transpose and the equal length.
+  - **Rotation is Feedline's transpose trick.** `LAYOUT_TALL` is the exact transpose of `LAYOUT` (COLS×ROWS ↔ ROWS×COLS, same square `CELL`), and the route is transposed cell-for-cell. Because cells are square the two paths have an **identical length**, so `relayout` maps towers `(c,r)→(r,c)` and leaves every enemy's `dist` untouched — lossless, and no pace rescaling needed (a flat px/s speed is already layout-independent). Tests pin the transpose and the equal length.
   - `TOWER_TYPES` (node/breaker/coil, 3 tiers each) resolved through `stats(tower)` — read that, not the raw tiers, exactly like Flak Battery's `stats()`. Towers are **hitscan**: `step` acquires the furthest-along enemy in range, applies damage (plus splash / slow), and emits an `fx.shot` the shell draws as a beam. Projectiles are deferred (see STATUS).
   - `wavePlan(wave)` is a pure, escalating spawn schedule; `startWave` queues it onto a timeline `step` releases over time (player-triggered, like Serpent's `nextWave`, giving a build phase). Economy: `charge` (kill bounty in, build/upgrade out, partial `sellValue` refund), `integrity` (a leak decrements; 0 = over), endless.
   - Public API mirrors the others plus TD verbs: `canBuild`/`buildTower`/`upgradeTower`/`sellTower`, `startWave`, `cellAt`/`towerAt`, `relayout`.
 - **[choke-point.html](games/choke-point/choke-point.html)** is the fullest shell: the standard layout/rotation/pause + help + audio + scores wiring from Hull Breach, plus a **`#controls` strip** (tower palette + Start Wave) reserved via `makeFit`'s `extra` hook — the same mechanism Flak Battery used for its touch pad — and a tap-a-tower upgrade/sell popup. Tap a palette tower to select, tap an empty cell to build, tap a tower to adjust.
 - **[engine.test.js](games/choke-point/engine.test.js)** — board/transpose invariant → path geometry → building → tower firing (range/cooldown/splash/slow) → enemies (movement/kill/leak) → waves → rotation (lossless round-trip) → full-run sanity.
-- **Render test but no standalone build** — [render-test.mjs](games/choke-point/render-test.mjs) inlines the shell in memory, same as Hull Breach and Drift Net. It covers the full enemy roster with every trait cue, all three tower types across tiers, the upgrade popup driven through real pointer events, and a live run deep enough to include Shell, Phase and Patch.
+- **Render test but no standalone build** — [render-test.mjs](games/choke-point/render-test.mjs) inlines the shell in memory, same as Hull Breach and Feedline. It covers the full enemy roster with every trait cue, all three tower types across tiers, the upgrade popup driven through real pointer events, and a live run deep enough to include Shell, Phase and Patch.
 
 ## Architecture: the PWA layer
 
@@ -146,8 +146,8 @@ Games follow a per-game engine/shell split modeled on Flak Battery: pure logic w
 - **`shared/fonts/`** — self-hosted WOFF2 (Chivo Mono variable 300–700, Archivo Black 400), `latin` subset only, both OFL-1.1 with license text shipped alongside. Nothing loads from a CDN any more, so the games work offline; keep it that way, since offline operation is the point of the planned service worker.
 - **`shared/fit.js`** — `makeFit(...)` sizes the board and owns the resize/orientation listeners. It performs the first fit itself, so shells must not also call the returned function at startup.
 - **`shared/version.js`** — one app-wide `BUILD` string, shown in every help panel and on the cabinet. Deliberately **one version for the whole app, not one per game**: four hand-maintained numbers with no release process would drift instantly, and the only question anyone asks is which deploy they're looking at. Kept in lockstep with `sw.js`'s `CACHE_VERSION` by `shared/version.test.js`.
-- **`shared/fx.js`** — `makeFx(...)` for particles and the screen-flash value. Hull Breach and Drift Net use it. **Flak Battery deliberately does not** — its bits/floaters live on the world and are stepped inside its engine, and rewiring that was judged not worth the churn.
+- **`shared/fx.js`** — `makeFx(...)` for particles and the screen-flash value. Hull Breach and Feedline use it. **Flak Battery deliberately does not** — its bits/floaters live on the world and are stepped inside its engine, and rewiring that was judged not worth the churn.
 
 Deliberately not shared: banner show/hide (Serpent's variant hides a legend and two hint paragraphs, so sharing it would be a config-heavy wrapper around ~6 lines each), and the engine `step()` signatures.
 
-The engine/shell **seam legitimately differs per game** and should not be forced into a single shape: Flak Battery's `step(w, dt, firing)` takes input, Hull Breach's `step(w, dt)` takes none (the shell drives the paddle), and Drift Net's engine owns its own tick clock. What's shared is the *principle* — pure logic, no DOM/canvas/timers — not the signature.
+The engine/shell **seam legitimately differs per game** and should not be forced into a single shape: Flak Battery's `step(w, dt, firing)` takes input, Hull Breach's `step(w, dt)` takes none (the shell drives the paddle), and Feedline's engine owns its own tick clock. What's shared is the *principle* — pure logic, no DOM/canvas/timers — not the signature.

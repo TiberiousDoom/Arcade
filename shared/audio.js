@@ -91,7 +91,7 @@ export function makeAudio() {
       noise(0.05, { f: 1800, gain: 0.12 });
     },
 
-    // Drift Net
+    // Feedline
     eat() { tone(520, 700, 0.07, { type: 'square', gain: 0.2 }); },
     bonus() {
       tone(660, 660, 0.08, { type: 'triangle', gain: 0.22 });
@@ -109,27 +109,4 @@ export function makeAudio() {
     lose() { tone(300, 90, 0.35, { type: 'sawtooth', gain: 0.28 }); },
     die() { tone(320, 80, 0.4, { type: 'sawtooth', gain: 0.3 }); noise(0.25, { f: 500, gain: 0.15 }); },
   };
-}
-
-/** Add a speaker toggle to a game's stage, matched to the "?" help button.
- *  Resumes audio on the first interaction with the page, since a browser will
- *  not let it play before then. */
-export function mountAudioToggle({ stage, audio }) {
-  const btn = document.createElement('button');
-  btn.id = 'muteBtn';
-  btn.type = 'button';
-  btn.textContent = '♪';
-  const label = () => {
-    btn.classList.toggle('off', audio.muted);
-    btn.setAttribute('aria-label', audio.muted ? 'Unmute' : 'Mute');
-    btn.setAttribute('aria-pressed', String(audio.muted));
-  };
-  label();
-  btn.addEventListener('click', () => { audio.toggle(); label(); });
-  stage.append(btn);
-
-  const wake = () => audio.resume();
-  addEventListener('pointerdown', wake, { once: true });
-  addEventListener('keydown', wake, { once: true });
-  return btn;
 }

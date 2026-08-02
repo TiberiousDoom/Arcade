@@ -62,8 +62,12 @@ body{
   font-family:'Chivo Mono',ui-monospace,monospace;
   display:flex;align-items:center;justify-content:center;
   padding:16px;overflow:hidden;
-  /* clear the home indicator and any notch — the games run full-bleed and
-     would otherwise put the losing edge of the board under the gesture bar */
+  /* clear the home indicator, any notch/dynamic-island, and rounded corners —
+     the games run full-bleed and would otherwise put the losing edge of the
+     board under the gesture bar, or the header under the top cutout. Top was
+     missing here for a while: bottom/left/right were covered but the header
+     still crept under a notch on phones with one. */
+  padding-top:calc(16px + env(safe-area-inset-top,0px));
   padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
   padding-left:calc(16px + env(safe-area-inset-left,0px));
   padding-right:calc(16px + env(safe-area-inset-right,0px));
@@ -128,98 +132,64 @@ button{
 button:hover{background:var(--accent-hot)}
 button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 
-/* ---- the "?" help button and its panel ---- */
-#helpBtn{
+/* ---- the single menu button, replacing the old help/mute/pause trio ----
+   Three always-visible corner buttons used to sit on top of the board and
+   overlap tappable game area. One button now opens a panel holding all of
+   it — opening the panel pauses the run, same as the old pause button did. */
+#menuBtn{
   position:absolute;top:8px;right:8px;z-index:5;
-  /* 40px is the smallest comfortable touch target; the visible dot is smaller */
+  /* 40px is the smallest comfortable touch target; the visible glyph is smaller */
   width:40px;height:40px;padding:0;
   background:transparent;color:var(--dim);
   border:1px solid var(--line);border-radius:50%;
-  font:700 14px/1 'Chivo Mono',monospace;letter-spacing:0;
+  font:700 16px/1 'Chivo Mono',monospace;letter-spacing:0;
   display:flex;align-items:center;justify-content:center;
 }
-#helpBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
+#menuBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
+#menuBtn.on{color:var(--accent);border-color:var(--accent)}
 
-/* ---- the mute toggle, matched to the "?" button but top-left ---- */
-#muteBtn{
-  position:absolute;top:8px;left:8px;z-index:5;
-  width:40px;height:40px;padding:0;
-  background:transparent;color:var(--dim);
-  border:1px solid var(--line);border-radius:50%;
-  font:700 15px/1 'Chivo Mono',monospace;letter-spacing:0;
-  display:flex;align-items:center;justify-content:center;
-}
-#muteBtn:hover{color:var(--bone);border-color:var(--dim)}
-/* muted: dim the note and strike it through, so state is legible at a glance */
-#muteBtn.off{color:#3a4b52}
-#muteBtn.off::after{
-  content:'';position:absolute;left:9px;right:9px;top:50%;height:1.5px;
-  background:currentColor;transform:rotate(-45deg);
-}
-
-/* ---- the pause toggle, matched to the "?" button but sitting beside it ---- */
-#pauseBtn{
-  position:absolute;top:8px;right:56px;z-index:5;
-  width:40px;height:40px;padding:0;
-  background:transparent;color:var(--dim);
-  border:1px solid var(--line);border-radius:50%;
-  font:700 13px/1 'Chivo Mono',monospace;letter-spacing:0;
-  display:flex;align-items:center;justify-content:center;
-}
-#pauseBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
-#pauseBtn.on{color:var(--accent);border-color:var(--accent)}
-
-#pauseOverlay{
-  position:absolute;inset:0;z-index:4;display:none;
-  align-items:center;justify-content:center;
-  background:rgba(11,20,24,.85);cursor:pointer;
-}
-#pauseOverlay.on{display:flex}
-#pauseOverlay span{
-  font-family:'Archivo Black',sans-serif;
-  font-size:clamp(18px,5vw,30px);text-transform:uppercase;letter-spacing:.04em;
-  color:var(--bone);
-}
-
-#helpPanel{
+#menuPanel{
   position:absolute;inset:0;z-index:6;display:none;
   flex-direction:column;gap:12px;
   background:rgba(11,20,24,.97);
   padding:22px 20px;overflow-y:auto;
   text-align:left;
 }
-#helpPanel.on{display:flex}
-#helpPanel h2{
+#menuPanel.on{display:flex}
+#menuPanel h2{
   font-family:'Archivo Black',sans-serif;
   font-size:clamp(14px,4vw,18px);text-transform:uppercase;letter-spacing:-.01em;
 }
-#helpPanel dl{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;align-items:baseline}
-#helpPanel dt{
+.menuActions{display:flex;flex-wrap:wrap;gap:8px}
+.menuActions button{padding:10px 18px}
+#menuMute.off{color:#3a4b52;background:#1b3038}
+#menuPanel dl{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;align-items:baseline}
+#menuPanel dt{
   font-size:10px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--accent);font-weight:700;white-space:nowrap;
 }
-#helpPanel dd{font-size:12px;line-height:1.55;color:var(--bone)}
-#helpPanel ul{list-style:none;display:flex;flex-direction:column;gap:6px;margin-top:2px}
-#helpPanel li{
+#menuPanel dd{font-size:12px;line-height:1.55;color:var(--bone)}
+#menuPanel ul{list-style:none;display:flex;flex-direction:column;gap:6px;margin-top:2px}
+#menuPanel li{
   font-size:11px;line-height:1.5;color:var(--dim);
   padding-left:12px;position:relative;
 }
-#helpPanel li::before{content:'—';position:absolute;left:0;color:var(--line)}
-#helpClose{align-self:flex-start;margin-top:auto;padding:10px 20px}
+#menuPanel li::before{content:'—';position:absolute;left:0;color:var(--line)}
 /* one line of setting under the panel title — present, but clearly not
    instructions, so it can be skipped without missing anything playable */
-#helpPanel .lore{
+#menuPanel .lore{
   font-size:11px;line-height:1.6;color:var(--dim);font-style:italic;
   border-left:2px solid var(--line);padding-left:10px;margin:-2px 0 4px;
 }
 /* the build string, deliberately the quietest thing in the panel */
-#helpPanel .build{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--line);margin-top:10px}
+#menuPanel .build{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--line);margin-top:auto}
 
 footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px;flex-wrap:wrap;text-transform:uppercase}
 
 @media (max-width:560px){
   body{
     padding:8px;
+    padding-top:calc(8px + env(safe-area-inset-top,0px));
     padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
     padding-left:calc(8px + env(safe-area-inset-left,0px));
     padding-right:calc(8px + env(safe-area-inset-right,0px));
@@ -233,7 +203,7 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
    there is dead space either side of it; the shell spreads to full width and
    that space becomes somewhere to rest a thumb without covering the board. */
 @media (max-height:520px) and (orientation:landscape){
-  body{padding:4px;padding-left:calc(4px + env(safe-area-inset-left,0px));padding-right:calc(4px + env(safe-area-inset-right,0px))}
+  body{padding:4px;padding-top:calc(4px + env(safe-area-inset-top,0px));padding-left:calc(4px + env(safe-area-inset-left,0px));padding-right:calc(4px + env(safe-area-inset-right,0px))}
   #shell{max-width:none;gap:4px}
   header{padding-bottom:4px}
   h1{font-size:13px}

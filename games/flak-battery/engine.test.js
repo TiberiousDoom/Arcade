@@ -267,7 +267,7 @@ test('a world can be built on the tall layout', () => {
 test('wave scaling grows then caps', () => {
   assert.ok(E.waveCount(5) > E.waveCount(1));
   assert.ok(E.waveSpeed(5) > E.waveSpeed(1));
-  assert.equal(E.waveCount(99), 56, 'segment count caps');
+  assert.equal(E.waveCount(99), 72, 'segment count caps');
   // the cap has to leave the chain shorter than the path, or the tail would
   // wrap around into the head
   assert.ok(E.waveCount(99) * 30 < E.REF_PATH_LEN * 0.5, 'a maxed chain still fits the board');
@@ -291,6 +291,14 @@ test('recoil scales with how close to the head the cut lands', () => {
 
 test('cutting the tail-most segment yields no recoil', () => {
   assert.equal(E.recoilGain(30, 0, 10), 0);
+});
+
+test('recoil was softened — a near-head cut no longer costs as much blowback', () => {
+  // pins the reduction itself, not just the shape: feedback said the
+  // penalty read as too punishing. Worst case (cut right behind the head)
+  // used to be spacing*2.7; it should now be meaningfully less.
+  const worstCase = E.recoilGain(30, 9, 10);
+  assert.ok(worstCase < 30 * 2.7 * 0.75, 'the worst-case cut costs noticeably less than before');
 });
 
 test('recoil is zero when nothing remains to link up', () => {
@@ -519,23 +527,34 @@ test('decapitation pays for every segment still on the chain', () => {
 
 test('an early decapitation is possible but costs far more damage', () => {
   // the risk/reward shape: the same kill is available either way, but taking
-  // it early has to be paid for in burst damage
+  // it early has to be paid for in burst damage. A one-shot dmg (above every
+  // non-head kind's hp) keeps each body hit a clean single kill; tracking the
+  // original chain by reference (not by index) means a splitter's split — a
+  // second, independent chain appended after it — never gets folded into
+  // either total, which index-0 bookkeeping alone doesn't protect against.
+  const maxNonHeadHp = Math.max(...Object.keys(E.KIND).filter(k => k !== 'head').map(k => E.KIND[k].hp));
+  const DMG = maxNonHeadHp + 5;
   const straightAway = (() => {
     const w = E.createWorld();
-    w.chains = [chain(20, 0, 1200)];
+    const ch = chain(20, 0, 1200);
+    w.chains = [ch];
     let spent = 0;
-    while (w.chains.length && spent < 1e6) { E.damageSeg(w, 0, 0, 10); spent += 10; }
+    while (w.chains.includes(ch) && spent < 1e6) { E.damageSeg(w, 0, 0, DMG); spent += DMG; }
     return spent;
   })();
   const bodyFirst = (() => {
     const w = E.createWorld();
-    w.chains = [chain(20, 0, 1200)];
+    const ch = chain(20, 0, 1200);
+    w.chains = [ch];
     let spent = 0;
-    // clear the body from the back, then the head
-    while (w.chains.length && w.chains[0].segs.length > 1 && spent < 1e6) {
-      E.damageSeg(w, 0, w.chains[0].segs.length - 1, 10); spent += 10;
+    // clear the body from the back, then the head — only ever targeting the
+    // original chain's own segments/index, ignoring anything a split spun off
+    while (w.chains.includes(ch) && ch.segs.length > 1 && spent < 1e6) {
+      E.damageSeg(w, w.chains.indexOf(ch), ch.segs.length - 1, DMG); spent += DMG;
     }
-    while (w.chains.length && spent < 1e6) { E.damageSeg(w, 0, 0, 10); spent += 10; }
+    while (w.chains.includes(ch) && spent < 1e6) {
+      E.damageSeg(w, w.chains.indexOf(ch), 0, DMG); spent += DMG;
+    }
     return spent;
   })();
   assert.ok(straightAway > bodyFirst, `head-first cost ${straightAway}, body-first ${bodyFirst}`);
@@ -778,7 +797,7 @@ test('the shield arc is frontal, not full coverage', () => {
   assert.equal(E.isDeflected(seg, heading, -Math.cos(a) * 520, Math.sin(a) * 520), false);
 });
 
-/* ---------- ion cannon vs hardened hulls ---------- */
+/* ---------- ion cannon vs shielded, railgun vs hardened ---------- */
 
 function hardenedChain() {
   const K = E.KIND.hardened;
@@ -786,37 +805,45 @@ function hardenedChain() {
            s: 400, speed: 0, spacing: 30, recoil: 0, split: false };
 }
 
-test('a hardened segment resists non-ion damage', () => {
-  const w = E.createWorld();
-  const K = E.KIND.hardened;
-  w.chains = [hardenedChain()];
-  E.damageSeg(w, 0, 0, 10, { gun: 'standard' });
-  assert.ok(Math.abs(w.chains[0].segs[0].hp - (K.hp - 10 * K.ionResist)) < 1e-9,
-    'only a fraction of normal damage got through');
+test('the ion cannon bypasses a shielded segment\'s frontal deflection', () => {
+  const seg = { kind: 'shielded' };
+  const heading = { x: 1, y: 0 };   // segment moving right
+  // a shot travelling left, straight into the leading face — deflects for
+  // every other gun (see the existing "head-on shot is deflected" test),
+  // but the collision loop special-cases 'ion' before ever calling this
+  assert.equal(E.isDeflected(seg, heading, -520, 0), true,
+    'isDeflected itself is unchanged — the bypass lives at the call site, not here');
 });
 
-test('the ion cannon does full damage to a hardened segment', () => {
-  const w = E.createWorld();
-  const K = E.KIND.hardened;
-  w.chains = [hardenedChain()];
-  E.damageSeg(w, 0, 0, 3, { gun: 'ion' });   // non-lethal, so the segment survives to check
-  assert.equal(w.chains[0].segs[0].hp, K.hp - 3, 'no resistance against the ion cannon');
-});
-
-test('damage with no shot at all (a bomb) is treated as non-ion', () => {
-  const w = E.createWorld();
-  const K = E.KIND.hardened;
-  w.chains = [hardenedChain()];
-  E.damageSeg(w, 0, 0, 10);
-  assert.ok(Math.abs(w.chains[0].segs[0].hp - (K.hp - 10 * K.ionResist)) < 1e-9);
-});
-
-test('ion resistance is independent of shielded deflection', () => {
-  // isDeflected only ever fires for `shield: true` kinds; hardened carries no
-  // such flag, so a frontal shot still lands on it — it is merely resisted,
-  // never bounced away the way a shielded plate's is
+test('hardened carries no resistance of its own — a plain tough kind', () => {
+  assert.equal(E.KIND.hardened.ionResist, undefined);
   const heading = { x: 1, y: 0 };
-  assert.equal(E.isDeflected({ kind: 'hardened' }, heading, -520, 0), false);
+  assert.equal(E.isDeflected({ kind: 'hardened' }, heading, -520, 0), false,
+    'no shield flag, so it was never deflection-resistant either');
+});
+
+test('the railgun does bonus damage to a hardened segment', () => {
+  const w = E.createWorld();
+  const K = E.KIND.hardened;
+  w.chains = [hardenedChain()];
+  E.damageSeg(w, 0, 0, 3, { gun: 'rail' });
+  assert.equal(w.chains[0].segs[0].hp, K.hp - 3 * K.railBonus);
+});
+
+test('other guns do plain damage to a hardened segment, no bonus and no penalty', () => {
+  const w = E.createWorld();
+  const K = E.KIND.hardened;
+  w.chains = [hardenedChain()];
+  E.damageSeg(w, 0, 0, 3, { gun: 'standard' });
+  assert.equal(w.chains[0].segs[0].hp, K.hp - 3);
+});
+
+test('damage with no shot at all (a bomb) gets no railgun bonus', () => {
+  const w = E.createWorld();
+  const K = E.KIND.hardened;
+  w.chains = [hardenedChain()];
+  E.damageSeg(w, 0, 0, 3);
+  assert.equal(w.chains[0].segs[0].hp, K.hp - 3);
 });
 
 test('the ion cannon unlocks through the same economy as the other gun types', () => {
@@ -854,6 +881,23 @@ test('a deflected shot survives and keeps the streak', () => {
 
   assert.equal(w.chains[0].segs[idx].hp, hpBefore, 'no damage through the plate');
   assert.equal(w.shots.length, 1, 'shot bounced rather than being consumed');
+});
+
+test('an ion-cannon shot punches straight through a shielded plate\'s face', () => {
+  const w = E.createWorld();
+  w.chains = [chain(14, 0, 700)];
+  const idx = w.chains[0].segs.findIndex(s => s.kind === 'shielded');
+  assert.ok(idx > 0, 'fixture has a shielded segment');
+
+  const sp = E.segPos(path, pathLen, w.chains[0], idx);
+  const h = E.segHeading(path, pathLen, w.chains[0], idx);
+  const hpBefore = w.chains[0].segs[idx].hp;
+  // same head-on shot the deflection test above uses, but fired by the ion cannon
+  w.shots = [{ x: sp.x, y: sp.y, vx: -h.x * 520, vy: -h.y * 520, dmg: 1, pierce: 0, r: 3.2, gun: 'ion' }];
+  E.stepShots(w, 1 / 60);
+
+  assert.equal(w.chains[0].segs[idx].hp, hpBefore - 1, 'damage landed, angle notwithstanding');
+  assert.equal(w.shots.length, 0, 'shot was consumed, not bounced');
 });
 
 /* ---------- regenerating segments ---------- */
@@ -1676,6 +1720,68 @@ test('a mount you cannot afford is refused', () => {
   w.scrap = 0;
   assert.equal(E.buyMount(w), false);
   assert.equal(w.battery.guns.length, 1);
+});
+
+/* ---------- multi-barrel upgrade ---------- */
+
+test('a new run starts with one barrel', () => {
+  assert.equal(E.createWorld().barrels, 1);
+});
+
+test('barrels cost escalating scrap and cap at three', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  const c1 = E.barrelCost(w);
+  assert.equal(E.buyBarrel(w), true);
+  assert.equal(w.barrels, 2);
+  const c2 = E.barrelCost(w);
+  assert.ok(c2 > c1, 'the third barrel costs more than the second');
+  assert.equal(E.buyBarrel(w), true);
+  assert.equal(w.barrels, E.MAX_BARRELS);
+  assert.equal(E.barrelCost(w), null, 'no cost once maxed');
+  assert.equal(E.buyBarrel(w), false, 'cannot buy past the cap');
+});
+
+test('a barrel you cannot afford is refused', () => {
+  const w = E.createWorld();
+  w.scrap = 0;
+  assert.equal(E.buyBarrel(w), false);
+  assert.equal(w.barrels, 1);
+});
+
+test('more barrels means more shots per volley, from the same gun', () => {
+  const w = E.createWorld();
+  w.barrels = 3;
+  E.fire(w);
+  assert.equal(w.shots.length, 3, 'one gun, three barrels, three shots');
+});
+
+test('resetRun puts barrels back to one', () => {
+  const w = E.createWorld();
+  w.barrels = 3;
+  E.resetRun(w);
+  assert.equal(w.barrels, 1);
+});
+
+test('a snapshot round-trips the barrel count', () => {
+  const w = E.createWorld();
+  w.barrels = 2;
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  const fresh = E.createWorld();
+  assert.equal(E.hydrate(fresh, snap), true);
+  assert.equal(fresh.barrels, 2);
+});
+
+test('a shot keeps the colour it was fired at, even if the streak changes after', () => {
+  const w = E.createWorld();
+  w.cannon.od = 0;
+  E.fire(w);
+  const firedCool = w.shots[0].col;
+  assert.equal(firedCool, E.OD_TIERS[0].col);
+
+  // streak climbs after the shot is already in flight
+  w.cannon.od = E.OD_TIERS.length - 1;
+  assert.equal(w.shots[0].col, firedCool, 'baked in at fire time, not read live off the battery');
 });
 
 test('gun types unlock once and only when affordable', () => {
