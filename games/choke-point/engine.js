@@ -235,6 +235,12 @@ export const ENEMY_TYPES = {
   // raised and unlock pulled earlier so it's a real nuisance, not a no-op —
   // at wave 11 with a 96px/7hp-per-sec heal it was over before it mattered.
   patch: { name: 'Patch', hp: 44, speed: 54, bounty: 4, r: 13, col: '#5fc9a4', heals: 12 },
+  /* Carries Swarm and lets them out. It halts periodically to deploy a batch
+     mid-path, and scatters half a batch again where it dies — so killing one
+     early, far from your guns, is not automatically the right play. The
+     biggest thing on the board, and the slowest. */
+  tank:  { name: 'Tank',  hp: 150, speed: 32, bounty: 6, r: 22, col: '#c76b8a',
+           deploys: 'swarm', deployCount: 4, deployEvery: 3.2, deployStop: 1.1 },
 };
 export const ENEMY_KEYS = Object.keys(ENEMY_TYPES);
 
@@ -260,7 +266,7 @@ export const START_INTEGRITY = 20;
  *  trait can be met and understood on its own rather than all at once — same
  *  reasoning as Flak Battery's KIND_UNLOCK. */
 export const ENEMY_UNLOCK = {
-  surge: 1, spark: 3, swarm: 4, load: 5, shell: 7, phase: 9, patch: 8,
+  surge: 1, spark: 3, swarm: 4, load: 5, shell: 7, patch: 8, phase: 9, tank: 10,
 };
 
 /** Types available on a given wave, in unlock order. */
@@ -268,23 +274,35 @@ export function enemiesForWave(wave) {
   return ENEMY_KEYS.filter(k => wave >= ENEMY_UNLOCK[k]);
 }
 
+/** Waves 1-5 were confirmed well-paced on device, so their rate is untouched;
+ *  everything past 5 gets an extra term on top. `surge`'s count is the clearest
+ *  example: +2/wave throughout, plus another +2 for every wave beyond the
+ *  fifth, so the curve bends upward rather than the whole line getting
+ *  steeper (which would have made the confirmed-good opening harder too). */
+const past5 = (wave) => Math.max(0, wave - 5);
+
 export function wavePlan(wave) {
-  const groups = [{ type: 'surge', count: 6 + wave * 2, gap: 0.7 }];
-  if (wave >= ENEMY_UNLOCK.spark) groups.push({ type: 'spark', count: 3 + Math.floor(wave / 2), gap: 0.45 });
+  const groups = [{ type: 'surge', count: 6 + wave * 2 + past5(wave) * 2, gap: 0.7 }];
+  if (wave >= ENEMY_UNLOCK.spark) groups.push({ type: 'spark', count: 3 + Math.floor(wave / 2) + past5(wave), gap: 0.45 });
   // swarms come in a tight burst — that clustering is what makes splash pay
-  if (wave >= ENEMY_UNLOCK.swarm) groups.push({ type: 'swarm', count: 6 + wave, gap: 0.16 });
+  if (wave >= ENEMY_UNLOCK.swarm) groups.push({ type: 'swarm', count: 6 + wave + past5(wave) * 2, gap: 0.16 });
   if (wave >= ENEMY_UNLOCK.load) groups.push({ type: 'load', count: 1 + Math.floor((wave - 5) / 2), gap: 1.1 });
   if (wave >= ENEMY_UNLOCK.shell) groups.push({ type: 'shell', count: 1 + Math.floor((wave - 7) / 3), gap: 1.3 });
   if (wave >= ENEMY_UNLOCK.phase) groups.push({ type: 'phase', count: 2 + Math.floor((wave - 9) / 2), gap: 0.6 });
   // one patch at a time: two would heal each other and stall the wave
   if (wave >= ENEMY_UNLOCK.patch) groups.push({ type: 'patch', count: 1, gap: 1.5 });
+  // tanks arrive rarely — each one is a moving swarm dispenser, so two early
+  // would flood the board with more than the towers could ever chew
+  if (wave >= ENEMY_UNLOCK.tank) groups.push({ type: 'tank', count: 1 + Math.floor((wave - 10) / 4), gap: 2.4 });
   return groups;
 }
 
 /** Enemy hp is multiplied by this, so late waves stay threatening without new
- *  tables. Roughly +12% a wave. */
+ *  tables. +12% a wave to start, and a second +8% for every wave past the
+ *  fifth — same "bend it, don't tilt it" shape as `wavePlan` above, for the
+ *  same reason: the early waves were already right. */
 export function hpScale(wave) {
-  return 1 + (wave - 1) * 0.12;
+  return 1 + (wave - 1) * 0.12 + past5(wave) * 0.08;
 }
 
 /* ---------- randomness ---------- */
@@ -413,27 +431,36 @@ export function startWave(w) {
   return true;
 }
 
-/** Pull the active wave's remaining spawns in sooner, for players who'd
- *  rather fight the rest of the wave now than wait out its spawn gaps. A
- *  gradual fast-forward, not an instant dump: each call compresses the
- *  remaining gap before every still-pending spawn, so multiple taps ramp
- *  the pace up rather than releasing the whole rest of the wave on one tick.
- *  Does not touch enemies already on the board. */
-export const RUSH_COMPRESSION = 0.45;   // remaining gap shrinks to this fraction per tap
+/* `rushWave`/`RUSH_COMPRESSION` used to live here — a per-tap compression of
+   the remaining spawn gaps. It was replaced by two shell-side controls that
+   split what turned out to be two different wants: a fast-forward that runs
+   the whole simulation faster (the shell simply calls `step` more times per
+   frame — the engine needs to know nothing about it), and an auto-advance
+   that starts the next wave as soon as one clears. Neither needs engine
+   support, so the engine got smaller. */
 
-export function rushWave(w) {
-  if (w.over || !w.waveActive || !w.spawnQueue.length) return false;
-  for (const s of w.spawnQueue) {
-    const remaining = s.at - w.clock;
-    if (remaining > 0) s.at = w.clock + remaining * RUSH_COMPRESSION;
-  }
-  return true;
-}
-
-function spawnEnemy(w, type) {
+/** Put an enemy on the path. `dist` defaults to the start, but a Tank
+ *  deploying its cargo needs to place Swarm where the Tank currently is. */
+function spawnEnemy(w, type, dist = 0) {
   const E = ENEMY_TYPES[type];
   const hp = Math.round(E.hp * hpScale(w.wave));
-  w.enemies.push({ type, dist: 0, hp, maxhp: hp, speed: E.speed, r: E.r, slow: 0 });
+  const e = { type, dist, hp, maxhp: hp, speed: E.speed, r: E.r, slow: 0 };
+  // a deployer counts down to its next stop, then sits still while unloading
+  if (E.deploys) { e.deployIn = E.deployEvery; e.stopFor = 0; }
+  w.enemies.push(e);
+}
+
+/** Let a deployer out its cargo at its own position. Used both on the timer
+ *  and, at half strength, when one is destroyed. */
+function deployFrom(w, e, count) {
+  const E = ENEMY_TYPES[e.type];
+  if (!E.deploys) return 0;
+  for (let i = 0; i < count; i++) {
+    // fan them slightly back along the path so they don't stack into one
+    // sprite, and never past the start
+    spawnEnemy(w, E.deploys, Math.max(0, e.dist - i * 14));
+  }
+  return count;
 }
 
 /* ---------- targeting ---------- */
@@ -530,11 +557,33 @@ export function step(w, dt) {
     }
   }
 
-  // move enemies; a slowed enemy crawls
-  for (const e of w.enemies) {
-    let sp = e.speed;
-    if (e.slow > 0) { e.slow = Math.max(0, e.slow - dt); sp *= (1 - (e.slowStrength || 0)); }
+  /* Move enemies; a slowed enemy crawls, and a deployer periodically stops
+     altogether to unload. Iterated by index because `deployFrom` pushes onto
+     `w.enemies` — the new arrivals land past `i` and are skipped this frame,
+     which is what we want (they start moving next frame, not from behind). */
+  const movingCount = w.enemies.length;
+  for (let i = 0; i < movingCount; i++) {
+    const e = w.enemies[i];
+    if (e.slow > 0) { e.slow = Math.max(0, e.slow - dt); }
     if (e.healed > 0) e.healed = Math.max(0, e.healed - dt);
+
+    if (e.stopFor > 0) {           // halted, unloading — no forward progress
+      e.stopFor = Math.max(0, e.stopFor - dt);
+      continue;
+    }
+    if (e.deployIn !== undefined) {
+      e.deployIn -= dt;
+      if (e.deployIn <= 0) {
+        const T = ENEMY_TYPES[e.type];
+        deployFrom(w, e, T.deployCount);
+        e.deployIn = T.deployEvery;
+        e.stopFor = T.deployStop;
+        continue;                  // the stop starts this frame
+      }
+    }
+
+    let sp = e.speed;
+    if (e.slow > 0) sp *= (1 - (e.slowStrength || 0));
     e.dist += sp * dt;
   }
 
@@ -564,6 +613,12 @@ export function step(w, dt) {
       w.score += ENEMY_TYPES[e.type].bounty;
       const p = enemyPos(w, e);
       w.fx.kill(p.x, p.y, e.type);
+      /* A deployer spills half a batch where it dies, so destroying one is
+         never simply free — killing it deep in your defences hands you the
+         cargo somewhere awkward. Safe inside this backward loop: pushes land
+         past `i`, which has already been visited. */
+      const T = ENEMY_TYPES[e.type];
+      if (T.deploys) deployFrom(w, e, Math.floor(T.deployCount / 2));
       w.enemies.splice(i, 1);
     } else if (e.dist >= w.pathLen) {
       w.integrity--;

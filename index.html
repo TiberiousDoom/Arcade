@@ -71,6 +71,14 @@
   .card .best{color:var(--dim);letter-spacing:.08em}
   .card .best b{color:var(--bone);font-weight:600}
 
+  /* Locked until the game before it has been played — see shared/unlocks.js.
+     Dimmed rather than hidden: knowing there are four games, and what opens
+     the next one, is the point. `pointer-events` stays on so the card can
+     still be focused and read; the click is cancelled in JS instead. */
+  .card.locked{opacity:.4;cursor:default}
+  .card.locked:hover,.card.locked:focus-visible{transform:none;border-color:var(--line)}
+  .card .lock{color:var(--pip);letter-spacing:.08em;text-align:right}
+
   /* each card tints itself with the accent of the game it opens */
   .card.flak-battery{--pip:#c9a227}
   .card.hull-breach{--pip:#3fae8f}
@@ -157,8 +165,10 @@
   </footer>
 </div>
 <script type="module">
-/* Personal bests on the cards. Read-only here — the games do the writing. */
+/* Personal bests and the unlock gate on the cards. Read-only here — the games
+   do all the writing. */
 import { best } from './shared/scores.js';
+import { isUnlocked, lockLabel } from './shared/unlocks.js';
 import { BUILD_LABEL } from './shared/version.js';
 
 // which build this cabinet is running, for "did my phone pick up the deploy?"
@@ -167,11 +177,28 @@ document.getElementById('build').textContent = BUILD_LABEL;
 for (const card of document.querySelectorAll('.card')) {
   // the card's second class IS the game id — keep them in step
   const id = [...card.classList].find(c => c !== 'card');
+  const how = card.querySelector('.how');
+
+  /* Locked: dim the card, say what opens it, and stop the click. The href is
+     left intact — this gate is the front door only, and a deep link still
+     works by design (see shared/unlocks.js). Removing it would also break
+     the card for anyone who has already unlocked the game in another tab. */
+  if (!isUnlocked(id)) {
+    card.classList.add('locked');
+    card.setAttribute('aria-disabled', 'true');
+    card.addEventListener('click', e => e.preventDefault());
+    const slot = document.createElement('span');
+    slot.className = 'lock';
+    slot.textContent = lockLabel(id);
+    how.append(slot);
+    continue;                        // no score to show on a game never played
+  }
+
   const b = best(id);
   if (!b) continue;
   const slot = document.createElement('span');
   slot.className = 'best';
   slot.innerHTML = `Best <b>${b.score}</b>${b.detail ? ' · ' + b.detail : ''}`;
-  card.querySelector('.how').append(slot);
+  how.append(slot);
 }
 </script>

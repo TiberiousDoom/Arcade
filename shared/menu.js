@@ -24,8 +24,14 @@ import { BUILD_LABEL } from './version.js';
  * @param extra    optional — an HTMLElement of game-specific settings
  *                 (Feedline's sensitivity slider and input-mode choice),
  *                 inserted between the action row and the controls table
+ * @param host     where the *button* is mounted; defaults to `stage`. The
+ *                 panel always stays in `stage` regardless — it is
+ *                 `position:absolute; inset:0` and needs the stage's
+ *                 positioning context to cover the board. Every shell passes
+ *                 the header, so the button stops floating over the playfield
+ *                 and eating taps meant for the game.
  */
-export function makeMenu({ stage, audio, title, rows = [], notes = [], lore = '', onLevels, extra }) {
+export function makeMenu({ stage, audio, title, rows = [], notes = [], lore = '', onLevels, extra, host }) {
   const btn = document.createElement('button');
   btn.id = 'menuBtn';
   btn.type = 'button';
@@ -77,7 +83,8 @@ export function makeMenu({ stage, audio, title, rows = [], notes = [], lore = ''
     // which build this is — a diagnostic, not something a player needs while playing
     `<p class="build">${BUILD_LABEL}</p>`);
 
-  stage.append(btn, panel);
+  (host || stage).append(btn);
+  stage.append(panel);
 
   let paused = false;
   const set = (open) => {

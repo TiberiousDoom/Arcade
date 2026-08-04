@@ -247,6 +247,7 @@ addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 const pause = makeMenu({
   stage: $('stage'),
+  host: document.querySelector('header'),
   audio,
   onLevels: openLevelSelect,
   title: 'Hull Breach',

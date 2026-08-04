@@ -44,9 +44,16 @@ export const inBounds = (L, x, y) => x >= 0 && y >= 0 && x < L.COLS && y < L.ROW
 /* ---------- pace ---------- */
 
 /** Seconds per tick. The wire speeds up as it eats, which is the entire
- *  difficulty curve — there are no levels, just an ever-shorter reaction time. */
-export const START_TICK = 0.145;
-export const TICK_STEP = 0.0025;
+ *  difficulty curve — there are no levels, just an ever-shorter reaction time.
+ *
+ *  The opening was too fast to learn on: at 0.145 a new player had about a
+ *  seventh of a second per cell from the very first move, before knowing what
+ *  the controls did. `START_TICK` is slower now, and `TICK_STEP` gentler so
+ *  the ramp doesn't simply claw it all back within a few meals — the floor
+ *  used to arrive after 34 meals and now takes 60, which is a long game. The
+ *  floor itself is unchanged: top speed was never the complaint. */
+export const START_TICK = 0.185;
+export const TICK_STEP = 0.0021;
 export const MIN_TICK = 0.06;
 
 export function tickRate(w) {

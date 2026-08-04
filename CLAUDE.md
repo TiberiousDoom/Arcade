@@ -44,10 +44,6 @@ node --test --test-name-pattern="a breach costs a life" games/flak-battery/engin
 python -m http.server 8123
 # then open http://localhost:8123/games/hull-breach/hull-breach.html
 
-# Regenerate Flak Battery's single-file build. Run after changing engine.js,
-# flak-battery.html, or anything in shared/.
-node games/flak-battery/build.mjs
-
 # Render smoke tests — boot the real shells in jsdom + node-canvas and drive
 # frames, catching draw-path crashes the logic tests can't see. All four games
 # have one. Requires `jsdom` and `canvas` (not installed by default — there is
@@ -69,9 +65,7 @@ There is no lint config in the repo.
 
 - **[engine.js](games/flak-battery/engine.js)** is the entire simulation: geometry, enemy chains, guns/battery, upgrades, pickups, and the `step(w, dt, firing)` function that advances the world by one frame. It has **no DOM, no canvas, no timers, no randomness beyond a seeded LCG** (`rollDrop`) — this is what makes it fully unit-testable. Never add `document`/`canvas`/`Date.now()`/`Math.random()` calls here; keep those in the HTML shell.
 - **[flak-battery.html](games/flak-battery/flak-battery.html)** is the playable shell: it `import`s `engine.js` as a module, owns all rendering (canvas draw calls), input (pointer/keyboard/touch aiming), the shop UI, and the `requestAnimationFrame` loop. Game *rules* belong in `engine.js`; anything about pixels, DOM, or timing belongs here.
-- **[flak-battery-standalone.html](games/flak-battery/flak-battery-standalone.html)** is a generated single-file build with the engine, `shared/fit.js`, and `shared/theme.css` all inlined. **Never edit it directly** — regenerate with `node games/flak-battery/build.mjs` after touching `engine.js`, `flak-battery.html`, or anything in `shared/`. `render-test.mjs` tests *this* file, not `flak-battery.html`, so a stale standalone means the render test isn't checking current code.
-- **[build.mjs](games/flak-battery/build.mjs)** is that generator — now a thin wrapper around **[tools/inline.mjs](tools/inline.mjs)**, which does the actual work and is shared with every render test. The inliner resolves the whole import graph **recursively**, embeds the self-hosted fonts as base64 data URIs (the inlined CSS sits in a different directory, so `./fonts/...` would resolve to nothing), and throws if any JS `import` survives. Note the stray-import guard matches `^\s*import\s` specifically — a plain substring check trips over CSS's legitimate `@import url(...)`. The result is genuinely self-contained: it loads with **zero** subresource requests.
-  - The recursion is not incidental. The previous version listed each import by hand and deleted any it didn't recognise, so when `shared/help.js` gained an import of its own (`version.js`) the nested import was silently dropped, `BUILD_LABEL` became a free variable, and the standalone threw at boot — shipping broken for two builds before a render test caught it.
+- **No standalone build.** Flak Battery used to ship a generated single-file `flak-battery-standalone.html` (plus a `build.mjs` to regenerate it), an early distribution experiment from before the other three games existed. It was retired in v26: it had to be regenerated after every change to `engine.js`, the shell, or anything in `shared/`, and a stale one meant the render test was silently checking old code — a standing trap for no benefit, since nothing distributed the file. All four games now boot their real shell through **[tools/inline.mjs](tools/inline.mjs)** in memory instead (see the render-test note below).
 - **[engine.test.js](games/flak-battery/engine.test.js)** is organized by subsystem (path geometry → chains/segments → shielding/deflection → recoil → overdrive/heat → aiming curves → upgrades → battery/guns → pickups → splitting → breach/wave/run lifecycle → full-run simulations). When adding engine behavior, find the matching section rather than appending to the end.
 - Core simulation model, useful when tracing a bug:
   - `world` (built by `createWorld`) holds `chains` (arrays of segments moving along a precomputed serpentine `path`), `battery` (multiple `guns`, shared aim/streak/overdrive), `shots`, `pickups`, `bits`/`floaters` (pure visual junk).
@@ -95,7 +89,7 @@ There is no lint config in the repo.
   - `brickBounce` deliberately resolves **at most one brick per sub-step** (the deepest overlap) — resolving two at a corner reflects twice and sends the ball back into itself.
   - An empty brick field means "level cleared," so a world built with no bricks will flag `levelClear` on its first step. Tests that want bare ball physics need a decoy brick (see `engine.test.js`).
 - **[engine.test.js](games/hull-breach/engine.test.js)** is organized by subsystem (brick field geometry → collision primitives → paddle → launch → ball dynamics → bricks → lives/level flow → full-run sanity), same convention as Flak Battery.
-- Hull Breach has a **render smoke test** ([render-test.mjs](games/hull-breach/render-test.mjs)) but **no standalone build** — the test inlines the shell in memory via `tools/inline.mjs`, so it gets the safety net without a checked-in artifact to keep in sync. Only Flak Battery has a standalone, because only it is meant to travel as a single file.
+- Hull Breach has a **render smoke test** ([render-test.mjs](games/hull-breach/render-test.mjs)) and, like every other game, **no standalone build** — the test inlines the shell in memory via `tools/inline.mjs`, so it gets the safety net without a checked-in artifact to keep in sync.
 
 ## Architecture: Feedline (`games/feedline/`)
 
@@ -131,10 +125,10 @@ earlier games rather than inventing anything.
 ## Architecture: the PWA layer
 
 - **[manifest.webmanifest](manifest.webmanifest)** — installable metadata. `start_url`/`scope` are `./` (relative, so the app survives being served from a subpath), `display: standalone`, `orientation: any` because every game handles both orientations.
-- **[sw.js](sw.js)** — precaches the entire app on install, then serves **cache-first** with a network fallback, plus a cabinet fallback for failed navigations. Cache-first is right here (everything is static, offline play is the point) but see the version warning above. It deliberately does *not* cache `flak-battery-standalone.html` — that's a distribution artifact carrying its own inlined copy of everything.
+- **[sw.js](sw.js)** — precaches the entire app on install, then serves **cache-first** with a network fallback, plus a cabinet fallback for failed navigations. Cache-first is right here (everything is static, offline play is the point) but see the version warning above.
 - **[shared/pwa.js](shared/pwa.js)** — registration, imported by all five pages (cabinet + four games) so landing directly on a game installs the cache too. Resolves the worker URL via `import.meta.url` rather than an absolute `/sw.js`, again for subpath safety.
 - **[tools/make-icons.mjs](tools/make-icons.mjs)** — regenerates `shared/icons/` (needs `npm install --no-save canvas`). The icons are committed; only re-run when the mark changes.
-- The PWA head tags are duplicated across the game HTML files. That's deliberate — injecting them from JS is unreliable for iOS, and there's no build step to template them. `build.mjs` strips them (and the back link) from the standalone.
+- The PWA head tags are duplicated across the game HTML files. That's deliberate — injecting them from JS is unreliable for iOS, and there's no build step to template them.
 
 ## Architecture: `games/` and `shared/`
 
@@ -147,6 +141,7 @@ Games follow a per-game engine/shell split modeled on Flak Battery: pure logic w
 - **`shared/fit.js`** — `makeFit(...)` sizes the board and owns the resize/orientation listeners. It performs the first fit itself, so shells must not also call the returned function at startup.
 - **`shared/version.js`** — one app-wide `BUILD` string, shown in every help panel and on the cabinet. Deliberately **one version for the whole app, not one per game**: four hand-maintained numbers with no release process would drift instantly, and the only question anyone asks is which deploy they're looking at. Kept in lockstep with `sw.js`'s `CACHE_VERSION` by `shared/version.test.js`.
 - **`shared/fx.js`** — `makeFx(...)` for particles and the screen-flash value. Hull Breach and Feedline use it. **Flak Battery deliberately does not** — its bits/floaters live on the world and are stepped inside its engine, and rewiring that was judged not worth the churn.
+- **`shared/unlocks.js`** — the first-play-through gate. Each game calls `recordProgress(id, value)` as it plays (a Feedline run finishing, the current wave in Flak Battery / Choke Point), and the cabinet asks `isUnlocked(id)` / `lockLabel(id)` to decide whether a card is dimmed. `GATES` is the whole ruleset, in one object. **The gate is enforced on the cabinet only** — direct URLs and the PWA's shortcuts still open any game, on purpose (see DECISIONS.md, 2026-08-04). Don't record progress via `scores.js`'s `submit()`: it only writes on an improved score, so a weak run after a strong one would record nothing.
 
 Deliberately not shared: banner show/hide (Serpent's variant hides a legend and two hint paragraphs, so sharing it would be a config-heavy wrapper around ~6 lines each), and the engine `step()` signatures.
 

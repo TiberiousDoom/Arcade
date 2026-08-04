@@ -22,6 +22,36 @@
    moving to WebGL would throw away the draw-path safety net across all four
    games. That trade is not worth it for a look this achieves anyway. */
 
+/**
+ * Scale a colour's brightness, keeping its hue and alpha.
+ *
+ * Exists because `extrude`/`extrudeRect`/`cube` take colours but no intensity
+ * argument the way `glowStroke` does — they issue several strokes and fills
+ * internally, so a single alpha could not describe "dimmer" for all of them.
+ * For additive glow, multiplying the channels is equivalent to lowering the
+ * intensity anyway, and it also correctly darkens the opaque body fills.
+ *
+ * Both Flak Battery and Choke Point use this to say the same thing: a damaged
+ * thing is a dimmer thing. That's the whole health readout in both games now —
+ * no numbers, no bars.
+ *
+ * @param col CSS colour — `#rgb`, `#rrggbb`, or `rgb()/rgba()`
+ * @param k   0..1 brightness multiplier
+ */
+export function dim(col, k) {
+  const f = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
+  if (col[0] === '#') {
+    const h = col.slice(1);
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const n = parseInt(full, 16);
+    return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+  }
+  const m = col.match(/-?[\d.]+/g);
+  if (!m || m.length < 3) return col;               // unrecognised: leave it alone
+  const a = m.length > 3 ? m[3] : 1;
+  return `rgba(${f(+m[0])},${f(+m[1])},${f(+m[2])},${a})`;
+}
+
 /** Default falloff: [widthMultiplier, alpha] per pass, dim-and-wide first. */
 export const GLOW_PASSES = [[6, 0.10], [3.5, 0.20], [2, 0.45], [1, 1]];
 /** A cheaper two-pass falloff for things drawn many times per frame. */

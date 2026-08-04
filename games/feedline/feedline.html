@@ -22,17 +22,18 @@
 
   /* settings panel: sensitivity slider + input-mode radios, inserted into
      the shared menu via its `extra` slot */
-  .menuSettings{display:flex;flex-direction:column;gap:10px;
-    padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-  .menuSettings h3{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
-  .menuSettings label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--bone)}
-  .menuSettings input[type=range]{flex:1}
+  /* `.menuSettings` itself now lives in shared/theme.css — Flak Battery grew
+     a settings block too, and both were styling it identically. */
   .modeRow{display:flex;gap:16px}
 
   /* on-screen d-pad, shown only in dpad input mode */
-  #dpad{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
-    display:none;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);
-    gap:4px;z-index:3}
+  /* In normal flow below the board, not absolutely positioned over it.
+     `display:none` when off means makeFit measures it as zero and the swipe
+     player keeps a full-size board; when on, it is real furniture and the
+     board shrinks to fit above it. */
+  #dpad{display:none;justify-content:center;
+    grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,40px);
+    gap:5px;margin:0 auto;padding-bottom:env(safe-area-inset-bottom,0px)}
   #dpad.on{display:grid}
   #dpad button{padding:0;font-size:16px;background:rgba(15,32,39,.85);color:var(--bone);
     border:1px solid var(--line)}
@@ -58,17 +59,22 @@
 
   <div id="stage">
     <canvas id="cv" width="800" height="600"></canvas>
-    <div id="dpad">
-      <button type="button" class="up" data-dx="0" data-dy="-1" aria-label="Up">&uarr;</button>
-      <button type="button" class="left" data-dx="-1" data-dy="0" aria-label="Left">&larr;</button>
-      <button type="button" class="right" data-dx="1" data-dy="0" aria-label="Right">&rarr;</button>
-      <button type="button" class="down" data-dx="0" data-dy="1" aria-label="Down">&darr;</button>
-    </div>
     <div id="banner">
       <h2>Feedline</h2>
       <p id="hint">Swipe to steer.</p>
       <button id="go">Begin</button>
     </div>
+  </div>
+
+  <!-- A sibling of #stage, not a child: inside it the d-pad floated over the
+       playfield and covered a good part of the board. Out here makeFit
+       measures it as furniture and shrinks the board to make room, the same
+       way Choke Point's controls strip works. -->
+  <div id="dpad">
+    <button type="button" class="up" data-dx="0" data-dy="-1" aria-label="Up">&uarr;</button>
+    <button type="button" class="left" data-dx="-1" data-dy="0" aria-label="Left">&larr;</button>
+    <button type="button" class="right" data-dx="1" data-dy="0" aria-label="Right">&rarr;</button>
+    <button type="button" class="down" data-dx="0" data-dy="1" aria-label="Down">&darr;</button>
   </div>
 
   <footer>
@@ -84,6 +90,7 @@ import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { glowStroke, glowDot, inkDot, fadeFrame, scanlines, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
+import { recordProgress } from '../../shared/unlocks.js';
 import { makeAudio } from '../../shared/audio.js';
 import { makeMenu } from '../../shared/menu.js';
 
@@ -200,7 +207,16 @@ for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
    keyboard both keep working regardless of which mode is picked, so this is
    purely an extra input surface shown when the player prefers it. */
 const dpad = $('dpad');
-function syncInputMode() { dpad.classList.toggle('on', inputMode === 'dpad'); }
+let fitStage = null;      // assigned by makeFit further down; see syncInputMode
+/* Showing or hiding the d-pad changes how much room is left for the board,
+   and makeFit measures it — so the board has to be re-fitted on the toggle
+   or it keeps a size computed against the other mode. Choke Point's controls
+   strip has the identical requirement. Guarded because this runs once during
+   setup, before `fitStage` is assigned (makeFit does the first fit itself). */
+function syncInputMode() {
+  dpad.classList.toggle('on', inputMode === 'dpad');
+  if (fitStage) fitStage();
+}
 syncInputMode();
 for (const btn of dpad.querySelectorAll('button')) {
   const dx = Number(btn.dataset.dx), dy = Number(btn.dataset.dy);
@@ -227,7 +243,12 @@ function start() {
 }
 $('go').addEventListener('click', start);
 
-const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
+/* `let`, and declared before syncInputMode can call it — makeFit performs the
+   first fit itself, so the binding only has to exist by the time a *later*
+   toggle needs to re-fit. No `extra`: the d-pad is a sibling of #stage inside
+   #shell, so makeFit measures it automatically (and passing it here as well
+   would double-count it). */
+fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 
 /* Rotating the phone moves the run onto the other grid. Score, meals and
    length come with you; the wire itself is re-laid, because a wire thirty
@@ -277,6 +298,7 @@ for (const radio of settingsEl.querySelectorAll('[name=inputMode]')) {
 
 const pause = makeMenu({
   stage: $('stage'),
+  host: document.querySelector('header'),
   audio,
   extra: settingsEl,
   title: 'Feedline',
@@ -301,6 +323,8 @@ function frame(now) {
   const wasOver = world.over;
   if (!pause.paused) E.step(world, dt);
   if (world.over && !wasOver) {
+    // finishing a run at all — won or lost — is what opens Flak Battery
+    recordProgress(GAME_ID, 1);
     const r = submit(GAME_ID, world.score, `Length ${world.wire.length}`);
     syncBest();
     if (world.won) showBanner('Board Cleared', `You filled the grid. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Play again');

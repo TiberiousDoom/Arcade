@@ -46,7 +46,12 @@
   #shopHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
   #shopHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,20px);text-transform:uppercase;letter-spacing:-.02em}
   #shopScrap{font-size:12px;color:var(--brass);font-weight:700;letter-spacing:.08em}
-  #branches,#battery{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px}
+  /* Cards scaled back: `minmax(180px)` fitted two per row on a phone and made
+     each one tall enough that the shop needed scrolling to compare options.
+     At 148px three fit, and the whole tree is visible at once — which is the
+     point of a between-waves shop. `.buy`/`.chip` are untouched; they are
+     thumb targets and are what set the card's minimum height. */
+  #branches,#battery{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:7px}
   .shopSection{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);
     border-bottom:1px solid var(--line);padding-bottom:5px;margin-top:4px}
   .assign{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
@@ -56,9 +61,11 @@
   .chip{width:34px;height:34px;border:1px solid var(--line);background:#0f2027;color:var(--dim);
     font:700 12px/1 'Chivo Mono',monospace;cursor:pointer;border-radius:3px}
   .chip.on{background:var(--scale);color:#06201a;border-color:var(--scale)}
-  .branch{border:1px solid var(--line);background:#0f2027;padding:12px 13px;display:flex;flex-direction:column;gap:8px;text-align:left}
-  .branch h3{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone);font-weight:700}
-  .branch p{font-size:11px;color:var(--dim);line-height:1.5;min-height:2.6em}
+  .branch{border:1px solid var(--line);background:#0f2027;padding:9px 10px;display:flex;flex-direction:column;gap:6px;text-align:left}
+  .branch h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--bone);font-weight:700}
+  /* no min-height: it reserved two lines for every blurb whether or not the
+     text needed them, which padded out every card in the grid */
+  .branch p{font-size:10px;color:var(--dim);line-height:1.45}
   .pips{display:flex;gap:3px}
   .pips i{flex:1;height:5px;background:#1b3038;border-radius:1px}
   .pips i.on{background:var(--scale)}
@@ -125,8 +132,9 @@
 <script type="module">
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
-import { glowStroke, glowDot, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
+import { glowStroke, glowDot, dim, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
+import { recordProgress } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio } from '../../shared/audio.js';
 import { makeMenu } from '../../shared/menu.js';
@@ -179,7 +187,17 @@ const pickLayout = () =>
    here rather than beside the pointer handlers because the world needs it. */
 const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
 
-const world = E.createWorld({ fx, layout: pickLayout(), assist: isTouch });
+/* Power-up drops are off by default and switchable from the settings menu —
+   an experiment in how the game plays without them, so it needs to be
+   flippable on a phone without a redeploy. Guarded storage, same shape as
+   Feedline's input settings and shared/scores.js. */
+const DROPS_KEY = 'arcade:flak-battery:drops';
+function readDrops() {
+  try { return localStorage.getItem(DROPS_KEY) === '1'; } catch { return false; }
+}
+function writeDrops(v) { try { localStorage.setItem(DROPS_KEY, v ? '1' : '0'); } catch {} }
+
+const world = E.createWorld({ fx, layout: pickLayout(), assist: isTouch, drops: readDrops() });
 E.spawnWave(world);
 
 const board = { w: world.L.W, h: world.L.H };   // makeFit re-reads this
@@ -287,9 +305,26 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
+// settings panel content for the shared menu's `extra` slot
+const settingsEl = document.createElement('div');
+settingsEl.className = 'menuSettings';
+settingsEl.innerHTML = `
+  <h3>Settings</h3>
+  <label><input type="checkbox" id="dropsToggle"${world.drops ? ' checked' : ''}> Power-up drops</label>
+  <p class="settingNote">Off by default. Applies from the next carrier you destroy.</p>
+`;
+settingsEl.querySelector('#dropsToggle').addEventListener('change', e => {
+  writeDrops(e.target.checked);
+  // apply live too, so a player who flips it mid-run sees it from the next
+  // carrier kill rather than having to restart to find out
+  world.drops = e.target.checked;
+});
+
 const pause = makeMenu({
   stage: $('stage'),
+  host: document.querySelector('header'),
   audio,
+  extra: settingsEl,
   title: 'Flak Battery',
   lore: 'They came down in one unbroken column. This is the last emplacement still firing.',
   rows: [
@@ -575,10 +610,13 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
      read as a single armoured body — but the fiction is a column of individual
      craft, and a chain of cubes says that better as well as matching the other
      games. Kept slightly long so the direction of travel still reads. */
-  // Scaled up from 2.3/2.0 — feedback wanted the column, the road, and the
-  // battery all bigger. Draw-size only: seg.r itself (the collision radius)
-  // is untouched, so this doesn't change hitboxes or difficulty.
-  const long = seg.r * 2.8, wide = seg.r * 2.4;
+  /* Square, and sized to sit *inside* `SEGMENT_SPACING` (42) so consecutive
+     craft don't touch. The previous 2.8×2.4 was wider than the old 30px
+     spacing, so a chain fused into one continuous fence and the individual
+     craft were invisible — bigger squares only read as bigger if there is a
+     gap between them, which is why the engine's spacing went up alongside.
+     Draw-size only: `seg.r` is the collision radius and is untouched. */
+  const long = seg.r * 2.7, wide = seg.r * 2.7;
   const corner = 0;
 
   ctx.save();
@@ -589,25 +627,48 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
 
   /* A dark body with a lit rim, not a gradient-filled plate. Each craft in the
      column reads as a cube with its running lights on, which is what the other
-     three games do and what the setting asks for. Damage dims the rim rather
-     than fading the body: a hurt craft should look like its lights are going
-     out, not like it is turning transparent. */
-  const lit = 1 - dmgT * 0.55;
+     three games do and what the setting asks for.
 
-  // A second, darker face offset behind the front one — the same
-  // dark-body/lit-rim/offset-back depth cue Choke Point's towers use,
-  // worked in by hand rather than through the shared extrude() helper: that
-  // helper's rim doesn't take the damage-dimmed alpha this plate needs.
-  const depth = Math.max(2, wide * 0.16);
+     Damage is now the *only* health readout — the hp number that used to sit
+     on tough segments is gone — so the dim has to carry it alone and reaches
+     much further down than it used to (0.25 at death, not 0.45). It applies
+     to the body and the hairline rim too, both of which were previously
+     damage-independent and kept a dying craft looking half-lit. */
+  const lit = 0.25 + 0.75 * (seg.hp / seg.maxhp);
+
+  /* A second, darker face offset behind the front one, *and* the four edges
+     joining the two — this is hand-rolled rather than using the shared
+     `cube()` because these are oblong (long ≠ wide) and already inside a
+     rotated frame, but the joining edges are exactly what cube() draws and
+     what this was missing. Without them two offset rectangles read as two
+     rectangles; with them the thing reads as a box. */
+  const depth = Math.max(2, wide * 0.28);
+  const dx = depth * 0.55, dy = depth;
+  const hx = long / 2, hy = wide / 2;
+
+  /* Both faces are lifted well above the board colour, exactly as Choke
+     Point's towers are: at a near-black fill the body vanished into the
+     background and the craft read as a hollow outline rather than a solid
+     object. The back face stays darker than the front so the offset reads
+     as depth rather than as a second, equal square. */
   ctx.save();
-  ctx.translate(depth * 0.55, depth);
+  ctx.translate(dx, dy);
   roundRectPath(long, wide, corner);
-  ctx.fillStyle = 'rgba(5,11,14,.95)';
+  ctx.fillStyle = dim('rgba(13,26,34,.98)', lit);
   ctx.fill();
   ctx.restore();
+  glowStroke(ctx, () => { ctx.translate(dx, dy); roundRectPath(long, wide, corner); ctx.translate(-dx, -dy); },
+    base, 1, [[4, 0.05], [2, 0.10]], lit);
+
+  // the joining edges: the silhouette corners linked front face to back
+  glowStroke(ctx, (c) => {
+    for (const [px, py] of [[hx, -hy], [hx, hy], [-hx, hy]]) {
+      c.moveTo(px, py); c.lineTo(px + dx, py + dy);
+    }
+  }, base, 1, [[3, 0.07], [1.2, 0.18]], lit);
 
   roundRectPath(long, wide, corner);
-  ctx.fillStyle = 'rgba(9,19,24,.96)';
+  ctx.fillStyle = dim('rgba(24,44,56,.98)', lit);
   ctx.fill();
 
   if (seg.flash > 0) {
@@ -617,11 +678,10 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
   glowStroke(ctx, () => roundRectPath(long, wide, corner), base, 1.8,
     GLOW_PASSES_CHEAP, lit);
 
-
-  // outer rim
+  // outer rim, dimmed with everything else
   roundRectPath(long, wide, corner);
   ctx.lineWidth = 1.4;
-  ctx.strokeStyle = K.ring;
+  ctx.strokeStyle = dim(K.ring, lit);
   ctx.stroke();
 
   // --- per-type material detail ---
@@ -660,41 +720,50 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
     }
   }
 
-  /* HP readout for tough segments, upright (outside the rotation). Light on
-     dark now: the body used to be a bright gradient so this was drawn dark, and
-     the glow pass inverted that contrast and made it invisible. The same trap
-     caught the damage cracks and the head's eye sockets — anything drawn dark
-     on top of what is now a dark body simply disappeared. */
-  if (seg.maxhp > 3) {
-    ctx.font = '700 11px "Chivo Mono",monospace'; ctx.textAlign = 'center';
-    // a dark outline first, so the number stays legible over a bright or busy
-    // plate rather than only over the dark body it was tuned against
-    ctx.strokeStyle = 'rgba(9,19,24,.85)';
-    ctx.lineWidth = 2.5;
-    ctx.strokeText(Math.ceil(seg.hp), sp.x, sp.y + 3.8);
-    ctx.fillStyle = 'rgba(235,244,240,.96)';
-    ctx.fillText(Math.ceil(seg.hp), sp.x, sp.y + 3.8);
-    ctx.textAlign = 'left';
-  }
+  /* The hp number that used to sit on tough segments is gone. It was a
+     readable number on a board where you are aiming, not reading — and with
+     the chain now up to 72 craft long it was 72 little numbers competing with
+     the thing you actually track. Health is brightness instead (see `lit`
+     above), which is the same cue Choke Point's enemies use. */
 }
 
 // surface treatment specific to each segment type, drawn in the plate's
 // local rotated frame (long axis = x)
 function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
   if (seg.kind === 'head') {
-    // a forward crest ridge along the centre line
+    /* A command ship, not a face. The previous version drew a centre ridge
+       and two pale discs with red pupils near the leading edge — which is a
+       nose and two eyes, and read as a head no matter what the fiction said.
+       Nothing here is bilaterally paired across the centre line any more:
+       the structure is a hull spine with an *offset* bridge block and
+       stepped deck plating, which reads as a vessel seen from above. */
+    const fwd = long * 0.5, half = wide * 0.5;
+
+    // spine down the long axis, stopping short of the bow
     ctx.strokeStyle = shade(K.col, 50);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-long * 0.3, 0); ctx.lineTo(long * 0.42, 0);
+    ctx.moveTo(-fwd * 0.66, 0); ctx.lineTo(fwd * 0.62, 0);
     ctx.stroke();
-    // sensor eyes near the leading edge
-    ctx.fillStyle = 'rgba(210,225,220,.55)';
-    ctx.beginPath(); ctx.arc(long * 0.26, -wide * 0.24, 2.8, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.arc(long * 0.26, wide * 0.24, 2.8, 0, TAU); ctx.fill();
+
+    // deck plating: ribs across the spine, tapering toward the bow
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = shade(K.col, 25);
+    for (const [x, k] of [[-fwd * 0.42, 0.74], [-fwd * 0.12, 0.60], [fwd * 0.2, 0.42]]) {
+      ctx.beginPath();
+      ctx.moveTo(x, -half * k); ctx.lineTo(x, half * k);
+      ctx.stroke();
+    }
+
+    // bridge: a raised block set off-centre, so the silhouette is asymmetric
+    ctx.fillStyle = shade(K.col, 60);
+    roundRectPathAt(-fwd * 0.28, -half * 0.34, long * 0.2, wide * 0.26, 1);
+    ctx.fill();
+
+    // a single mast light at the bow — one, deliberately, since two would
+    // pair back up into eyes
     ctx.fillStyle = 'rgba(224,80,60,.95)';
-    ctx.beginPath(); ctx.arc(long * 0.26, -wide * 0.24, 1.2, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.arc(long * 0.26, wide * 0.24, 1.2, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(fwd * 0.72, 0, 1.9, 0, TAU); ctx.fill();
     return;
   }
 
@@ -835,12 +904,14 @@ function draw() {
   ctx.fillStyle = 'rgba(224,80,60,.45)'; ctx.font = '9px "Chivo Mono",monospace';
   ctx.fillText('BREACH LINE', 12, L.FLOOR - 7);
 
-  // draw the snake body first: a dark spine under the plates so the chain
-  // reads as one linked thing rather than loose tokens
+  // A dark tether under the craft, so a chain reads as one linked formation
+  // rather than loose tokens. Deliberately narrower than a craft now that
+  // they no longer touch: it should look like something they are strung on,
+  // not like a band they are embedded in.
   for (const ch of world.chains) {
     if (ch.segs.length < 2) continue;
     ctx.strokeStyle = 'rgba(8,15,18,.85)';
-    ctx.lineWidth = 28; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath();
     let started = false;
     for (let i = 0; i < ch.segs.length; i++) {
@@ -1049,6 +1120,10 @@ function sync() {
   $('uiScore').textContent = world.score;
   $('uiScrap').textContent = world.scrap;
   $('uiLives').textContent = world.lives;
+  // how far this run got, for the cabinet's unlock gate. Recorded live rather
+  // than at game over: reaching the wave is the achievement, and a player who
+  // closes the tab mid-run has still reached it.
+  recordProgress(GAME_ID, world.wave);
   const b = world.battery, T = E.OD_TIERS[b.od];
   const hottest = b.guns.reduce((m, g) => Math.max(m, g.heat), 0);
   const anyLocked = b.guns.some(g => g.locked > 0);

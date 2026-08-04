@@ -403,6 +403,71 @@ test('a slow-immune enemy cannot be slowed, so Coil is wasted on it', () => {
   assert.ok(immune.e.hp < 500, 'though the shot still hurt a little');
 });
 
+/* ---------- the tank: a moving swarm dispenser ---------- */
+
+function tankWorld() {
+  const w = richWorld();
+  const T = E.ENEMY_TYPES.tank;
+  w.enemies.push({ type: 'tank', dist: 400, hp: T.hp, maxhp: T.hp, speed: T.speed,
+                   r: T.r, slow: 0, deployIn: T.deployEvery, stopFor: 0 });
+  return w;
+}
+const swarmCount = (w) => w.enemies.filter(e => e.type === 'swarm').length;
+
+test('a tank stops and deploys swarm on its timer', () => {
+  const w = tankWorld();
+  const T = E.ENEMY_TYPES.tank;
+  assert.equal(swarmCount(w), 0);
+
+  // run just past the deploy interval
+  for (let i = 0; i < Math.ceil(T.deployEvery * 60) + 2; i++) E.step(w, 1 / 60);
+  assert.equal(swarmCount(w), T.deployCount, 'a full batch came out');
+
+  const tank = w.enemies.find(e => e.type === 'tank');
+  assert.ok(tank.stopFor > 0, 'and it halted to do it');
+});
+
+test('a halted tank makes no forward progress', () => {
+  const w = tankWorld();
+  const T = E.ENEMY_TYPES.tank;
+  for (let i = 0; i < Math.ceil(T.deployEvery * 60) + 2; i++) E.step(w, 1 / 60);
+
+  const tank = w.enemies.find(e => e.type === 'tank');
+  const held = tank.dist;
+  E.step(w, 1 / 60);
+  assert.equal(tank.dist, held, 'stationary while unloading');
+});
+
+test('a destroyed tank spills half a batch where it died', () => {
+  const w = tankWorld();
+  const T = E.ENEMY_TYPES.tank;
+  const tank = w.enemies.find(e => e.type === 'tank');
+  // pinned still, so this measures where the spill lands and not the frame of
+  // travel the tank would otherwise make before the kill is resolved
+  tank.speed = 0;
+  const where = tank.dist;
+
+  tank.hp = -1;
+  E.step(w, 1 / 60);
+
+  assert.equal(w.enemies.some(e => e.type === 'tank'), false, 'the tank is gone');
+  assert.equal(swarmCount(w), Math.floor(T.deployCount / 2), 'half a batch, not a whole one');
+  // spilled at the tank's position, not back at the start
+  for (const s of w.enemies.filter(e => e.type === 'swarm')) {
+    assert.ok(s.dist > where - 100 && s.dist <= where, `spilled near ${where}, got ${s.dist}`);
+  }
+});
+
+test('deployed swarm carry the wave hp scale, like any other spawn', () => {
+  const w = tankWorld();
+  w.wave = 12;
+  const tank = w.enemies.find(e => e.type === 'tank');
+  tank.hp = -1;
+  E.step(w, 1 / 60);
+  const s = w.enemies.find(e => e.type === 'swarm');
+  assert.equal(s.maxhp, Math.round(E.ENEMY_TYPES.swarm.hp * E.hpScale(12)));
+});
+
 test('a patch repairs its neighbours but not itself', () => {
   const w = richWorld();
   const heals = E.ENEMY_TYPES.patch.heals;
@@ -621,22 +686,20 @@ test('startWave works mid-wave, overlapping rather than queuing after', () => {
   assert.equal(w.enemies.length, releasedSoFar, 'nothing already on the board was touched');
 });
 
-test('rushWave compresses remaining gaps gradually, not to zero at once', () => {
-  const w = E.createWorld();
-  E.startWave(w);
-  const before = w.spawnQueue.map(s => s.at);
-  assert.equal(E.rushWave(w), true);
-  const after = w.spawnQueue.map(s => s.at);
-  // every remaining gap shrank, but not to w.clock — this is a fast-forward,
-  // not the old instant-dump behaviour
-  for (let i = 0; i < before.length; i++) {
-    assert.ok(after[i] <= before[i], `spawn ${i} moved sooner or stayed`);
-  }
-  assert.ok(after.some(at => at > w.clock + 1e-9), 'not everything landed on the current tick');
+test('stepping the same world twice per frame is what fast-forward is', () => {
+  /* The shell's fast-forward calls `step` N times per frame rather than
+     handing it N× the dt — a 4× dt would overshoot the sub-step sizes the
+     spawn and collision code assume. This pins the property that makes that
+     safe: N normal steps land where N frames of normal play would. */
+  const slow = E.createWorld({ seed: 7 });
+  const fast = E.createWorld({ seed: 7 });
+  E.startWave(slow); E.startWave(fast);
 
-  // repeated taps keep compressing toward now
-  for (let i = 0; i < 20; i++) E.rushWave(w);
-  assert.ok(w.spawnQueue.every(s => s.at - w.clock < 1), 'converges toward immediate with enough taps');
+  for (let i = 0; i < 8; i++) E.step(slow, 1 / 60);
+  for (let i = 0; i < 4; i++) { E.step(fast, 1 / 60); E.step(fast, 1 / 60); }
+
+  assert.equal(fast.clock.toFixed(6), slow.clock.toFixed(6), 'same elapsed time');
+  assert.equal(fast.enemies.length, slow.enemies.length, 'same enemies released');
 });
 
 test('clearing a wave flags betweenWaves and pays a bonus', () => {

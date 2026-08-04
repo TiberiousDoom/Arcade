@@ -11,7 +11,7 @@
    static, versioned by hand, and the whole point is offline play. Stale-while-
    revalidate would spare the version bump but would also serve one stale run
    after every update, which is worse for a game than a manual discipline. */
-const CACHE_VERSION = 'arcade-v25';
+const CACHE_VERSION = 'arcade-v26';
 
 /* Relative URLs, resolved against this file's location — so the app still
    works when served from a subpath (a GitHub Pages project site, say) rather
@@ -32,6 +32,7 @@ const PRECACHE = [
   './shared/glow.js',
   './shared/resume.js',
   './shared/levels.js',
+  './shared/unlocks.js',
 
   './shared/fonts/chivo-mono-latin.woff2',
   './shared/fonts/archivo-black-latin.woff2',
@@ -51,9 +52,6 @@ const PRECACHE = [
   './games/choke-point/choke-point.html',
   './games/choke-point/engine.js',
 ];
-/* Deliberately absent: flak-battery-standalone.html. It is a distribution
-   artifact that carries its own inlined copy of everything — caching it would
-   add ~136 KB for a file the app never navigates to. */
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {

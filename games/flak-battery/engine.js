@@ -162,17 +162,32 @@ export function kindForIndex(i, count = Infinity, wave = Infinity) {
  *  faster* — never tougher to chew through. Same shape as Choke Point's
  *  `hpScale`, and capped so a very long run doesn't turn every segment into a
  *  sponge that outlasts the wave timer. */
-// Steepened from 0.14: base hp values above cover part of "hits needed per
-// square went up," this covers the rest — a run with zero upgrades needs to
-// feel the wave count climbing, not just longer chains at wave-1 toughness.
-export const HP_PER_WAVE = 0.20;
-export const HP_SCALE_MAX = 4.0;
+// Steepened twice now (0.14 → 0.20 → 0.26) and the ceiling raised alongside.
+// The base `KIND` hp values below carry part of "more hits per square"; this
+// carries the rest, and is what stops a deep run flattening out once the
+// multiplier caps.
+export const HP_PER_WAVE = 0.26;
+export const HP_SCALE_MAX = 5.5;
 
 export function hpScale(wave) {
   return Math.min(HP_SCALE_MAX, 1 + (wave - 1) * HP_PER_WAVE);
 }
 
-export function makeChain(count, speed, startS, spacing = 30, wave = 1) {
+/** Arc-length between consecutive craft in a chain.
+ *
+ *  Raised from 30 so the craft can be drawn larger *and* still read as
+ *  separate objects. At 30 the shell's plates (2.8× the segment radius, ~36px)
+ *  were wider than the gap between them, so a chain merged into one
+ *  continuous fence and you could not see individual craft at all — which
+ *  defeats the whole "column of cubes" idea.
+ *
+ *  It trades against chain length: the portrait path is ~4374px, so the
+ *  72-segment cap spans ~3276px, about 75% of the run. Raising either this or
+ *  `waveCount`'s cap much further starts to put the tail on the board before
+ *  the head reaches the floor. */
+export const SEGMENT_SPACING = 42;
+
+export function makeChain(count, speed, startS, spacing = SEGMENT_SPACING, wave = 1) {
   const segs = [];
   const scale = hpScale(wave);
   for (let i = 0; i < count; i++) {
@@ -198,15 +213,17 @@ export function reserveSegIds(id) {
   if (Number.isFinite(id) && id >= _segId) _segId = Math.floor(id) + 1;
 }
 
-/** Segments in a wave. Growth was +3/wave capped at 40, which flatlined around
- *  wave 9 and left length doing no work after that; +4 to a 56 cap keeps it
- *  climbing for roughly twice as long. The cap matters: at `spacing` 30 a
- *  56-segment chain spans 1650px of a ~5750px path, so it still fits the board
- *  comfortably without the tail overlapping the head. */
-// Ramp steeper again (20+8/wave, was 18+6/wave) and the cap raised alongside
-// it (72, was 56) — feedback found the chain wasn't growing fast enough to
-// feel like escalating danger even with the previous steepening.
-export const waveCount = (wave) => Math.min(20 + wave * 8, 72);
+/** Segments in a wave. Raised repeatedly (+3/40 → +4/56 → +8/72 → +9/78) as
+ *  each pass found the chain still not growing fast enough to feel like
+ *  escalating danger.
+ *
+ *  **The cap is a geometry limit, not a taste one.** At `SEGMENT_SPACING` a
+ *  78-craft chain spans 78 × 42 ≈ 3276px of the portrait path's ~4374px —
+ *  about 75%. Push either number much higher and the tail is still entering
+ *  the board while the head is at the floor, which makes recoil meaningless
+ *  and eventually laps the chain onto itself. Raise `hpScale` instead when
+ *  more difficulty is wanted; that has no geometric ceiling. */
+export const waveCount = (wave) => Math.min(20 + wave * 9, 78);
 /** Path length of the standard layout, used as the default reference. */
 export const REF_PATH_LEN = buildPath(LAYOUT).pathLen;
 
@@ -369,13 +386,17 @@ export const UPGRADES = {
     name: 'Barrel',
     blurb: 'Damage per shot, then projectile size',
     costs: [42, 91, 161, 259, 392],
+    /* shotR's top end pulled in (was 3.2→6.0). The shell draws a filled arc
+       at `r` plus two glowDots at `r` and `r/2`, so the on-screen bloom is
+       roughly twice the number — at 6.0 a maxed shot was a blob big enough
+       to hide what it was about to hit. Damage still climbs the same. */
     tiers: [
-      { dmg: 1.0, shotR: 3.2 },
-      { dmg: 1.3, shotR: 3.2 },
-      { dmg: 1.6, shotR: 3.8 },
-      { dmg: 2.0, shotR: 4.4 },
-      { dmg: 2.5, shotR: 5.2 },
-      { dmg: 3.1, shotR: 6.0 },
+      { dmg: 1.0, shotR: 3.0 },
+      { dmg: 1.3, shotR: 3.0 },
+      { dmg: 1.6, shotR: 3.4 },
+      { dmg: 2.0, shotR: 3.8 },
+      { dmg: 2.5, shotR: 4.2 },
+      { dmg: 3.1, shotR: 4.6 },
     ],
   },
   chamber: {
@@ -480,6 +501,13 @@ export function createWorld(opts = {}) {
     gunUnlocks: { auto: false, rail: false, mortar: false, ion: false },
     barrels: 1,
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
+    /* Whether carriers drop power-ups at all. Off by default: the owner
+       wanted to see how the game plays without them, and that is a question
+       about the *base* game, so the base game is the thing without them.
+       Kept as a switch rather than deleting the machinery — the whole
+       pickup/effect system is intact behind it, and the shell exposes it in
+       the settings menu so it can be A/B'd on a phone without a redeploy. */
+    drops: opts.drops ?? false,
     shake: 0, hitStop: 0,
     // extra hit radius, set by the shell from the input device (see
     // AIM_ASSIST_R). Zero for mouse and keyboard, which aim precisely.
@@ -532,7 +560,7 @@ export function relayout(w, L2) {
 }
 
 export function spawnWave(w) {
-  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30, 30, w.wave)];
+  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30, SEGMENT_SPACING, w.wave)];
   w.shots = []; w.bits = []; w.floaters = [];
   w.pickups = [];
   w.waveClear = false;
@@ -544,6 +572,9 @@ export function spawnWave(w) {
  *  or derived and so are rebuilt on the way back in; `assistR` is deliberately
  *  left out because it describes the *device* (touch vs mouse), not the run —
  *  restoring a phone save on a desktop must not carry the touch aim assist over.
+ *  `drops` is excluded for the same reason: it is a setting the player chose,
+ *  so a resumed run should honour the setting that is live now, not the one
+ *  that happened to be set when the save was written.
  *
  *  `bits` and `floaters` are dropped too: they are decorative particles with a
  *  lifetime measured in tenths of a second, and nobody resumes a game to find
@@ -600,7 +631,7 @@ export function hydrate(w, snap) {
   w.dropSeed = snap.dropSeed ?? 987654321;
 
   w.chains = snap.chains.map(ch => ({
-    s: ch.s, speed: ch.speed, spacing: ch.spacing ?? 30,
+    s: ch.s, speed: ch.speed, spacing: ch.spacing ?? SEGMENT_SPACING,
     recoil: ch.recoil ?? 0, split: !!ch.split,
     segs: ch.segs.map(s => ({ ...s, flash: 0, deflect: 0 })),
   }));
@@ -1089,7 +1120,10 @@ export function damageSeg(w, ci, i, dmg, shot) {
     w.fx.burst(pos.x, pos.y, '#e0503c', 26);
   }
 
-  if (K.carries) spawnPickup(w, pos.x, pos.y, rollDrop(w));
+  // `drops` off is an experiment — see createWorld. Everything downstream
+  // (stepPickups, the catch band, the pickup rendering) is already gated on
+  // `pickups.length`, so this one line is the whole switch.
+  if (K.carries && w.drops) spawnPickup(w, pos.x, pos.y, rollDrop(w));
 
   ch.segs.splice(i, 1);
   ch._pos = null;   // stale after the splice — stepShots rebuilds it lazily
@@ -1247,14 +1281,16 @@ export function stepShots(w, dt) {
             break outer;
           }
           registerHit(w);
-          // convergence: if another shot struck this same segment within the
-          // window, both count as focused fire and hit harder
+          /* Convergence: if another shot struck this same segment within the
+             window, both count as focused fire and hit harder. The bonus is
+             silent now — it used to push a "FOCUS" floater, which with five
+             guns firing fired on most kills and became noise rather than
+             information. The bonus itself is unchanged. */
           const b = w.battery;
           let dmg = p.dmg;
           if (b.lastHitAt[seg.id] !== undefined &&
               b.clock - b.lastHitAt[seg.id] <= CONVERGE_WINDOW) {
             dmg *= 1 + CONVERGE_BONUS;
-            w.fx.push('FOCUS', sp.x, sp.y - 14, '#ffd9a8');
           }
           b.lastHitAt[seg.id] = b.clock;
           damageSeg(w, ci, i, dmg, p);

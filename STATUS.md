@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-02 (v25 — economy/art/UI round, Feedline rename)
+Last updated: 2026-08-04 (v26 — art, difficulty, gating, UI placement)
 
 ## Read this first
 
@@ -13,12 +13,12 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 - **The cabinet** ([index.html](index.html)) — the front door, listing all four games. Each game links back to it.
 
-- **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). [flak-battery-standalone.html](games/flak-battery/flak-battery-standalone.html) is a *generated* single-file build — never edit it directly, run `node games/flak-battery/build.mjs`.
+- **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, armoured back rows, four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**365 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 197, Hull Breach 73, Choke Point 49, Feedline 44, shared 2 — plus **33 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**371 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 199, Hull Breach 73, Choke Point 53, Feedline 44, shared 2 — plus **34 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
 ## In progress / just decided
 
@@ -30,7 +30,7 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **The cabinet exists** — `index.html` ties the three games together, so this is an app rather than three loose pages. Plain links, no router, no framework.
 - **Portrait layouts** added to Hull Breach and Feedline, so all three games are phone-shaped. Verified at a 375x812 viewport: Hull Breach uses 88% of viewport height, Feedline 83%, and a drag in Hull Breach's thumb band steers the paddle without covering the court.
 - **Fonts are self-hosted** from `shared/fonts/`; nothing loads from the Google Fonts CDN any more, which was the last thing standing between the games and working offline.
-- **Flak Battery's missing `build.mjs` now exists**, so the standalone single-file build is generated rather than hand-synced. This was forced by the extraction: the standalone has to inline the shared files too, and `render-test.mjs` tests the standalone — a stale one meant the render test was silently checking old code. Regenerate with `node games/flak-battery/build.mjs`.
+- ~~**Flak Battery's missing `build.mjs` now exists**~~ — superseded. The standalone build and its generator were **retired in v26**: the artifact had to be regenerated after every change and a stale one meant the render test was checking old code, for no benefit since nothing distributed the file. All four render tests now inline the real shell in memory via `tools/inline.mjs`.
 - Fixed a pre-existing Windows bug in `render-test.mjs` (it used `URL.pathname`, which yields `/C:/...` with percent-encoded spaces). The render test had evidently never run on this machine; it passes now.
 - Long-term stretch goal: ship as a phone app. Plan is PWA first (installable, offline, cheap, no rewrite needed); native wrapping (e.g. Capacitor) only if app-store distribution becomes a real need later.
 
@@ -216,16 +216,52 @@ All three followed an existing pattern rather than inventing new architecture (F
 
 **Noted for next time, not acted on:** the Flak Battery standalone build (`flak-battery-standalone.html`, `build.mjs`) was an early single-file test artifact — per the owner, it no longer needs to be maintained and can be retired (delete the file, `build.mjs`, its precache-exclusion note in `sw.js`, and repoint `render-test.mjs`/`resume-test.mjs` at `flak-battery.html` directly, matching the other three games' render-test pattern).
 
-## Feedback queued for a future round (not yet acted on, 2026-08-03)
+## Round 4 feedback — art, difficulty, gating, UI placement (v26, 2026-08-04)
+
+Everything in the two queued lists below was acted on. Notable outcomes:
+
+- **The Flak Battery standalone is retired.** `flak-battery-standalone.html` and `build.mjs` are gone; its render test now boots the real shell in memory via `tools/inline.mjs`, like the other three. It even gained a boot test it never had.
+- **Menu button moved into the header**, absolutely positioned rather than as a flex child — as a third child it wrapped onto its own row and added ~50px of header height on every game. `header` gets `position:relative` + `padding-right` to reserve its column.
+- **The real "header too high" cause was a flexbox trap**, not padding: `body` was `align-items:center`, and a centred flex item taller than its container overflows *both* ways, so `overflow:hidden` clipped the top off-screen. Now `flex-start`.
+- **`fit.js` stopped guessing.** `GAP_AND_PADDING = 34` didn't track the ≤560px media query or safe-area insets; it now measures body padding, every shell child that isn't the board, and the flex gaps. Choke Point's `extra` was removed as a consequence — its controls strip is a shell child and was being counted twice.
+- **Choke Point's "dead space either side" needed no route redraw.** The board was height-constrained because three stacked full-width wave buttons ate 225px (28% of the screen). Putting Start / FF / Auto in one row cut that to 165px and the board now fills the full stage width (gutter 0; canvas 357×535, up from 318×478). The 12×8 grid and all three routes are untouched.
+- **Rush Wave became two controls**, per your correction: a **1×/2×/4× fast-forward** (the shell calls `step` N times per frame — a 4× `dt` would overshoot the sub-step sizes the collision and spawn code assume) and an **Auto** toggle that starts the next wave when one clears. `rushWave`/`RUSH_COMPRESSION` are deleted.
+- **Health is brightness now, in both games.** Flak Battery's hp numbers and Choke Point's hp bars are gone; a damaged thing dims instead, via a new shared `dim()` in `glow.js` (needed because `cube`/`extrudeRect` take colours but no intensity argument the way `glowStroke` does).
+- **The "more 3D" cue was the joining edges.** Choke Point's enemies moved to `cube()`; Flak Battery's oblong craft kept their hand-rolled path but gained the same corner-linking strokes. Both also had their body fill lifted off near-black — the same lesson already recorded for Choke Point's towers, which read as hollow rings until the body was lifted.
+- **Flak Battery's spacing had to grow with the craft.** At `long = r*2.8` against spacing 30 the plates were wider than the gap and a chain fused into one continuous fence. `SEGMENT_SPACING` is now 42 with square craft at `r*2.7`. That spacing is also what caps chain length: 78 craft × 42 ≈ 3276px of a 4374px portrait path (~75%), so further difficulty should come from `hpScale`, which has no geometric ceiling.
+- **Power-up drops are off by default**, behind `createWorld({ drops })` and a settings-menu toggle. Excluded from snapshots for the same reason `assistR` is — it describes the player's setting, not the run.
+- **New Choke Point `tank`**: halts on a timer to deploy Swarm mid-path, and spills half a batch again where it dies. Needed `spawnEnemy` to take a `dist` (it always started at 0).
+- **First-play-through gating** via new `shared/unlocks.js` — cabinet-only by your call, so deep links and PWA shortcuts still work and the manifest is untouched.
+
+## The queued lists these came from (2026-08-03 / 2026-08-04)
 
 **Choke Point:**
 - Start Wave and Rush Wave side by side (currently stacked full-width) — and Rush Wave should be a continuous fast-forward (e.g. hold-to-compress) rather than a per-tap compression.
 - Some tower-palette buttons can be selected even when not actually available (e.g. unaffordable) — check the selection logic, not just the `disabled` styling.
 - Make the game board bigger.
+- Make the enemy squares look more 3D.
+- Drop the hp bar above each enemy; dim the square as its health falls instead.
+- New **tank** enemy: periodically stops and deploys Swarm, and deploys half the usual amount again when destroyed.
+- After wave 5 the difficulty should ramp sooner.
+
+**Flak Battery:**
+- Enlarge the squares and the path (again — v25 scaled them up once).
+- Scale the shop cards back down.
+- Remove the "FOCUS" floater on a convergence kill.
+- Reduce the size of the bigger projectiles.
+- Turn power-up drops **off** — an experiment to see how the game plays without them, so keep it a flag rather than a deletion.
+- Make the squares look more 3D.
+- Drop the hp number on tough segments; dim the square as its health falls instead (same cue as Choke Point above).
+- The command ship should read as a command ship, not as a head.
+- Longer chains, and more health per square.
+
+**Feedline:**
+- Slow the opening speed down — too hard at the start.
 
 **All games:**
 - Move the menu button into the header (it currently floats as a corner button over the canvas).
 - Header sits too high — revisit after the safe-area-inset-top fix from v25; may need a second look at spacing/positioning rather than just the inset.
+- **Gate the games on a first play-through**: Flak Battery unlocks after losing once in Feedline; Choke Point after reaching wave 10 in Flak Battery; Hull Breach after wave 10 in Choke Point. First play-through only — once unlocked, they stay unlocked.
 
 ## Open decisions (not yet settled)
 

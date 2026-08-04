@@ -267,10 +267,21 @@ test('a world can be built on the tall layout', () => {
 test('wave scaling grows then caps', () => {
   assert.ok(E.waveCount(5) > E.waveCount(1));
   assert.ok(E.waveSpeed(5) > E.waveSpeed(1));
-  assert.equal(E.waveCount(99), 72, 'segment count caps');
-  // the cap has to leave the chain shorter than the path, or the tail would
-  // wrap around into the head
-  assert.ok(E.waveCount(99) * 30 < E.REF_PATH_LEN * 0.5, 'a maxed chain still fits the board');
+  assert.ok(E.waveCount(99) > E.waveCount(5), 'and caps somewhere above the early waves');
+  assert.equal(E.waveCount(200), E.waveCount(99), 'the cap really is a cap');
+});
+
+test('a maxed chain still fits the board it is actually played on', () => {
+  /* The length cap is a geometry limit: the tail must not still be entering
+     while the head is at the floor. Measured against the *portrait* path,
+     since the game has been portrait-only since 2026-07-27 — the landscape
+     REF_PATH_LEN is longer and would flatter the numbers. Derived from the
+     live constants so raising either one trips this rather than shipping a
+     chain that laps itself. */
+  const portrait = E.buildPath(E.LAYOUT_TALL).pathLen;
+  const span = E.waveCount(999) * E.SEGMENT_SPACING;
+  assert.ok(span < portrait * 0.85,
+    `maxed chain spans ${span.toFixed(0)} of a ${portrait.toFixed(0)} path`);
 });
 
 test('segments trail the head by one spacing each', () => {
@@ -1336,8 +1347,8 @@ test('the drop table favours situational effects over strong ones', () => {
   assert.ok(count('shield') < count('rapid'), 'shield is rarer than rapid');
 });
 
-test('carriers drop a pickup when destroyed', () => {
-  const w = E.createWorld();
+test('carriers drop a pickup when destroyed, with drops on', () => {
+  const w = E.createWorld({ drops: true });
   w.chains = [chain(16, 0, 700)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'carrier');
   assert.ok(idx > 0, 'fixture has a carrier');
@@ -1346,6 +1357,15 @@ test('carriers drop a pickup when destroyed', () => {
   E.damageSeg(w, 0, idx, 99);
   assert.equal(w.pickups.length, 1, 'exactly one pickup dropped');
   assert.ok(E.POWERUPS[w.pickups[0].kind], 'dropped a valid kind');
+});
+
+test('with drops off — the default — a carrier drops nothing', () => {
+  const w = E.createWorld();
+  assert.equal(w.drops, false, 'off unless asked for');
+  w.chains = [chain(16, 0, 700)];
+  const idx = w.chains[0].segs.findIndex(s => s.kind === 'carrier');
+  E.damageSeg(w, 0, idx, 99);
+  assert.equal(w.pickups.length, 0, 'the carrier still dies, it just drops nothing');
 });
 
 test('non-carriers drop nothing', () => {
@@ -1602,7 +1622,7 @@ test('power-ups appear and take effect during real play', () => {
     if (best) w.cannon.ang = E.clampAim(Math.atan2(best.y - w.cannon.y, best.x - w.cannon.x));
   };
 
-  const w = E.createWorld();
+  const w = E.createWorld({ drops: true });   // the point of this test is drops
   w.wave = ALL_KINDS;
   E.spawnWave(w);
   w.lives = 99;
@@ -2159,6 +2179,13 @@ test('a long run with constant fire stays internally consistent', () => {
 test('splits happen during real play and stay within the cap', () => {
   const w = E.createWorld();
   w.wave = ALL_KINDS;      // late enough that splitters exist at all
+  /* Equipped, not bare. Splitters sit mid-chain behind a lot of hp, and by
+     the wave they unlock a real player has spent a run's worth of scrap —
+     a stock single cannon sweeping blindly cannot chew deep enough to reach
+     one, so testing with one measured the bot, not the mechanic. */
+  w.scrap = 1e6;
+  for (const b of E.BRANCHES) for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, b);
+  while (E.buyMount(w)) { /* fill every mount */ }
   E.spawnWave(w);
   w.lives = 99;
 

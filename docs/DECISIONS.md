@@ -624,3 +624,61 @@ Caught in the process: the cabinet card's lore paragraph on `index.html` still h
 ## 2026-08-02 — Flak Battery's standalone build is being retired (not yet done)
 
 Noted here rather than acted on: the owner confirmed `flak-battery-standalone.html`/`build.mjs` — an early single-file distribution experiment predating the other three games — no longer needs to be maintained. Next session: delete the standalone file and `build.mjs`, remove its precache-exclusion comment from `sw.js`, and repoint `games/flak-battery/render-test.mjs`/`resume-test.mjs` at `flak-battery.html` directly (in-memory inlining via `tools/inline.mjs`, matching how the other three games' render tests already work without a checked-in standalone artifact).
+
+## 2026-08-04 — The standalone build is gone
+
+Done, as flagged above. `flak-battery-standalone.html` and `build.mjs` deleted; `render-test.mjs` now boots `flak-battery.html` through the shared harness like the other three games, and picked up a "the shell boots without throwing" test it never had (the standalone version asserted only on individual draw paths).
+
+Worth stating the general lesson, because the artifact survived three sessions of "remember to regenerate it": **a generated file checked into the repo needs a reason to exist that outweighs being a standing staleness trap.** This one's reason evaporated the moment `tools/inline.mjs` could inline in memory — every regeneration after that was maintenance paid for nothing, and the one time it *was* forgotten, the render test silently validated old code for two builds.
+
+## 2026-08-04 — "Header too high" was a flexbox overflow trap, not padding
+
+Two rounds of feedback said the header sat wrong, and the first fix (adding `env(safe-area-inset-top)`, v25) was correct but incomplete. The actual clipping came from `body { display:flex; align-items:center; overflow:hidden }`: **a centred flex item taller than its container overflows equally in both directions**, and with `overflow:hidden` the top half becomes unreachable — there is no scroll position that can reveal it. On a short phone with the shell at full height, that ate the header.
+
+`align-items:flex-start` fixes it permanently; content can only ever overflow downward, which `overflow:hidden` handles gracefully. Worth knowing generally: centring is safe only when the item is guaranteed smaller than the container, and `overflow:hidden` turns "slightly too tall" into "silently unreachable" rather than "scrollable".
+
+Related, found in the same pass: `fit.js`'s `GAP_AND_PADDING = 34` was a hardcoded stand-in for furniture that varies — the ≤560px media query drops body padding from 16px to 8px, and safe-area insets are unknowable at author time. It now measures the body padding, every `#shell` child that isn't the board, and the flex gaps. **A consequence worth remembering: Choke Point had to stop passing `extra`.** Its controls strip is a shell child, so measuring counted it and `extra` counted it again — the board shrank by the strip's height twice. `extra` is now documented as being only for furniture that lives *outside* `#shell`.
+
+## 2026-08-04 — Choke Point's dead space was the button layout, not the grid
+
+Reported as "make the game board bigger — there is dead space on the left and right". The instinct is to change the grid, and the plan called for exactly that — which would have meant redrawing all three hand-authored routes and re-validating the transpose invariants.
+
+Measuring first showed the board was **height**-constrained, not width-constrained: `makeFit` takes `min(availableHeight, stageWidth / ratio)`, and the controls strip was 225px — three wave buttons at `flex: 1 1 100%`, each forced onto its own row, eating 28% of an 812px screen. Putting them in one row cut the strip to 165px, and the board went from 318×478 to 357×536 — the full 359px stage bar a 2px rounding gutter, with the grid and routes untouched.
+
+The general shape: **when something looks too small, measure which constraint is actually binding before changing the thing that looks wrong.** The grid was never the problem, and changing it would have been a large, risky edit that also raised difficulty as a side effect.
+
+## 2026-08-04 — Fast-forward steps more times; it does not step bigger
+
+Choke Point's fast-forward runs `E.step(world, dt)` N times per frame rather than `E.step(world, dt * N)`. The engine is a pure function of `dt`, so the second looks equivalent and is not: at 4× a frame becomes ~133ms, far past the intervals the tower cooldowns and spawn release assume, and enemies would jump between positions instead of moving through them. Repeating a normal-sized step keeps every interval the engine sees identical to 1× — there are simply more of them, which is what "faster" should mean.
+
+This is also why the multiplier lives entirely in the shell: nothing in the engine needs to know it exists.
+
+## 2026-08-04 — Health as brightness, and why `dim()` had to be shared
+
+Both Flak Battery (hp numbers on tough craft) and Choke Point (hp bars above every enemy) dropped their numeric readouts in favour of the thing simply going dark as it takes damage. On boards carrying 78 craft and 30+ enemies respectively, per-object numbers were competing with the thing the player is actually tracking.
+
+The implementation forced a shared helper. `glowStroke` takes an `intensity` argument, but `extrude`/`extrudeRect`/`cube` do not — they issue several strokes *and* opaque fills internally, so one alpha could not describe "dimmer" for all of them, and a caller-side `globalAlpha` is explicitly documented as not working (each pass sets its own). So `dim(col, k)` scales the channels instead: for additive glow that is equivalent to lowering intensity, and it correctly darkens the opaque body fills too. Both games needed the identical maths, which is what made it `glow.js`'s problem rather than each caller's.
+
+## 2026-08-04 — The "3D" cue was the joining edges, and the body fill
+
+"Make the squares look more 3D" turned out to have two concrete causes, both already solved elsewhere in the repo and neither obvious from the phrasing.
+
+First: `cube()` in `glow.js` strokes the four edges linking the front face to the offset back one, and its own comment already says these are "what say 'solid', not 'two squares'". Choke Point's enemies were using `extrudeRect`, which does not draw them; Flak Battery's segments were hand-rolled and omitted them. Adding them is most of the effect.
+
+Second: both had near-black body fills, so the shape read as an outline on a dark board. The fix was already recorded verbatim for Choke Point's *towers* — at the default near-black the fill vanished into the background and the tower read as a hollow ring rather than as a solid object. The same lesson had to be learned twice because it was written as a comment on one call site instead of as a property of the technique.
+
+## 2026-08-04 — Bigger craft need bigger spacing, and spacing caps chain length
+
+Flak Battery's craft were drawn at `long = r * 2.8` (~36px) against a `spacing` of 30. Wider than the gap between them, so a chain fused into one continuous fence — the individual craft were not merely small, they were *invisible as objects*. Enlarging them without touching spacing would have made that strictly worse. Only rendering a real frame to PNG caught it; every test still passed.
+
+So `SEGMENT_SPACING` became a named export at 42, with square craft at `r * 2.7`. That trade has a hard ceiling worth recording: the portrait path is ~4374px, so the 78-craft cap spans ~3276px, about 75% of the run. Push spacing or the cap much further and the tail is still entering while the head is at the floor, which makes recoil meaningless and eventually laps the chain onto itself. **Future difficulty should come from `hpScale`, which has no geometric ceiling** — a note now sits in the code beside `waveCount`.
+
+A test failure caught something related and worth keeping: raising hp far enough meant a blindly-sweeping test bot could no longer chew deep enough to reach a splitter, so `'splits happen during real play'` started failing. The mechanic was fine; the bot was under-equipped for the wave it was testing. It now buys the upgrades and mounts a real player would have by then — a reminder that a test simulating "real play" has to keep simulating a *plausible* player as the balance moves.
+
+## 2026-08-04 — Game gating is cabinet-only, deliberately
+
+First-play-through unlocks (Flak Battery after a Feedline run, Choke Point at Flak Battery wave 10, Hull Breach at Choke Point wave 10) are enforced on the cabinet only. Direct URLs, bookmarks and the installed PWA's four shortcuts all still open any game, and `manifest.webmanifest` is untouched.
+
+That was an explicit call rather than an oversight. Enforcing it inside each shell means four redirect paths, a way to strand somebody who deep-linked, and a real risk of locking out a player whose progress failed to persist — all to protect single-player progression that only one person can "cheat", and who chose the gate. Locking the front door is the entire intent.
+
+One implementation note: progress is recorded by the games directly (`recordProgress` in each shell) and **not** inferred from `scores.js`. `submit()` only writes when a score improves, so a short run after a good one records nothing — reaching wave 10 once and then playing badly would have left the gate shut.
