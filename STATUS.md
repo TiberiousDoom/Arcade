@@ -216,6 +216,17 @@ All three followed an existing pattern rather than inventing new architecture (F
 
 **Noted for next time, not acted on:** the Flak Battery standalone build (`flak-battery-standalone.html`, `build.mjs`) was an early single-file test artifact — per the owner, it no longer needs to be maintained and can be retired (delete the file, `build.mjs`, its precache-exclusion note in `sw.js`, and repoint `render-test.mjs`/`resume-test.mjs` at `flak-battery.html` directly, matching the other three games' render-test pattern).
 
+## Feedback queued for a future round (not yet acted on, 2026-08-03)
+
+**Choke Point:**
+- Start Wave and Rush Wave side by side (currently stacked full-width) — and Rush Wave should be a continuous fast-forward (e.g. hold-to-compress) rather than a per-tap compression.
+- Some tower-palette buttons can be selected even when not actually available (e.g. unaffordable) — check the selection logic, not just the `disabled` styling.
+- Make the game board bigger.
+
+**All games:**
+- Move the menu button into the header (it currently floats as a corner button over the canvas).
+- Header sits too high — revisit after the safe-area-inset-top fix from v25; may need a second look at spacing/positioning rather than just the inset.
+
 ## Open decisions (not yet settled)
 
 - ~~Flak Battery's aim rework is untested on a device~~ — **settled 2026-07-29.** Confirmed good on a real phone. `AIM_ASSIST_R` (9) and `TRAVERSE_MAX` (5.6) stand; treat them as tuned unless something later disagrees.
