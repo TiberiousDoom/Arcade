@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-04 (v26 — art, difficulty, gating, UI placement)
+Last updated: 2026-08-05 (v27 — two economies rebuilt: per-emplacement guns, self-levelling towers)
 
 ## Read this first
 
@@ -16,9 +16,9 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, armoured back rows, four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
-- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) with three tiers, escalating endless waves, charge economy, core integrity, tower upgrade/sell, lossless rotation. Tap to build.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
+- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armoury, easy/medium/hard, escalating endless waves, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap to build.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**371 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 199, Hull Breach 73, Choke Point 53, Feedline 44, shared 2 — plus **34 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**414 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 218, Hull Breach 78, Choke Point 72, Feedline 44, shared 2 — plus **41 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
 ## In progress / just decided
 
@@ -215,6 +215,42 @@ All three followed an existing pattern rather than inventing new architecture (F
 - **Hull Breach:** fixed the level-select stacking bug (`#levelSelect` now `z-index:8`, so the opening banner can never paint over it) and wired it into the new menu (`onLevels`) so it's reachable mid-run, not just from the opening banner.
 
 **Noted for next time, not acted on:** the Flak Battery standalone build (`flak-battery-standalone.html`, `build.mjs`) was an early single-file test artifact — per the owner, it no longer needs to be maintained and can be retired (delete the file, `build.mjs`, its precache-exclusion note in `sw.js`, and repoint `render-test.mjs`/`resume-test.mjs` at `flak-battery.html` directly, matching the other three games' render-test pattern).
+
+## Round 5 feedback — two economies rebuilt (v27, 2026-08-05)
+
+The largest round so far, and mostly not tuning: **Flak Battery's shop and Choke Point's upgrade system were both replaced**, not adjusted.
+
+**Choke Point — towers level themselves, money buys the class.** The manual three-tier upgrade is gone. Towers carry `xp`/`level` (1–10) and level from damage that actually lands, capped at the target's remaining health plus a small kill bonus — otherwise a Breaker parked over the spawn levels on overkill. What scrap buys is a per-class **armoury** (damage / fire rate / range / splash), and it **persists across runs** in localStorage. Each class buys its speciality cheap and its opposite dear (Node rate/splash, Breaker splash/rate, Coil range/damage), which is what stops the three converging on the same build.
+
+Since the armoury only grows, **difficulty** (easy/medium/hard) is the counterweight, scaling enemy health and the opening purse in opposite directions, and it rides along with the score so a Hard wave 14 is not filed against an Easy one. `charge` became **components**; the save reads both names so a v26 run in progress resumes with its money.
+
+Two stated requirements are pinned by tests rather than left to drift: a **level-10 Breaker reaches exactly three cells**, and one with the range track maxed reaches exactly **four**.
+
+**The side gutters are gone, and v26's fix never worked.** Measured at 375×812, the board cleared the stage width by *three pixels* — on a desktop browser, where `env(safe-area-inset-*)` reads as 0. A real phone spends 44–59px on the notch and ~34px on the home indicator, and every one of those came off the board's **width**: 63px of gutter per side, measured. `fit.js` gained a `fillWidth` mode (spend the full width, let the page scroll if the furniture no longer fits) plus a compact palette below 560px. Gutter is now 2px at every inset level tested, and the board on a notched 375px phone went 296px → 357px wide. Grid, `CELL` and routes all untouched.
+
+**Rush Wave is back.** v26 deleted it assuming fast-forward covered it. It does not: fast-forward speeds up *time*, so towers fire proportionally faster and the wave is merely shorter; rush speeds up the *enemy* alone. One is a convenience, the other a gamble taken for the bounty.
+
+**Flak Battery — upgrades per emplacement.** `stats(w)` became `stats(w, gun)` and every caller must now say which mount it means. One tab per emplacement in the shop, each with its own four branches, its own retrofit row, and a **large drawing of the gun actually fitted there** — five of them, one per type. Prices deliberately unchanged: a new mount arrives bare, so a fifth gun competes against deepening the four you have.
+
+**The mortar lobs.** `arc: true` had been set on every mortar round since the gun shipped and was read by *nothing*, so the blurb described behaviour that did not exist. Rounds now carry a travelled distance and cannot hit anything inside `MORTAR_ARM`.
+
+**Extra barrels fire parallel**, laterally offset rather than angularly fanned, with smaller and weaker flanking rounds. Both the portrait and the mount art read the offsets from the engine so the picture cannot drift from the geometry.
+
+**A breach opens the shop**, retrying the same wave rather than throwing it straight back — you had just earned scrap and no way to spend it. Blowback is about a third of what it was.
+
+**The wave-7 cliff** was `waveCount` hitting its 78-craft ceiling at exactly wave 7. Multi-column waves were tried and rejected (see DECISIONS); the climb comes from `hpScale`, 26% steeper at wave 14 and still rising where v26 flatlined.
+
+**Touch aiming splits on the breach line**: relative drag below it, point-at-your-finger above it, still through `slewAim` so the turret swings rather than teleporting.
+
+**Sound works again.** `menu.js` resumed audio on a `{ once: true }` listener, so the first time iOS suspended the context — a call, a lock, backgrounding the PWA — nothing was left to wake it and the session stayed silent. And `fire()` was the quietest entry in the library by half.
+
+**Hull Breach** gained an expensive single-step **Pierce** branch: the ball carries through a brick it destroys, but still bounces off one that survives.
+
+### Still open after this round
+
+- The armoury has had no device play yet. The costs (`CLASS_BASE_COST`, `SPEC_DISCOUNT`/`WEAK_PENALTY`) and the XP curve (`xpForNext`) are first drafts and will want a pass once there is a feel for how fast a class actually climbs.
+- Flak Battery's per-emplacement economy is untuned on purpose — the five-fold bill *is* the balance, but nobody has yet played a run deep enough to say whether a wide-and-shallow battery is genuinely competitive with a narrow-and-deep one.
+- `fillWidth` is Choke Point only. If another game ever wants it, the `body.scrolls` pairing is the part to remember.
 
 ## Round 4 feedback — art, difficulty, gating, UI placement (v26, 2026-08-04)
 

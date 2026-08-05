@@ -682,3 +682,107 @@ First-play-through unlocks (Flak Battery after a Feedline run, Choke Point at Fl
 That was an explicit call rather than an oversight. Enforcing it inside each shell means four redirect paths, a way to strand somebody who deep-linked, and a real risk of locking out a player whose progress failed to persist — all to protect single-player progression that only one person can "cheat", and who chose the gate. Locking the front door is the entire intent.
 
 One implementation note: progress is recorded by the games directly (`recordProgress` in each shell) and **not** inferred from `scores.js`. `submit()` only writes when a score improves, so a short run after a good one records nothing — reaching wave 10 once and then playing badly would have left the gate shut.
+
+## 2026-08-05 — The side gutters were the safe-area insets, and v26's fix never touched them
+
+v26 "fixed" Choke Point's dead space by shrinking the controls strip, measured a 2px gutter at 375×812, and shipped. The next round of feedback said the dead space was still there.
+
+It was, and the measurement was the problem. At 375×812 the board cleared the stage width by **three pixels** — on a desktop browser, where `env(safe-area-inset-*)` evaluates to 0. A real iPhone spends 44–59px on the notch or Dynamic Island and ~34px on the home indicator. Feeding those back through the same arithmetic (extra body padding standing in for the insets) produced a **63px gutter on each side**, which is the reported dead space almost exactly.
+
+Two things worth keeping from this:
+
+- **A layout measurement taken without simulated insets is not a measurement of a phone.** It is a measurement of a desktop that happens to run the same CSS. Any future check of "does the board fill the width" has to add the insets explicitly, and the browser pass in CLAUDE.md now says so.
+- **`min(availableHeight, stageWidth / ratio)` pays every height shortfall out of the width.** That is right when the whole board must be visible without scrolling, and wrong when the board is the thing you are aiming taps at. `makeFit` gained an opt-in `fillWidth` that spends the full width and lets the page scroll instead, paired with a `body.scrolls` class because the default `overflow:hidden` would otherwise make the pushed-down furniture unreachable. Gutter is now 2px at every inset level tested, and the board on a notched 375px phone went 296px → 357px wide.
+
+The grid, `CELL` and all three routes were left untouched. The plan had called for changing them; the measurement said not to.
+
+## 2026-08-05 — Choke Point: towers level themselves, money buys the class
+
+The manual three-tier upgrade is gone. It always lost the same argument: an upgrade competed for scrap with another tower, and another tower nearly always won, so the tiers were something you bought when you had run out of places to build.
+
+Splitting the two solves it. Towers earn their own levels by fighting — XP for damage dealt, up to level 10 — and money buys a **per-class armoury** that persists between runs. Placement earns, purchase compounds, and neither is spending the other's currency.
+
+Three details that are not obvious and are load-bearing:
+
+- **XP is capped at the target's remaining health.** Credit the full swing and a Breaker parked over the spawn levels fastest of anything on the board, on damage that killed nothing. Overkill pays what it killed.
+- **Each class buys its speciality cheap and its opposite dear** (Node rate/splash, Breaker splash/rate, Coil range/damage). Without that the four tracks are the same four tracks for everyone and the three classes converge on whichever build is strongest. The discount is what keeps a Node a Node however much goes into it.
+- **The engine holds `classUpgrades` but never touches storage.** `stats(w, tower)` has to be the only place numbers come from, so the armoury lives on the world; the shell loads and saves it. Same split as every other engine here, and the reason `resetGame` deliberately leaves it alone.
+
+Because the armoury only ever grows, every run after the first would otherwise be easier than the last. **Difficulty (easy/medium/hard) is the counterweight** — the player's dial rather than automatic scaling, and it rides along with the score so a Hard wave 14 is never filed against an Easy one.
+
+## 2026-08-05 — Fast-forward and rush are different controls, and deleting one was a mistake
+
+v26 removed `rushWave` on the reasoning that the new fast-forward covered it. It does not, and the distinction is worth stating because it was got wrong once already:
+
+- **Fast-forward speeds up time.** Towers fire proportionally faster, so the wave is exactly as hard and merely shorter. It is a convenience.
+- **Rush speeds up the enemy.** Towers keep reloading at their normal rate while the wave arrives sooner. It is a gamble taken for the bounty.
+
+Restored, alongside fast-forward and auto-advance, which are three answers to three different wants. This supersedes the v26 entry claiming the engine "got smaller" by dropping it — it got smaller by dropping something that was doing a job.
+
+## 2026-08-05 — Flak Battery: upgrades per emplacement, with the prices left alone
+
+The four branches moved off the world and onto each gun; `stats(w)` became `stats(w, gun)` and every caller now has to name a mount. The mechanical part was a wide but shallow refactor. The design decision was **not rebalancing afterwards**.
+
+Under the old shared tree a new mount arrived already carrying every tier the first had bought, so more mounts was strictly more gun and the only question was how fast you could afford them. Now a mount arrives bare and the full tree costs five times as much, which is the entire point: a fifth gun competes directly against deepening the four you have. Wide-and-shallow covers the board; narrow-and-deep punches through armour; no run affords both.
+
+Worth flagging for whoever tunes this next: the five-fold bill is deliberate, not an oversight, and `fullBatteryCost()` exists to make the ceiling checkable.
+
+## 2026-08-05 — The mortar's `arc` flag had never been read by anything
+
+`fireGun` set `arc: G.arc` on every mortar round and **nothing anywhere consumed it**. The gun's entire selling point — "reaches over the front rank" — described behaviour that did not exist, and had not since the mortar shipped. The tuning was fine; the feature was absent.
+
+Rounds now carry a `travelled` distance and cannot collide inside `MORTAR_ARM`. Implemented as an arming distance rather than a real parabola because the board is top-down: there is no third axis to arc through, and "cannot hit anything for the first N pixels" is the same rule a lob actually gives you. The shell draws the height that is not in the model.
+
+The general lesson is about flags rather than mortars: **a field set at one end and read at neither is invisible to every test that does not assert on behaviour.** The unit tests all passed, the render tests all passed, and the gun was inert for months. The new tests assert that a lobbed round *misses* something a plain round hits at the same range — a behavioural claim, not a field check.
+
+## 2026-08-05 — Extra barrels are lateral, not angular
+
+`BARREL_OFFSETS` used to be an angular fan: same muzzle, slightly different headings. That is not what extra barrels look like — they sit either side of the main one and fire alongside it, and a fan diverges more the further the rounds travel.
+
+Now the offset displaces the muzzle perpendicular to the aim and every round keeps the identical heading, so they stay parallel for their whole flight. Flanking rounds are smaller and weaker (`SUB_BARREL_DMG`/`SUB_BARREL_R`), which is what keeps a third barrel from being a third whole cannon.
+
+Both the mount art and the shop portrait **read the offsets from the engine** rather than eyeballing a matching drawing. The picture and the geometry cannot drift apart, which they otherwise would the first time either was tuned alone.
+
+## 2026-08-05 — The wave-7 cliff, and why more columns was the wrong answer
+
+Reported as "after wave seven the difficulty drops too fast". The cause is exact: `waveCount` is `min(20 + wave*9, 78)`, which reaches its ceiling at wave 6.4. From wave 7 the column stops growing, and length is the escalation a player can actually *see* — speed keeps climbing to wave 12 and `hpScale` to 18, but neither reads as "more" the way a longer column does.
+
+A second and third column looks like the obvious fix, and it is recorded here as rejected so it is not retried on the same reasoning. **Splitting a wave's craft across two chains is not the neutral rearrangement it appears to be.** Each chain grows its own head; a head is both the toughest kind and body-armoured while anything trails it. Two columns of 39 therefore carry ~21% more health than one of 78, and much more of it sits behind armour. Measured against the balance guard, that step put a *perfectly played, fully maxed* battery into its first breach the moment the second column appeared — at every threshold tried, waves 13 through 16. The board got harder in a jump rather than on a curve.
+
+The climb comes from `hpScale` instead, which is what the note on `waveCount` had recommended all along: a `past7` term on top of the existing rate, 26% steeper at wave 14 than v26 and still rising where v26 flatlined at its cap.
+
+Method note, because it is the reusable part: every number above came from running the balance guard's own bot headless and printing the wave at first breach. Three tuning attempts were rejected on measurements, not on how they read.
+
+## 2026-08-05 — A breach opens the shop, and the same wave comes back
+
+Losing a life used to respawn the wave instantly. That meant the only chance to spend scrap was a clean clear — precisely the run you had not just had — so the scrap earned off the column that broke through had nowhere to go.
+
+`breach` now sets `shopOpen` and a `retry` flag; `nextWave` reads `retry` to know this is the same wave again rather than an advance. The shop titles itself "Regroup" instead of "Refit" and its button says which wave it is putting you back into, because landing in a shop headed "Next Wave" after losing one reads as the game having skipped it.
+
+## 2026-08-05 — Touch aiming splits on the breach line
+
+Relative dragging exists so a thumb can rest low and never cover the board. That reasoning holds *below* the floor line, where the battery and thumb band are. It does not hold above it: if you have already reached into the play area then your hand is over the board regardless, and at that point relative dragging is strictly worse than pointing at what you want to hit.
+
+So the rule is now positional. Below `FLOOR`, the drag as before. Above it, the guns point where the finger is — routed through the existing `aimTarget`/`slewAim` path, so the traverse cap still applies and tapping across the screen swings the turret rather than teleporting it. Crossing the line mid-gesture switches modes, which is what a rule stated as "above the line" should do.
+
+`FLOOR` was chosen over an invented band because it is the line a craft breaches at: the player can already see it.
+
+## 2026-08-05 — Audio was resumed on a one-shot listener
+
+Reported as "sound doesn't work". Instrumenting the live page showed the context created, `state: "running"`, and oscillators produced on cue — so the wiring was fine and the bug was elsewhere.
+
+`menu.js` resumed the AudioContext on `pointerdown` with `{ once: true }`, on the reasonable-sounding theory that a context needs waking exactly once. It does, until something suspends it again, and on iOS plenty does: backgrounding the tab, an incoming call, locking the phone, re-entering the installed PWA. After any of those the context returns suspended and, with the listener already spent, nothing was left to wake it. The game played on in silence for the rest of the session.
+
+Resuming is a no-op on a running context, so the fix is simply to stop being clever: wake on every gesture, plus on `visibilitychange` — which is the exact moment an interruption ends and before the player has touched anything.
+
+Separately, `fire()` was the quietest entry in the library at `gain: 0.12` against 0.2–0.3 everywhere else, and at 50ms through a phone speaker it was not really there. Raised to 0.2, still under the impact sounds it causes.
+
+## 2026-08-05 — Test helpers that assume the map
+
+Reordering Choke Point's routes by difficulty broke a dozen tests at once — tests about armour, splash resistance, slow immunity and target re-acquisition, none of which have anything to do with route order.
+
+The cause was two helpers that took `firstBuildable(w)` (the first non-path cell, scanning from the top-left) and then looked for a path point within range of it. That only ever worked because route 0 happened to start in the top-left corner and run along the second row. The helpers now search for a cell that genuinely overlooks a stretch of route, with a `span` argument for tests that need two enemies near each other.
+
+The pattern is worth naming: **a fixture that depends on incidental map geometry fails far from its cause.** Nothing in "armour blunts small hits" hints that it is coupled to where route A starts. Searching for what the test actually needs is barely more code and does not care what shape the board is.
+
+A second instance of the same class, in Hull Breach: a new pierce test set up a ball and a brick but left `w.running` false, so `step` returned immediately and the ball never moved. The assertion was on the velocity the ball *started* with — so it passed, for entirely the wrong reason. Assertions about "did this change" want a before-and-after, not a state that a no-op also satisfies.
