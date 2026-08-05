@@ -35,11 +35,14 @@ test('every enemy type renders, slow/heal overlays included', async () => {
   assert.deepEqual(g.errors, [], 'drawing the enemy roster threw');
 });
 
-test('every tower type and tier renders, aiming and firing', async () => {
+test('every tower type renders across the level range, aiming and firing', async () => {
   const g = await bootAndStart(SHELL);
   const { world, E } = g;
-  world.charge = 99999;
-  // one of each type at each tier, wherever they will fit
+  world.components = 99999;
+  // one of each type at a spread of levels, wherever they will fit — level 1,
+  // something mid, and the cap, since the pip ring and the stat curve both
+  // read off it
+  const levels = [1, Math.ceil(E.MAX_LEVEL / 2), E.MAX_LEVEL];
   let placed = 0;
   outer:
   for (let r = 0; r < world.L.ROWS; r++) {
@@ -47,7 +50,7 @@ test('every tower type and tier renders, aiming and firing', async () => {
       const type = E.TOWER_KEYS[placed % E.TOWER_KEYS.length];
       if (!E.buildTower(world, c, r, type)) continue;
       const t = world.towers[world.towers.length - 1];
-      t.tier = placed % (E.MAX_TIER + 1);
+      t.level = levels[placed % levels.length];
       if (++placed >= 9) break outer;
     }
   }
@@ -59,10 +62,93 @@ test('every tower type and tier renders, aiming and firing', async () => {
   assert.deepEqual(g.errors, [], 'drawing towers threw');
 });
 
+/* The barrel is a readiness tell now — bare ring when nothing is near, hub and
+   barrel once something is. Both states have to survive a draw, and the second
+   one only appears after the easing has had frames to run. */
+test('towers draw both idle and deployed', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E } = g;
+  world.components = 99999;
+  let cell = null;
+  outer:
+  for (let r = 0; r < world.L.ROWS; r++)
+    for (let c = 0; c < world.L.COLS; c++)
+      if (E.buildTower(world, c, r, 'node')) { cell = { c, r }; break outer; }
+  assert.ok(cell, 'built a tower');
+
+  // idle: nothing on the board at all
+  world.enemies = [];
+  g.frame(1000); g.frame(1100);
+  assert.deepEqual(g.errors, [], 'drawing an idle tower threw');
+
+  // deployed: park something on top of it and let the barrel ease out
+  const p = E.cellCenter(world.L, cell.c, cell.r);
+  let best = 0, bestD = Infinity;
+  for (let d = 0; d < world.pathLen; d += 3) {
+    const q = E.atS(world.path, world.pathLen, d);
+    const dist = Math.hypot(q.x - p.x, q.y - p.y);
+    if (dist < bestD) { bestD = dist; best = d; }
+  }
+  world.enemies = [{ type: 'load', dist: best, hp: 900, maxhp: 900, speed: 0, r: 19, slow: 0 }];
+  for (let i = 0; i < 20; i++) g.frame(1200 + i * 40);
+  assert.deepEqual(g.errors, [], 'drawing a deployed tower threw');
+});
+
+test('the armoury opens and renders every class and track', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.components = 99999;
+  doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.ok(doc.getElementById('shop').classList.contains('on'), 'the armoury opened');
+  const buys = doc.querySelectorAll('#shopClasses button[data-t]');
+  assert.ok(buys.length >= 9, `expected a buy button per class per track, got ${buys.length}`);
+  // buying through the real DOM, which is what the shell will actually do
+  buys[0].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const total = Object.values(world.classUpgrades)
+    .reduce((n, tracks) => n + Object.values(tracks).reduce((a, b) => a + b, 0), 0);
+  assert.equal(total, 1, 'exactly one track went up');
+  g.frame(1000);
+  assert.deepEqual(g.errors, [], 'the armoury threw');
+});
+
+/* The exact behaviour that got reported: pick a tower, run out of money, and
+   v26 would quietly move the highlight to whatever was still affordable — so a
+   tap you thought you had made had become a different tap. Selection is yours
+   now; being broke only changes how the button looks. */
+test('a palette selection survives going broke', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  doc.getElementById('go').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+
+  const picks = [...doc.querySelectorAll('.pick')];
+  const breaker = picks.find(b => /breaker/i.test(b.textContent));
+  world.components = 9999;
+  g.frame(1000);
+  breaker.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  assert.ok(breaker.classList.contains('on'), 'picked the breaker');
+
+  // broke: less than the cheapest tower, let alone a Breaker
+  world.components = 0;
+  g.frame(1050);
+  assert.ok(breaker.classList.contains('on'), 'the selection did not wander off');
+  assert.ok(breaker.classList.contains('broke'), 'but it reads as unaffordable');
+  assert.ok(picks.every(p => !p.disabled), 'and nothing is disabled — you can still choose');
+
+  // and you can still *select* something you cannot yet afford, which is how
+  // you pick what to save up for
+  const node = picks.find(b => /node/i.test(b.textContent));
+  node.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  g.frame(1100);
+  assert.ok(node.classList.contains('on'), 'switched to the node while broke');
+  assert.deepEqual(g.errors, [], 'the palette threw');
+});
+
 test('the tower popup opens and renders on a real DOM', async () => {
   const g = await bootAndStart(SHELL);
   const { world, E, window: w } = g;
-  world.charge = 9999;
+  world.components = 9999;
   let built = false;
   for (let r = 0; r < world.L.ROWS && !built; r++)
     for (let c = 0; c < world.L.COLS && !built; c++)
@@ -83,7 +169,7 @@ test('the tower popup opens and renders on a real DOM', async () => {
 test('a run through several waves never throws while drawing', async () => {
   const g = await bootAndStart(SHELL);
   const { world, E } = g;
-  world.charge = 99999;
+  world.components = 99999;
   let placed = 0;
   outer:
   for (let r = 0; r < world.L.ROWS; r++) {

@@ -46,17 +46,39 @@ function furnitureHeight(stage) {
  *                 of the stage inside `#shell` — anything that is gets
  *                 measured automatically, so passing it here as well would
  *                 double-count it.
+ * @param fillWidth optional — always spend the full stage width and let the
+ *                 page scroll if the result plus its furniture is taller than
+ *                 the viewport. See the note below for when that is the right
+ *                 trade. The shell must also relax `body { overflow:hidden }`,
+ *                 or the overflow is simply unreachable.
  * @returns the fit function, already bound to resize/orientation events and
  *          called once.
  */
-export function makeFit({ canvas, stage, board, extra }) {
+export function makeFit({ canvas, stage, board, extra, fillWidth = false }) {
   function fit() {
     const below = typeof extra === 'function' ? (extra() || 0) : 0;
     const avail = Math.max(200, innerHeight - furnitureHeight(stage) - below);
 
     const ratio = board.w / board.h;
     const stageW = stage.clientWidth || innerWidth;
-    const h = Math.min(avail, stageW / ratio);
+
+    /* The default is "whichever runs out first wins", which keeps the whole
+       board on screen with no scrolling. Its failure mode is that *any*
+       height shortfall is paid for in width, and the leftover width shows up
+       as dead space either side of the board.
+
+       Choke Point measured 3px of slack at 375x812 — meaning it filled the
+       width only on a desktop browser, where `env(safe-area-inset-*)` is 0.
+       On a real phone the notch and home indicator spend 80-90px that no
+       desktop measurement reports, and that shortfall came straight off the
+       board's width as a 40-60px gutter on each side.
+
+       `fillWidth` inverts the priority: the board always spends the full
+       width, and anything that no longer fits vertically is pushed below the
+       fold for the player to scroll to. For a grid game where the cells are
+       the thing you are trying to see and tap, a slightly taller page beats a
+       permanently smaller board. */
+    const h = fillWidth ? stageW / ratio : Math.min(avail, stageW / ratio);
 
     canvas.style.height = h + 'px';
     canvas.style.width = (h * ratio) + 'px';

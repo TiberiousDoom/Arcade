@@ -5,10 +5,10 @@ import * as E from './engine.js';
 const L = E.LAYOUT;
 const TALL = E.LAYOUT_TALL;
 
-/** A world with plenty of charge, so building isn't the thing under test. */
+/** A world with plenty of components, so building isn't the thing under test. */
 function richWorld(opts = {}) {
   const w = E.createWorld(opts);
-  w.charge = 9999;
+  w.components = 9999;
   return w;
 }
 
@@ -90,15 +90,27 @@ test('the routes are genuinely different boards, each with room to build', () =>
   assert.ok(E.ROUTE_COUNT >= 3, 'enough routes for replay to feel different');
 });
 
-test('a run picks its route from the seed, so a seed still replays exactly', () => {
-  const a = E.createWorld({ seed: 5 });
-  const b = E.createWorld({ seed: 5 });
-  assert.equal(a.routeIndex, b.routeIndex, 'same seed, same circuit');
-  assert.equal(E.createWorld({ routeIndex: 2 }).routeIndex, 2, 'and it can be forced');
+test('every run starts on route 1, whatever the seed', () => {
+  // It used to be derived from the seed, which made a first-timer's opening
+  // board a coin toss between the gentlest route and the harshest.
+  assert.equal(E.createWorld({ seed: 5 }).routeIndex, 0);
+  assert.equal(E.createWorld({ seed: 999999 }).routeIndex, 0);
+  assert.equal(E.createWorld({ routeIndex: 2 }).routeIndex, 2, 'but it can still be forced');
   // the world's path really is the chosen route's, not always route 0
   const w = E.createWorld({ routeIndex: 1 });
   assert.ok(Math.abs(w.pathLen - E.buildPath(L, 1).pathLen) < 1e-9);
   assert.deepEqual([...w.blocked].sort(), [...E.pathCells(L, 1)].sort());
+});
+
+test('the routes run longest to shortest, which is the difficulty order', () => {
+  // Length is time under fire, so route 1 is the most forgiving and route 3
+  // the least. Stated as a requirement, so pinned rather than left to drift.
+  const lens = [];
+  for (let i = 0; i < E.ROUTE_COUNT; i++) lens.push(E.buildPath(L, i).pathLen);
+  for (let i = 1; i < lens.length; i++) {
+    assert.ok(lens[i] < lens[i - 1], `route ${i + 1} (${lens[i]}) should be shorter than route ${i} (${lens[i - 1]})`);
+  }
+  assert.ok(lens[0] > lens[lens.length - 1] * 2, 'and the spread is wide enough to feel');
 });
 
 test('playing again moves to the next circuit', () => {
@@ -162,47 +174,144 @@ test('a tower can only go on an empty, on-grid, non-path cell you can afford', (
   assert.equal(E.canBuild(w, pc, pr, 'node'), false, 'not on the path');
   assert.equal(E.canBuild(w, -1, 0, 'node'), false, 'not off the grid');
 
-  w.charge = 0;
+  w.components = 0;
   assert.equal(E.canBuild(w, cell.c, cell.r, 'node'), false, 'not while broke');
-  w.charge = 12;
+  w.components = 12;
   assert.equal(E.canBuild(w, cell.c, cell.r, 'node'), true);
 });
 
-test('building deducts charge, places the tower, and blocks the cell', () => {
+test('building deducts components, places the tower, and blocks the cell', () => {
   const w = richWorld();
   const cell = firstBuildable(w);
-  const before = w.charge;
+  const before = w.components;
   assert.equal(E.buildTower(w, cell.c, cell.r, 'node'), true);
-  assert.equal(w.charge, before - E.TOWER_TYPES.node.cost);
+  assert.equal(w.components, before - E.TOWER_TYPES.node.cost);
   assert.ok(E.towerAt(w, cell.c, cell.r), 'tower is there');
   assert.equal(E.canBuild(w, cell.c, cell.r, 'node'), false, 'cell now occupied');
 });
 
-test('upgrading costs charge and raises the tier; maxes out', () => {
+/* ---------- levelling ---------- */
+
+test('a tower starts at level 1 and levels itself on XP', () => {
   const w = richWorld();
   const cell = firstBuildable(w);
   E.buildTower(w, cell.c, cell.r, 'node');
   const t = w.towers[0];
-  assert.equal(E.stats(t).dmg, E.TOWER_TYPES.node.tiers[0].dmg);
-  E.upgradeTower(w, 0);
-  assert.equal(t.tier, 1);
-  assert.equal(E.stats(t).dmg, E.TOWER_TYPES.node.tiers[1].dmg);
-  E.upgradeTower(w, 0);
-  assert.equal(t.tier, E.MAX_TIER);
-  assert.equal(E.upgradeCost(t), null, 'maxed');
-  assert.equal(E.upgradeTower(w, 0), false, 'cannot go past max');
+  assert.equal(t.level, 1);
+  assert.equal(t.xp, 0);
+
+  assert.equal(E.addXp(t, E.xpForNext(1) - 1), false, 'one short of the threshold');
+  assert.equal(t.level, 1);
+  assert.equal(E.addXp(t, 1), true, 'and now it levels');
+  assert.equal(t.level, 2);
 });
 
-test('breaker costs meaningfully more to max than node or coil, relative to its base cost', () => {
-  const totalMaxCost = (type) => {
-    const t = { type, tier: 0 };
-    let total = E.TOWER_TYPES[type].cost;
-    while (E.upgradeCost(t) !== null) { total += E.upgradeCost(t); t.tier++; }
-    return total;
-  };
-  const ratio = (type) => totalMaxCost(type) / E.TOWER_TYPES[type].cost;
-  assert.ok(ratio('breaker') > ratio('node') * 1.3, 'breaker\'s curve is steeper, not just its base cost');
-  assert.ok(ratio('breaker') > ratio('coil') * 1.3);
+test('levelling caps at MAX_LEVEL and stops banking XP there', () => {
+  const t = { type: 'node', level: 1, xp: 0 };
+  E.addXp(t, 1e9);
+  assert.equal(t.level, E.MAX_LEVEL);
+  assert.equal(t.xp, 0, 'no overflow hoarded at the cap');
+  assert.equal(E.addXp(t, 1e9), false, 'and nothing more to gain');
+  assert.equal(E.xpForNext(E.MAX_LEVEL), Infinity);
+});
+
+test('every stat improves with level, and rate improves by getting shorter', () => {
+  const w = E.createWorld({});
+  const at = (level) => E.stats(w, { type: 'breaker', level, xp: 0 });
+  const lo = at(1), hi = at(E.MAX_LEVEL);
+  assert.ok(hi.dmg > lo.dmg);
+  assert.ok(hi.range > lo.range);
+  assert.ok(hi.splash > lo.splash);
+  assert.ok(hi.rate < lo.rate, 'rate is a cooldown: lower is faster');
+});
+
+/* The two numbers the feedback stated outright, so they are pinned rather than
+   left to drift the next time the level curve is tuned. */
+test('a level-10 breaker reaches exactly three cells', () => {
+  const w = E.createWorld({});
+  const r = E.stats(w, { type: 'breaker', level: E.MAX_LEVEL, xp: 0 }).range;
+  assert.equal(r, 3 * E.CELL);
+});
+
+test('a level-10 breaker with the range track maxed reaches exactly four cells', () => {
+  const w = E.createWorld({});
+  w.classUpgrades.breaker.range = E.CLASS_MAX;
+  const r = E.stats(w, { type: 'breaker', level: E.MAX_LEVEL, xp: 0 }).range;
+  assert.equal(r, 4 * E.CELL);
+});
+
+test('XP is credited for damage that lands, not damage attempted', () => {
+  // A Breaker hits for 24. Give it a target holding 1hp and the credit must be
+  // ~1, not 24 — otherwise a tower parked over the spawn levels on overkill.
+  const w = towerVsEnemy('breaker');
+  const t = w.towers[0];
+  w.enemies[0].hp = 1;
+  w.enemies[0].maxhp = 500;
+  E.step(w, 1 / 60);
+  assert.equal(w.enemies.length, 0, 'the hit killed it');
+  assert.ok(t.xp <= 1 + E.XP_KILL_BONUS, `overkill was banked as XP (${t.xp})`);
+  assert.ok(t.xp > 0, 'but the kill did pay something');
+});
+
+/* ---------- the armoury ---------- */
+
+test('a class buys its speciality cheaper and its opposite dearer', () => {
+  for (const type of E.TOWER_KEYS) {
+    const T = E.TOWER_TYPES[type];
+    const plain = E.CLASS_TRACKS.find(k => k !== T.spec && k !== T.weak);
+    assert.ok(E.classCost(type, T.spec, 0) < E.classCost(type, plain, 0),
+      `${type}'s speciality (${T.spec}) should undercut ${plain}`);
+    assert.ok(E.classCost(type, T.weak, 0) > E.classCost(type, plain, 0),
+      `${type}'s weakness (${T.weak}) should cost more than ${plain}`);
+  }
+});
+
+test('class upgrades are bought with components and cap out', () => {
+  const w = richWorld();
+  const before = w.components;
+  assert.equal(E.buyClassUpgrade(w, 'node', 'rate'), true);
+  assert.equal(w.classUpgrades.node.rate, 1);
+  assert.ok(w.components < before, 'it cost something');
+
+  while (E.buyClassUpgrade(w, 'node', 'rate')) { /* to the cap */ }
+  assert.equal(w.classUpgrades.node.rate, E.CLASS_MAX);
+  assert.equal(E.classCost('node', 'rate', E.CLASS_MAX), null, 'maxed');
+});
+
+test('a class upgrade lifts every tower of that class and no others', () => {
+  const w = richWorld();
+  const node = { type: 'node', level: 1, xp: 0 };
+  const coil = { type: 'coil', level: 1, xp: 0 };
+  const nodeBefore = E.stats(w, node).dmg, coilBefore = E.stats(w, coil).dmg;
+  w.classUpgrades.node.dmg = E.CLASS_MAX;
+  assert.ok(E.stats(w, node).dmg > nodeBefore, 'the node got stronger');
+  assert.equal(E.stats(w, coil).dmg, coilBefore, 'the coil did not');
+});
+
+test('the armoury survives a reset, because that is the point of it', () => {
+  const w = richWorld();
+  E.buyClassUpgrade(w, 'breaker', 'splash');
+  const kept = w.classUpgrades.breaker.splash;
+  assert.ok(kept > 0);
+  E.resetGame(w);
+  assert.equal(w.classUpgrades.breaker.splash, kept);
+  assert.equal(w.wave, 0, 'but the run itself did reset');
+});
+
+/* ---------- difficulty ---------- */
+
+test('difficulty scales enemy hp and the opening purse in opposite directions', () => {
+  const easy = E.createWorld({ difficulty: 'easy' });
+  const hard = E.createWorld({ difficulty: 'hard' });
+  assert.ok(E.hpScale(5, 'hard') > E.hpScale(5, 'easy'), 'hard enemies are tougher');
+  assert.ok(hard.components < easy.components, 'and you start with less to spend');
+  assert.ok(hard.integrity < easy.integrity, 'and less to lose');
+});
+
+test('an unknown difficulty falls back rather than producing NaN', () => {
+  const w = E.createWorld({ difficulty: 'impossible' });
+  assert.equal(w.difficulty, E.DEFAULT_DIFFICULTY);
+  assert.ok(Number.isFinite(E.hpScale(3, 'impossible')));
 });
 
 test('selling refunds part of what was sunk in and frees the cell', () => {
@@ -210,9 +319,9 @@ test('selling refunds part of what was sunk in and frees the cell', () => {
   const cell = firstBuildable(w);
   E.buildTower(w, cell.c, cell.r, 'breaker');
   const refund = E.sellValue(w.towers[0]);
-  const before = w.charge;
+  const before = w.components;
   assert.equal(E.sellTower(w, 0), true);
-  assert.equal(w.charge, before + refund);
+  assert.equal(w.components, before + refund);
   assert.equal(E.towerAt(w, cell.c, cell.r), null);
   assert.ok(refund > 0 && refund < E.TOWER_TYPES.breaker.cost, 'partial refund');
 });
@@ -220,23 +329,45 @@ test('selling refunds part of what was sunk in and frees the cell', () => {
 /* ---------- towers firing ---------- */
 
 /** Put one enemy at a known distance and one tower next to that point. */
-function towerVsEnemy(type, dist = 60) {
-  const w = richWorld();
-  const cell = firstBuildable(w);
-  E.buildTower(w, cell.c, cell.r, type);
-  const tc = E.cellCenter(w.L, cell.c, cell.r);
-  // find a path distance whose point is within range of the tower
+/* Find a buildable cell that actually overlooks the route, and a stretch of
+   path it covers — every distance from `d` to `d + span` inside the tower's
+   range, so a test that wants two enemies near each other gets two enemies the
+   tower can genuinely see.
+
+   Both of these used to take the first empty cell and the first covered point
+   and hope. That held only because route 0 started in the top-left corner and
+   ran along the second row; reordering the routes by difficulty broke a dozen
+   tests at once for a reason that had nothing to do with what any of them was
+   testing. Searching for what the test needs is barely more code and does not
+   care what shape the routes are. */
+function overlook(w, type, span = 0) {
   const s = stats0(type);
-  let placed = null;
-  for (let d = 0; d < w.pathLen; d += 4) {
-    const p = E.atS(w.path, w.pathLen, d);
-    if (Math.hypot(p.x - tc.x, p.y - tc.y) <= s.range) { placed = d; break; }
+  for (let r = 0; r < w.L.ROWS; r++) {
+    for (let c = 0; c < w.L.COLS; c++) {
+      if (w.blocked.has(E.cellKey(c, r))) continue;
+      const tc = E.cellCenter(w.L, c, r);
+      const covers = (d) => {
+        const p = E.atS(w.path, w.pathLen, d);
+        return Math.hypot(p.x - tc.x, p.y - tc.y) <= s.range;
+      };
+      for (let d = 0; d + span < w.pathLen; d += 3) {
+        if (!covers(d) || !covers(d + span) || !covers(d + span / 2)) continue;
+        return { c, r, d };
+      }
+    }
   }
-  assert.ok(placed !== null, 'a path point exists within tower range');
-  w.enemies.push({ type: 'load', dist: placed, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
+  throw new Error(`no cell overlooks ${span}px of route within ${type}'s range`);
+}
+
+function towerVsEnemy(type) {
+  const w = richWorld();
+  const { c, r, d } = overlook(w, type);
+  E.buildTower(w, c, r, type);
+  w.enemies.push({ type: 'load', dist: d, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
   return w;
 }
-const stats0 = (type) => E.TOWER_TYPES[type].tiers[0];
+/** A fresh level-1 tower's numbers — what a newly built one actually fires at. */
+const stats0 = (type) => E.stats(E.createWorld({}), { type, level: 1, xp: 0 });
 
 test('a tower damages an enemy in range on its cooldown', () => {
   const w = towerVsEnemy('node');
@@ -272,14 +403,8 @@ test('a coil slows what it hits', () => {
 test('a breaker splashes nearby enemies', () => {
   const w = richWorld();
   const cell = firstBuildable(w);
-  E.buildTower(w, cell.c, cell.r, 'breaker');
-  const s = stats0('breaker');
-  const tc = E.cellCenter(w.L, cell.c, cell.r);
-  let d0 = null;
-  for (let d = 0; d < w.pathLen; d += 3) {
-    const p = E.atS(w.path, w.pathLen, d);
-    if (Math.hypot(p.x - tc.x, p.y - tc.y) <= s.range) { d0 = d; break; }
-  }
+  const { c, r, d: d0 } = overlook(w, 'breaker', 24);
+  E.buildTower(w, c, r, 'breaker');
   // two enemies a few px apart along the path, both near the target
   w.enemies.push({ type: 'load', dist: d0 + 20, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
   w.enemies.push({ type: 'load', dist: d0 + 24, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
@@ -294,8 +419,9 @@ test('a tower re-aims mid-cooldown, so the barrel never points at nothing', () =
   const first = w.enemies[0];
   assert.equal(w.towers[0].aim, first, 'aimed at what it shot');
 
-  // a second enemy alongside the first, then the first dies mid-cooldown
-  w.enemies.push({ ...first, dist: first.dist + 6, hp: 500 });
+  // a second enemy at the same spot as the first — guaranteed in range, since
+  // the tower just shot something there — then the first dies mid-cooldown
+  w.enemies.push({ ...first, dist: first.dist, hp: 500 });
   first.hp = 0;
   E.step(w, 1 / 60);                 // still cooling — but must retarget anyway
   assert.ok(w.towers[0].cool > 0, 'still on cooldown');
@@ -317,16 +443,8 @@ test('aim clears when the last target leaves range, even mid-cooldown', () => {
 /** Park an enemy of `type` inside a fresh tower's range and return both. */
 function towerVsType(towerType, enemyType, hp = 500) {
   const w = richWorld();
-  const cell = firstBuildable(w);
-  E.buildTower(w, cell.c, cell.r, towerType);
-  const tc = E.cellCenter(w.L, cell.c, cell.r);
-  const s = stats0(towerType);
-  let d = null;
-  for (let k = 0; k < w.pathLen; k += 3) {
-    const p = E.atS(w.path, w.pathLen, k);
-    if (Math.hypot(p.x - tc.x, p.y - tc.y) <= s.range) { d = k; break; }
-  }
-  assert.ok(d !== null, 'a path point exists within range');
+  const { c, r, d } = overlook(w, towerType);
+  E.buildTower(w, c, r, towerType);
   const T = E.ENEMY_TYPES[enemyType];
   const e = { type: enemyType, dist: d, hp, maxhp: hp, speed: 0, r: T.r, slow: 0 };
   w.enemies.push(e);
@@ -351,9 +469,9 @@ test('armour blunts small hits far more than heavy ones', () => {
   const nodeLoss = 1 - nodeDealt / stats0('node').dmg;
   const breakerLoss = 1 - breakerDealt / stats0('breaker').dmg;
   assert.ok(nodeLoss > breakerLoss * 3, `Node lost ${(nodeLoss * 100).toFixed(0)}%, Breaker ${(breakerLoss * 100).toFixed(0)}%`);
-  // but Node is not written off — upgrading it is a real answer
-  const t2 = E.TOWER_TYPES.node.tiers[2];
-  assert.ok(t2.dmg - armor > (stats0('node').dmg - armor) * 2, 'a maxed Node gets meaningfully through');
+  // but Node is not written off — levelling it is a real answer
+  const maxed = E.stats(E.createWorld({}), { type: 'node', level: E.MAX_LEVEL, xp: 0 });
+  assert.ok(maxed.dmg - armor > (stats0('node').dmg - armor) * 2, 'a maxed Node gets meaningfully through');
 });
 
 test('armour never absorbs a hit completely', () => {
@@ -369,15 +487,8 @@ test('splash resistance makes area damage the wrong tool', () => {
   // the collateral hit is what Phase shrugs off
   const build = (type) => {
     const w = richWorld();
-    const cell = firstBuildable(w);
-    E.buildTower(w, cell.c, cell.r, 'breaker');
-    const tc = E.cellCenter(w.L, cell.c, cell.r);
-    const s = stats0('breaker');
-    let d = null;
-    for (let k = 0; k < w.pathLen; k += 3) {
-      const p = E.atS(w.path, w.pathLen, k);
-      if (Math.hypot(p.x - tc.x, p.y - tc.y) <= s.range) { d = k; break; }
-    }
+    const { c, r, d } = overlook(w, 'breaker', 16);
+    E.buildTower(w, c, r, 'breaker');
     // leader is the direct target; the follower only ever takes splash
     w.enemies.push({ type: 'surge', dist: d + 16, hp: 900, maxhp: 900, speed: 0, r: 12, slow: 0 });
     const follower = { type, dist: d + 4, hp: 900, maxhp: 900, speed: 0, r: 11, slow: 0 };
@@ -529,7 +640,7 @@ test('a snapshot round-trips a run exactly', () => {
   let built = 0;
   for (let r = 0; r < w.L.ROWS && built < 5; r++)
     for (let c = 0; c < w.L.COLS && built < 5; c++)
-      if (E.buildTower(w, c, r, E.TOWER_KEYS[built % 3])) { w.towers[built].tier = built % 3; built++; }
+      if (E.buildTower(w, c, r, E.TOWER_KEYS[built % 3])) { w.towers[built].level = 1 + built % 3; w.towers[built].xp = built * 2; built++; }
   E.startWave(w);
   for (let i = 0; i < 200; i++) E.step(w, 1 / 60);
   assert.ok(w.enemies.length > 0, 'setup: enemies are on the board');
@@ -540,11 +651,11 @@ test('a snapshot round-trips a run exactly', () => {
 
   assert.equal(fresh.routeIndex, 2, 'the run keeps its own circuit');
   assert.equal(fresh.wave, w.wave);
-  assert.equal(fresh.charge, w.charge);
+  assert.equal(fresh.components, w.components);
   assert.equal(fresh.integrity, w.integrity);
   assert.equal(fresh.score, w.score);
-  assert.deepEqual(fresh.towers.map(t => `${t.c},${t.r},${t.type},${t.tier}`),
-                   w.towers.map(t => `${t.c},${t.r},${t.type},${t.tier}`));
+  assert.deepEqual(fresh.towers.map(t => `${t.c},${t.r},${t.type},${t.level},${t.xp}`),
+                   w.towers.map(t => `${t.c},${t.r},${t.type},${t.level},${t.xp}`));
   assert.deepEqual(fresh.enemies.map(e => `${e.type}:${e.dist.toFixed(3)}:${e.hp}`),
                    w.enemies.map(e => `${e.type}:${e.dist.toFixed(3)}:${e.hp}`));
   // the derived fields were rebuilt from routeIndex, not stored
@@ -593,7 +704,7 @@ test('a corrupt or foreign snapshot is refused rather than half-applied', () => 
     null, undefined, 42, 'nope', {},
     { ...good, towers: 'not an array' },
     { ...good, routeIndex: 'B' },
-    { ...good, towers: [{ c: 1, r: 1, type: 'deathray', tier: 0 }] },
+    { ...good, towers: [{ c: 1, r: 1, type: 'deathray', level: 1 }] },
     { ...good, enemies: [{ type: 'kraken', dist: 0, hp: 1, maxhp: 1 }] },
   ]) {
     const w = E.createWorld();
@@ -620,11 +731,11 @@ test('enemies advance along the path', () => {
 
 test('a killed enemy pays bounty and score and is removed', () => {
   const w = E.createWorld();
-  const charge0 = w.charge, score0 = w.score;
+  const comp0 = w.components, score0 = w.score;
   w.enemies.push({ type: 'surge', dist: 40, hp: -1, maxhp: 20, speed: 0, r: 12, slow: 0 });
   E.step(w, 1 / 60);
   assert.equal(w.enemies.length, 0, 'removed');
-  assert.equal(w.charge, charge0 + E.ENEMY_TYPES.surge.bounty);
+  assert.equal(w.components, comp0 + E.ENEMY_TYPES.surge.bounty);
   assert.equal(w.score, score0 + E.ENEMY_TYPES.surge.bounty);
 });
 
@@ -646,7 +757,102 @@ test('losing the last integrity ends the run', () => {
   assert.equal(w.over, true);
 });
 
+/* ---------- targeting priority ---------- */
+
+test('priority decides which of several targets a tower picks', () => {
+  const make = (priority) => {
+    const w = richWorld();
+    const { c, r, d } = overlook(w, 'node', 30);
+    E.buildTower(w, c, r, 'node');
+    w.towers[0].priority = priority;
+    // a leader further along, a straggler behind it, and a tougher one between
+    w.enemies.push({ type: 'surge', dist: d + 30, hp: 20, maxhp: 20, speed: 0, r: 12, slow: 0 });
+    w.enemies.push({ type: 'surge', dist: d, hp: 20, maxhp: 20, speed: 0, r: 12, slow: 0 });
+    w.enemies.push({ type: 'load', dist: d + 15, hp: 400, maxhp: 400, speed: 0, r: 19, slow: 0 });
+    E.step(w, 1 / 60);
+    return w.towers[0].aim;
+  };
+  assert.equal(make('first').dist, make('first').dist);
+  assert.equal(make('first').type, 'surge');
+  assert.ok(make('first').dist > make('last').dist, 'first is ahead of last');
+  assert.equal(make('strongest').type, 'load', 'strongest goes for the big one');
+});
+
+test('an unset priority behaves as "first", so old saves still aim sensibly', () => {
+  const w = richWorld();
+  const { c, r, d } = overlook(w, 'node', 30);
+  E.buildTower(w, c, r, 'node');
+  delete w.towers[0].priority;
+  w.enemies.push({ type: 'surge', dist: d, hp: 20, maxhp: 20, speed: 0, r: 12, slow: 0 });
+  w.enemies.push({ type: 'surge', dist: d + 30, hp: 20, maxhp: 20, speed: 0, r: 12, slow: 0 });
+  E.step(w, 1 / 60);
+  assert.equal(w.towers[0].aim.dist, d + 30);
+});
+
+test('setPriority only accepts priorities it knows', () => {
+  const w = richWorld();
+  const cell = firstBuildable(w);
+  E.buildTower(w, cell.c, cell.r, 'node');
+  assert.equal(E.setPriority(w, 0, 'strongest'), true);
+  assert.equal(w.towers[0].priority, 'strongest');
+  assert.equal(E.setPriority(w, 0, 'nearest'), false, 'not a real mode');
+  assert.equal(w.towers[0].priority, 'strongest', 'and it was left alone');
+});
+
 /* ---------- waves ---------- */
+
+test('rush pulls the queued spawns forward without dropping any', () => {
+  const w = richWorld();
+  E.startWave(w);
+  const before = w.spawnQueue.map(s => s.at);
+  const total = w.spawnQueue.length;
+  assert.equal(E.rushWave(w), true);
+  assert.equal(w.spawnQueue.length, total, 'nothing was lost');
+  const after = w.spawnQueue.map(s => s.at);
+  assert.ok(after[after.length - 1] < before[before.length - 1], 'the tail arrives sooner');
+  for (const t of after) assert.ok(t >= w.clock, 'and nothing was pushed into the past');
+});
+
+test('rushing again compresses again, so it can be leaned on', () => {
+  const w = richWorld();
+  E.startWave(w);
+  const last = () => w.spawnQueue[w.spawnQueue.length - 1].at;
+  const a = last(); E.rushWave(w);
+  const b = last(); E.rushWave(w);
+  assert.ok(b < a && last() < b);
+});
+
+test('there is nothing to rush between waves', () => {
+  const w = richWorld();
+  assert.equal(E.rushWave(w), false, 'no wave running');
+  E.startWave(w);
+  w.spawnQueue = [];
+  assert.equal(E.rushWave(w), false, 'everything already out');
+});
+
+test('wave groups overlap instead of queueing end to end', () => {
+  // Wave 9 has several types unlocked, so there is something to overlap.
+  const w = richWorld();
+  w.wave = 8;
+  E.startWave(w);
+  const byType = new Map();
+  for (const s of w.spawnQueue) {
+    const e = byType.get(s.type) || { first: Infinity, last: -Infinity };
+    e.first = Math.min(e.first, s.at); e.last = Math.max(e.last, s.at);
+    byType.set(s.type, e);
+  }
+  const spans = [...byType.values()].sort((a, b) => a.first - b.first);
+  assert.ok(spans.length >= 3, 'several types this deep');
+  const overlaps = spans.filter((s, i) => i > 0 && s.first < spans[i - 1].last);
+  assert.ok(overlaps.length > 0, 'at least one group opens before the last one finishes');
+});
+
+test('a deep wave brings second releases, not just longer queues', () => {
+  const count = (wave, type) =>
+    E.wavePlan(wave).filter(g => g.type === type).length;
+  assert.equal(count(11, 'surge'), 1, 'one surge group before the threshold');
+  assert.equal(count(12, 'surge'), 2, 'and a second release after it');
+});
 
 test('wavePlan escalates and introduces tougher types over time', () => {
   const w1 = E.wavePlan(1), w6 = E.wavePlan(6);
@@ -725,7 +931,7 @@ test('relayout transposes towers and keeps enemy progress, lossless', () => {
   // an enemy partway along the path
   w.enemies.push({ type: 'surge', dist: w.pathLen * 0.4, hp: 15, maxhp: 20, speed: 60, r: 12, slow: 0 });
   const enemyDist = w.enemies[0].dist;
-  const charge = w.charge, integ = w.integrity, wave = w.wave, score = w.score;
+  const comp = w.components, integ = w.integrity, wave = w.wave, score = w.score;
   const tc = { c: w.towers[0].c, r: w.towers[0].r };
 
   E.relayout(w, TALL);
@@ -733,7 +939,7 @@ test('relayout transposes towers and keeps enemy progress, lossless', () => {
   assert.equal(w.L, TALL, 'moved to portrait');
   assert.deepEqual({ c: w.towers[0].c, r: w.towers[0].r }, { c: tc.r, r: tc.c }, 'tower transposed');
   assert.ok(Math.abs(w.enemies[0].dist - enemyDist) < 1e-9, 'enemy distance unchanged');
-  assert.equal(w.charge, charge); assert.equal(w.integrity, integ);
+  assert.equal(w.components, comp); assert.equal(w.integrity, integ);
   assert.equal(w.wave, wave); assert.equal(w.score, score);
   // the transposed tower still sits on a legal, non-path cell of the new board
   assert.ok(E.inGrid(TALL, w.towers[0].c, w.towers[0].r));
@@ -772,7 +978,7 @@ test('a scripted run survives several waves without corrupting state', () => {
         assert.ok(Number.isFinite(e.hp));
       }
       assert.ok(w.integrity >= 0 && w.integrity <= E.START_INTEGRITY);
-      assert.ok(w.charge >= 0);
+      assert.ok(w.components >= 0);
       if (w.over) break;
     }
     assert.ok(guard < 20000, `wave ${wave + 1} terminated`);

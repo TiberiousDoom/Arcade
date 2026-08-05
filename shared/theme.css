@@ -79,6 +79,15 @@ body{
   padding-right:calc(16px + env(safe-area-inset-right,0px));
 }
 
+/* Opt-in companion to makeFit's `fillWidth`. That mode always spends the full
+   stage width, so the board plus its furniture can come out taller than the
+   viewport — and with the default `overflow:hidden` that surplus would be
+   unreachable rather than scrollable. A game that asks for fillWidth must add
+   this class, or it trades side gutters for a controls strip nobody can reach.
+   Only Choke Point uses it: its grid is the thing you aim and tap at, so a
+   page that scrolls a little beats a board that is permanently smaller. */
+body.scrolls{overflow-y:auto;height:auto;min-height:100%}
+
 #shell{width:100%;max-width:var(--board-max);display:flex;flex-direction:column;gap:10px}
 
 header{

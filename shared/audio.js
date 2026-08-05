@@ -99,7 +99,11 @@ export function makeAudio() {
     },
 
     // Flak Battery
-    fire() { tone(680, 300, 0.05, { type: 'sawtooth', gain: 0.12 }); },
+    // Raised from 0.12 — it was the quietest thing in the library by some way,
+    // against 0.16–0.3 everywhere else, and at 50ms through a phone speaker it
+    // simply wasn't there. It stays under the impact sounds on purpose: this
+    // one fires several times a second and should sit below the hits it causes.
+    fire() { tone(680, 300, 0.05, { type: 'sawtooth', gain: 0.2 }); },
     hit() { tone(300, 220, 0.045, { type: 'square', gain: 0.16 }); noise(0.04, { f: 900, gain: 0.1 }); },
     overdrive() { tone(500, 820, 0.12, { type: 'triangle', gain: 0.22 }); },
     overheat() { tone(150, 110, 0.22, { type: 'sawtooth', gain: 0.24 }); },

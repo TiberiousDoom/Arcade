@@ -34,7 +34,12 @@
     display:flex;flex-direction:column;gap:3px;
   }
   .pick.on{border-color:var(--accent-hot);background:#13293a}
-  .pick:disabled{opacity:.5;cursor:default}
+  /* Unaffordable is a *look*, not a disabled button. Palette taps must always
+     select, so you can pick what you are saving up for and watch the cost —
+     v26 disabled these and then silently moved the selection elsewhere when
+     the money ran out, which is the behaviour that got reported. */
+  .pick.broke{opacity:.45}
+  .pick.broke .cost{color:var(--dim)}
   .pick b{font:700 13px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
   .pick .cost{font-size:12px;color:var(--accent-hot)}
   .pick .blurb{font-size:10px;color:var(--dim);line-height:1.3}
@@ -48,16 +53,67 @@
   #waveRow button{flex:1 1 0;min-width:0;min-height:52px;padding:12px 6px}
   #ffWave, #contWave{background:#1b3038;color:var(--bone)}
   #ffWave.on, #contWave.on{background:var(--accent);color:var(--accent-ink)}
+  /* Start and Rush are the decisions; FF and Auto are modes you set once and
+     forget. So the two verbs keep full-size targets and the two toggles share
+     the footprint one button used to have.
+     Scoped under #waveRow deliberately: a bare `#startWave` is *less* specific
+     than the `#waveRow button` rule above (id beats id, but id+element beats
+     id alone), so it would silently lose and every button would come out the
+     same width. */
+  #waveRow #startWave, #waveRow #rushWave{flex:2 1 0}
+  #waveRow #ffWave, #waveRow #contWave{flex:1 1 0;font-size:16px;letter-spacing:0}
 
-  /* the tap-a-tower popup: upgrade / sell */
+  /* Full width, below everything: it opens a modal, so it is a destination
+     rather than something you tap mid-wave. */
+  #shopBtn{flex:1 1 100%;min-height:48px}
+
+  /* Phones: the palette drops its blurb and goes to one line per tower. The
+     three blurbs cost ~28px of strip height to explain what the cost and the
+     colour already imply, and that height comes straight off the board under
+     `fillWidth`. The help panel still carries the full description. */
+  @media (max-width:560px){
+    .pick{min-height:56px;padding:8px 9px;flex-direction:row;align-items:baseline;gap:6px}
+    .pick .blurb{display:none}
+  }
+
+  /* the tap-a-tower popup: targeting / sell */
   #tsel{position:absolute;z-index:6;display:none;flex-direction:column;gap:6px;
     background:rgba(11,20,24,.97);border:1px solid var(--line);border-radius:6px;
     padding:10px;min-width:150px}
   #tsel.on{display:flex}
   #tsel h3{font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-hot)}
   #tsel button{padding:12px 14px;font-size:12px}
+  #tsel .xp{font-size:10px;color:var(--dim);letter-spacing:.06em}
+  #tsel .prio{display:flex;gap:4px}
+  #tsel .prio button{flex:1 1 0;padding:10px 4px;font-size:10px;letter-spacing:.04em}
+  #tsel .prio button.on{background:var(--accent);color:var(--accent-ink)}
   #tsel .sell{background:#2a1a17;color:#e0a89c}
   #tsel .sell:hover{background:#3a241f}
+
+  /* The armoury. Covers the stage like Flak Battery's shop, and for the same
+     reason: it is a place you stop and think, not an overlay you peek past. */
+  #shop{position:absolute;inset:0;display:none;flex-direction:column;z-index:7;
+    background:rgba(11,20,24,.96);padding:16px 14px;overflow-y:auto;gap:12px}
+  #shop.on{display:flex}
+  #shopHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  #shopHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,19px);text-transform:uppercase;letter-spacing:-.02em}
+  #shopComps{font-size:12px;color:var(--accent-hot);font-weight:700;letter-spacing:.08em}
+  #shop .note{font-size:10px;color:var(--dim);line-height:1.5}
+  .cls{border:1px solid var(--line);border-radius:5px;padding:10px;display:flex;flex-direction:column;gap:8px}
+  .cls h3{font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+  .trk{display:flex;align-items:center;gap:8px}
+  .trk .nm{flex:0 0 62px;font-size:11px;letter-spacing:.06em}
+  /* the five bought levels, so "how far along is this" is a glance not a sum */
+  .trk .bar{flex:1 1 auto;display:flex;gap:3px}
+  .trk .bar i{flex:1 1 0;height:6px;background:#16303a;border-radius:1px}
+  .trk .bar i.on{background:var(--accent)}
+  .trk button{flex:0 0 auto;min-width:60px;min-height:38px;padding:8px 10px;font-size:11px}
+  /* what the class is good and bad at buying, said outright rather than left
+     to be inferred from two prices */
+  .trk .tag{flex:0 0 auto;font-size:9px;letter-spacing:.1em;text-transform:uppercase}
+  .trk .tag.spec{color:var(--accent)}
+  .trk .tag.weak{color:#e0a89c}
+  #shopClose{align-self:center;margin-top:2px;min-height:48px;padding:12px 28px}
 </style>
 
 <div id="shell">
@@ -69,16 +125,27 @@
     <div class="meta">
       <div>Wave <b id="uiWave">0</b></div>
       <div>Score <b id="uiScore">0</b></div>
-      <div>Charge <b id="uiCharge">0</b></div>
+      <div>Comps <b id="uiComponents">0</b></div>
       <div>Core <b id="uiIntegrity">20</b></div>
       <div>Best <b id="uiBest">—</b></div>
-      <div>Circuit <b id="uiCircuit">A</b></div>
+      <div>Route <b id="uiRoute">1/3</b></div>
     </div>
   </header>
 
   <div id="stage">
     <canvas id="cv" width="780" height="520"></canvas>
     <div id="tsel"></div>
+    <div id="shop">
+      <div id="shopHead">
+        <h2>Armoury</h2>
+        <div id="shopComps">Components 0</div>
+      </div>
+      <p class="note">Upgrades apply to every tower of that class, now and in
+        every run after this one. Each class buys its speciality cheap and its
+        opposite dear.</p>
+      <div id="shopClasses"></div>
+      <button id="shopClose">Back to the board</button>
+    </div>
     <div id="banner">
       <h2>Choke Point</h2>
       <p id="hint">Pick a tower, tap an empty cell to build it, then start the wave.</p>
@@ -109,6 +176,49 @@ const GAME_ID = 'choke-point';
 const gfx = makeFx({ reduce });
 const audio = makeAudio();
 
+/* ---------- the armoury and the difficulty dial, both kept between runs ----
+
+   Guarded reads and writes throughout: Safari in private mode throws on any
+   localStorage access rather than returning null, so an unguarded read here
+   would take the whole game down on load. Same pattern as shared/levels.js;
+   it stays local because Choke Point is the only game with an armoury and
+   CLAUDE.md is explicit about not building shared helpers on spec. */
+const ARMOURY_KEY = 'arcade:choke-point:armoury';
+const DIFF_KEY = 'arcade:choke-point:difficulty';
+
+function readArmoury() {
+  const fresh = E.newClassUpgrades();
+  let raw = null;
+  try { raw = localStorage.getItem(ARMOURY_KEY); } catch { return fresh; }
+  if (!raw) return fresh;
+  try {
+    const saved = JSON.parse(raw);
+    // Merged into a fresh object rather than trusted wholesale: a save written
+    // by an older build knows nothing about a track added since, and a level
+    // past the cap would quietly hand out stats no shop could sell.
+    for (const type of E.TOWER_KEYS) {
+      for (const track of E.CLASS_TRACKS) {
+        const v = saved?.[type]?.[track];
+        if (Number.isFinite(v)) fresh[type][track] = Math.max(0, Math.min(E.CLASS_MAX, Math.floor(v)));
+      }
+    }
+  } catch { /* corrupt: an empty armoury beats a broken game */ }
+  return fresh;
+}
+function writeArmoury(a) {
+  try { localStorage.setItem(ARMOURY_KEY, JSON.stringify(a)); } catch { /* private mode */ }
+}
+function readDifficulty() {
+  try {
+    const v = localStorage.getItem(DIFF_KEY);
+    if (E.DIFFICULTIES[v]) return v;
+  } catch { /* fall through */ }
+  return E.DEFAULT_DIFFICULTY;
+}
+function writeDifficulty(d) {
+  try { localStorage.setItem(DIFF_KEY, d); } catch { /* private mode */ }
+}
+
 /* short-lived hit beams, drawn by the shell. Purely cosmetic. */
 const beams = [];
 
@@ -123,6 +233,12 @@ const fx = {
     audio.fire();
   },
   build() { audio.eat(); },
+  // a tower levelled: a small burst in its own colour, so the moment is
+  // visible without a banner interrupting a wave
+  level(x, y, tower) {
+    gfx.burst(x, y, E.TOWER_TYPES[tower.type].col, 8);
+    audio.bonus();
+  },
 };
 
 /* ---------- layout ---------- */
@@ -135,7 +251,10 @@ const PORTRAIT_ONLY = true;
 const pickLayout = () =>
   (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
 
-const world = E.createWorld({ fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff });
+const world = E.createWorld({
+  fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff,
+  classUpgrades: readArmoury(), difficulty: readDifficulty(),
+});
 
 let W = world.L.W, H = world.L.H;
 const board = { w: W, h: H };
@@ -178,6 +297,19 @@ startBtn.textContent = 'Start Wave';
 startBtn.addEventListener('click', () => { if (world.running) E.startWave(world); syncPalette(); });
 waveRow.append(startBtn);
 
+/* Rush: pull the rest of *this* wave forward. Deleted in v26 on the assumption
+   that fast-forward covered it — it does not, and the difference is the point.
+   Fast-forward speeds up time, so your towers fire proportionally faster and
+   the wave is exactly as hard, just shorter. Rush speeds up the enemy alone:
+   the same wave arrives sooner, against towers reloading at their normal rate.
+   One is a convenience, the other is a gamble taken for the bounty. */
+const rushBtn = document.createElement('button');
+rushBtn.id = 'rushWave';
+rushBtn.type = 'button';
+rushBtn.textContent = 'Rush';
+rushBtn.addEventListener('click', () => { if (world.running) E.rushWave(world); syncPalette(); });
+waveRow.append(rushBtn);
+
 /* Fast-forward: a speed multiplier over the *whole* simulation, cycled by
    tapping. Deliberately a shell concern, not an engine one — the engine is
    already a pure function of `dt`, so running it faster is just handing it
@@ -193,47 +325,103 @@ ffBtn.addEventListener('click', () => {
 });
 waveRow.append(ffBtn);
 
-/* Continuous: auto-start the next wave the moment the current one clears,
-   for players who don't want to tap Start between every wave. Replaced the
-   old per-tap "Rush Wave", which compressed spawn gaps — that turned out to
-   be two different wants (go faster vs. don't make me tap), and this is the
-   second of them. */
+/* Continuous: auto-start the next wave the moment the current one clears, for
+   players who don't want to tap Start between every wave. A third want again,
+   distinct from both Rush and fast-forward. */
 let continuous = false;
 const contBtn = document.createElement('button');
 contBtn.id = 'contWave';
 contBtn.type = 'button';
+contBtn.setAttribute('aria-label', 'Auto-start next wave');
 contBtn.addEventListener('click', () => { continuous = !continuous; syncPalette(); });
 waveRow.append(contBtn);
 
+/* The armoury, on its own full-width row: it opens a modal, so it is a place
+   you go rather than something tapped mid-wave. */
+const shopBtn = document.createElement('button');
+shopBtn.id = 'shopBtn';
+shopBtn.type = 'button';
+shopBtn.textContent = 'Purchase Upgrades';
+shopBtn.addEventListener('click', () => openShop());
+controls.append(shopBtn);
+
 function syncPalette() {
+  /* Selection is sticky, and unaffordable is a *look* rather than a disabled
+     button. v26 got this wrong twice over: it disabled the buttons, so you
+     could not pick the thing you were saving up for, and then when the money
+     ran out it silently moved the highlight to whatever you *could* afford —
+     so a tap you thought you had made had quietly become a different tap. Now
+     nothing reassigns the choice but you, and the cost simply reads dim until
+     you can pay it. */
   for (const key of E.TOWER_KEYS) {
-    pickBtns[key].classList.toggle('on', key === selected);
-    pickBtns[key].disabled = world.charge < E.TOWER_TYPES[key].cost;
+    const b = pickBtns[key];
+    b.classList.toggle('on', key === selected);
+    b.classList.toggle('broke', world.components < E.TOWER_TYPES[key].cost);
+    b.disabled = false;
   }
-  /* A selection can go stale: pick an affordable tower, spend the charge
-     elsewhere, and `selected` still points at a type you can no longer
-     build — the button stays highlighted while every tap silently does
-     nothing. Move the highlight to something affordable instead. */
-  if (world.charge < E.TOWER_TYPES[selected].cost) {
-    const afford = E.TOWER_KEYS.find(k => world.charge >= E.TOWER_TYPES[k].cost);
-    if (afford) selected = afford;
-  }
-  for (const key of E.TOWER_KEYS) pickBtns[key].classList.toggle('on', key === selected);
 
   // Disabled, not hidden, so the controls strip never reflows and there is
   // nothing for makeFit to re-fit. startWave works mid-wave (it overlaps the
   // next wave onto the current one), so it's only meaningless when the run
   // isn't live at all.
-  startBtn.disabled = !(world.running && !world.over);
-  ffBtn.disabled = !(world.running && !world.over);
-  contBtn.disabled = !(world.running && !world.over);
-  ffBtn.textContent = SPEEDS[speedIdx] + '×';
+  const live = world.running && !world.over;
+  startBtn.disabled = !live;
+  ffBtn.disabled = !live;
+  contBtn.disabled = !live;
+  // rush only means something while spawns are still queued
+  rushBtn.disabled = !live || !world.waveActive || world.spawnQueue.length === 0;
+  shopBtn.disabled = world.over;
+  // Symbols, not words: these two are modes rather than verbs, and the glyphs
+  // are what let them share the space one worded button used to need.
+  ffBtn.textContent = SPEEDS[speedIdx] === 1 ? '▶' : SPEEDS[speedIdx] + '×';
+  ffBtn.setAttribute('aria-label', `Fast forward ${SPEEDS[speedIdx]}x`);
   ffBtn.classList.toggle('on', speedIdx > 0);
-  contBtn.textContent = 'Auto';
+  contBtn.textContent = '↻';
   contBtn.classList.toggle('on', continuous);
 }
 
-/* ---------- tower popup (upgrade / sell) ---------- */
+/* ---------- the armoury ---------- */
+
+const TRACK_LABEL = { dmg: 'Damage', rate: 'Fire rate', range: 'Range', splash: 'Splash' };
+
+function renderShop() {
+  $('shopComps').textContent = 'Components ' + Math.floor(world.components);
+  const host = $('shopClasses');
+  host.innerHTML = '';
+  for (const type of E.TOWER_KEYS) {
+    const T = E.TOWER_TYPES[type];
+    const box = document.createElement('div');
+    box.className = 'cls';
+    box.style.borderColor = T.col;
+    const rows = E.CLASS_TRACKS.map(track => {
+      const have = world.classUpgrades[type][track];
+      const cost = E.classCost(type, track, have);
+      const tag = T.spec === track ? '<span class="tag spec">cheap</span>'
+                : T.weak === track ? '<span class="tag weak">dear</span>' : '';
+      const pips = Array.from({ length: E.CLASS_MAX },
+        (_, i) => `<i class="${i < have ? 'on' : ''}"></i>`).join('');
+      const btn = cost === null
+        ? '<button disabled>Max</button>'
+        : `<button data-t="${type}" data-k="${track}"${world.components < cost ? ' disabled' : ''}>${cost}</button>`;
+      return `<div class="trk"><span class="nm">${TRACK_LABEL[track]}</span>${tag}<span class="bar">${pips}</span>${btn}</div>`;
+    }).join('');
+    box.innerHTML = `<h3 style="color:${T.col}">${T.name}</h3>${rows}`;
+    host.append(box);
+  }
+  for (const b of host.querySelectorAll('button[data-t]')) {
+    b.addEventListener('click', () => {
+      if (E.buyClassUpgrade(world, b.dataset.t, b.dataset.k)) {
+        writeArmoury(world.classUpgrades);
+        renderShop(); sync();
+      }
+    });
+  }
+}
+
+function openShop() { $('shop').classList.add('on'); renderShop(); }
+$('shopClose').addEventListener('click', () => $('shop').classList.remove('on'));
+
+/* ---------- tower popup (targeting / sell) ---------- */
 const tsel = $('tsel');
 let popupIndex = -1;
 
@@ -247,24 +435,35 @@ function openTowerPopup(i, px, py) {
   renderPopup();
 }
 
-/* Redraws the popup's contents in place. Upgrading re-renders rather than
-   closing — tier and cost changed, and a player buying two tiers in a row
-   shouldn't have to re-tap the tower. Only an outside tap (or a sell, which
-   removes the tower) closes it. */
+const PRIORITY_LABEL = { first: 'First', last: 'Last', strongest: 'Strongest' };
+
+/* Redraws the popup's contents in place. Changing targeting re-renders rather
+   than closing, so a player can try a mode and switch again without re-tapping
+   the tower. Only an outside tap (or a sell, which removes the tower) closes it.
+
+   There is no Upgrade button any more: towers level themselves from combat, and
+   what money buys is the whole class, in the armoury. What is left here is the
+   one per-tower decision still worth making — what it shoots at first. */
 function renderPopup() {
   const t = world.towers[popupIndex];
   if (!t) { closePopup(); return; }
-  const up = E.upgradeCost(t);
+  const lvl = Math.min(E.MAX_LEVEL, t.level || 1);
+  const next = E.xpForNext(lvl);
   tsel.innerHTML =
-    `<h3>${E.TOWER_TYPES[t.type].name} ·${' ★'.repeat(t.tier + 1)}</h3>` +
-    (up === null
-      ? `<button disabled>Maxed</button>`
-      : `<button id="tUp"${world.charge < up ? ' disabled' : ''}>Upgrade · ${up}</button>`) +
+    `<h3>${E.TOWER_TYPES[t.type].name} · L${lvl}</h3>` +
+    `<div class="xp">${lvl >= E.MAX_LEVEL ? 'Fully trained' : `${Math.floor(t.xp)} / ${next} xp`}</div>` +
+    `<div class="prio">` +
+    E.PRIORITIES.map(p =>
+      `<button data-p="${p}" class="${(t.priority || 'first') === p ? 'on' : ''}">${PRIORITY_LABEL[p]}</button>`
+    ).join('') +
+    `</div>` +
     `<button class="sell" id="tSell">Sell · +${E.sellValue(t)}</button>`;
-  const upBtn = $('tUp');
-  if (upBtn) upBtn.addEventListener('click', () => {
-    if (E.upgradeTower(world, popupIndex)) { sync(); renderPopup(); }
-  });
+  for (const b of tsel.querySelectorAll('.prio button')) {
+    b.addEventListener('click', () => {
+      E.setPriority(world, popupIndex, b.dataset.p);
+      renderPopup();
+    });
+  }
   $('tSell').addEventListener('click', () => { E.sellTower(world, popupIndex); closePopup(); sync(); });
 }
 function closePopup() { tsel.classList.remove('on'); popupIndex = -1; }
@@ -310,9 +509,13 @@ function dragPoint(e) {
 
 for (const key of E.TOWER_KEYS) {
   pickBtns[key].addEventListener('pointerdown', e => {
-    if (!world.running || pickBtns[key].disabled) return;
-    dragType = key;
+    if (!world.running) return;
+    // Selecting always works, even when you cannot afford it yet — that is how
+    // you pick what to save for. Only the *drag* is gated on affording it,
+    // since a drag that cannot end in a build is a dead gesture.
     selected = key; syncPalette();
+    if (world.components < E.TOWER_TYPES[key].cost) return;
+    dragType = key;
     hoverCell = null;
     e.preventDefault();
   });
@@ -346,8 +549,18 @@ addEventListener('keydown', e => {
 /* No `extra` needed: #controls is a sibling of #stage inside #shell, and
    makeFit now measures every shell child that isn't the board (plus the flex
    gaps and the body's padding). Passing it here as well would double-count
-   the strip and shrink the board by its height twice over. */
-fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
+   the strip and shrink the board by its height twice over.
+
+   `fillWidth` because this is the one game where a smaller board is the worst
+   outcome: you are aiming taps at individual cells. Under the default fit the
+   board filled the width by 3px at 375x812 — and only on a desktop browser,
+   where the safe-area insets are 0. A real phone spends 80-90px on the notch
+   and home indicator, and every one of those pixels came off the board's
+   *width* as a gutter either side. Filling the width instead pushes the
+   controls strip down, which is exactly what was asked for; `body.scrolls`
+   is what makes the pushed-down part reachable. */
+document.body.classList.add('scrolls');
+fitStage = makeFit({ canvas: cv, stage: $('stage'), board, fillWidth: true });
 
 /* ---------- rotation ---------- */
 function applyLayout() {
@@ -367,27 +580,92 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
+/* Game-specific settings for the menu panel: the difficulty a new run will use,
+   and the one control that can undo the armoury. Both go through makeMenu's
+   `extra` slot, the same hook Feedline uses for its input settings. */
+const settingsEl = document.createElement('div');
+settingsEl.className = 'menuSettings';
+settingsEl.innerHTML =
+  `<label>Difficulty</label>` +
+  `<div class="choice" id="diffChoice">` +
+  E.DIFFICULTY_KEYS.map(k =>
+    `<label><input type="radio" name="difficulty" value="${k}"> ${E.DIFFICULTIES[k].name}</label>`
+  ).join('') +
+  `</div>` +
+  `<p class="hintline" id="diffNote"></p>` +
+  `<button type="button" id="wipeArmoury">Reset armoury</button>`;
+
+/* Everything here queries through `settingsEl`, not `document`. This element is
+   detached until makeMenu mounts it into the panel, so a `getElementById` at
+   this point finds nothing and the whole module dies on the first null. */
+const diffNote = settingsEl.querySelector('#diffNote');
+const wipeBtn = settingsEl.querySelector('#wipeArmoury');
+
+function syncDifficultyUI() {
+  for (const r of settingsEl.querySelectorAll('input[name=difficulty]')) {
+    r.checked = r.value === world.difficulty;
+  }
+  // Say plainly that it takes effect next run — changing the hp scale under a
+  // wave already on the board would rewrite the difficulty of a fight in
+  // progress, which is worse than waiting.
+  diffNote.textContent = world.wave > 0
+    ? 'Applies to your next run.'
+    : 'Applies when you begin.';
+}
+for (const r of settingsEl.querySelectorAll('input[name=difficulty]')) {
+  r.addEventListener('change', () => {
+    writeDifficulty(r.value);
+    // safe to apply immediately only before the first wave has started
+    if (world.wave === 0 && !world.waveActive) {
+      world.difficulty = r.value;
+      const D = E.DIFFICULTIES[r.value];
+      world.components = D.components; world.integrity = D.integrity;
+      sync();
+    }
+    syncDifficultyUI();
+  });
+}
+wipeBtn.addEventListener('click', () => {
+  // Two taps, because it throws away every run's worth of purchases and there
+  // is no getting it back.
+  if (wipeBtn.dataset.armed !== '1') {
+    wipeBtn.dataset.armed = '1';
+    wipeBtn.textContent = 'Really reset? Tap again';
+    setTimeout(() => { wipeBtn.dataset.armed = ''; wipeBtn.textContent = 'Reset armoury'; }, 4000);
+    return;
+  }
+  wipeBtn.dataset.armed = ''; wipeBtn.textContent = 'Reset armoury';
+  world.classUpgrades = E.newClassUpgrades();
+  writeArmoury(world.classUpgrades);
+  sync();
+});
+
 const pause = makeMenu({
   stage: $('stage'),
   host: document.querySelector('header'),
   audio,
   title: 'Choke Point',
   lore: 'They are on the ground now, and they only advance one way. Make that one way expensive.',
+  extra: settingsEl,
   rows: [
     ['Build', 'Pick a tower below, then tap an empty cell. Towers fire on their own.'],
-    ['Wave', 'Tap Start Wave when you\'re ready — you can start the next one early, mid-wave. Kills earn charge to build more.'],
-    ['Pace', '× speeds the whole board up; Auto starts each wave as soon as the last clears.'],
-    ['Adjust', 'Tap one of your towers to upgrade or sell it.'],
+    ['Wave', 'Tap Start Wave when you\'re ready — you can start the next one early, mid-wave. Kills earn components to build more.'],
+    ['Pace', 'Rush pulls this wave in sooner; × speeds the whole board up; ↻ starts each wave as soon as the last clears.'],
+    ['Adjust', 'Tap one of your towers to set what it shoots first, or to sell it.'],
+    ['Upgrade', 'Purchase Upgrades buys improvements for a whole tower class — and they keep between runs.'],
   ],
   notes: [
     'Node is cheap and fast; Breaker hits hard and splashes; Coil slows — and anything slowed takes extra damage from everything else, so Coil sets targets up.',
+    'Towers level themselves by fighting, up to ten. The ring of pips around each one is how far along it is.',
+    'In the armoury each class buys its speciality cheap and its opposite dear, so a Node stays a Node however much you spend.',
     'Later surges fight back: Shell shrugs off small hits, Phase shrugs off splash and can\'t be slowed, and Patch repairs everything near it — watch colour and size to tell them apart.',
     'Tanks halt to unload Swarm, and spill more when destroyed — pick where you break one.',
     'Every surge that reaches the core costs an integrity point — lose them all and it\'s over.',
-    'Playing again puts you on a different circuit.',
+    'Routes run easiest to hardest: route 1 is the longest, route 3 barely half of it. Playing again moves you along.',
     'Keyboard: 1/2/3 pick a tower, Enter starts a wave.',
   ],
 });
+syncDifficultyUI();
 
 /* ---------- banner ---------- */
 function showBanner(h, p, btn) {
@@ -399,7 +677,9 @@ function showBanner(h, p, btn) {
 function hideBanner() { $('banner').classList.add('hide'); }
 
 $('go').addEventListener('click', () => {
-  if (world.over) E.resetGame(world);
+  // a new run picks up whatever difficulty is currently selected; the armoury
+  // carries over untouched, which is the whole point of it
+  if (world.over) { E.resetGame(world, { difficulty: readDifficulty() }); barrelOut.clear(); }
   world.running = true;
   gfx.clear();
   hideBanner();
@@ -487,7 +767,10 @@ function frame(now) {
     }
     if (world.over) {
       clearRun(GAME_ID);            // a finished run is not one to come back to
-      const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
+      // the difficulty rides along with the score: with an armoury that grows
+      // between runs, "wave 14" means something different on Easy than on Hard
+      const r = submit(GAME_ID, world.score,
+        `Wave ${world.wave} · ${E.DIFFICULTIES[world.difficulty].name}`);
       syncBest();
       showBanner('Core Breached',
         r.record ? `New best — <b style="color:var(--accent-hot)">${world.score}</b>, wave ${world.wave}`
@@ -498,6 +781,9 @@ function frame(now) {
   }
 
   gfx.step(dt, 1.5);
+  // barrels keep easing in and out even while paused or between waves, so the
+  // board settles to a correct resting state rather than freezing mid-slide
+  stepTowerArt(dt);
   for (let i = beams.length - 1; i >= 0; i--) { beams[i].life -= dt; if (beams[i].life <= 0) beams.splice(i, 1); }
 
   draw();
@@ -512,28 +798,33 @@ function syncBest() {
 function sync() {
   $('uiWave').textContent = world.wave;
   $('uiScore').textContent = world.score;
-  $('uiCharge').textContent = world.charge;
+  $('uiComponents').textContent = Math.floor(world.components);
   $('uiIntegrity').textContent = world.integrity;
   // how far this run got, for the cabinet's unlock gate — recorded live, so a
   // player who closes the tab mid-run still keeps the wave they reached
   recordProgress(GAME_ID, world.wave);
-  // naming the circuit matters on a replay: the board genuinely changed, and
-  // without a label that reads as a glitch rather than as a new map
-  $('uiCircuit').textContent = String.fromCharCode(65 + world.routeIndex);
+  // naming the route matters on a replay: the board genuinely changed, and
+  // without a label that reads as a glitch rather than as a new map. Numbered
+  // rather than lettered now that they run easiest to hardest — "3" says
+  // where you are on that scale in a way "C" does not.
+  $('uiRoute').textContent = (world.routeIndex + 1) + '/' + E.ROUTE_COUNT;
   syncPalette();
   syncPopup();
 }
 
-/* The popup now outlives a single upgrade, so its affordability has to track
-   charge as kills come in. Toggle the button rather than re-rendering — sync()
-   runs every frame, and rebuilding the DOM that often would kill the taps. */
+/* The popup outlives the taps made in it, so the level and XP it shows have to
+   keep up as kills come in. Patch the two text nodes rather than re-rendering —
+   sync() runs every frame, and rebuilding the DOM that often would eat the
+   taps aimed at the buttons inside it. */
 function syncPopup() {
   if (popupIndex < 0) return;
   const t = world.towers[popupIndex];
   if (!t) { closePopup(); return; }
-  const upBtn = $('tUp');
-  const up = E.upgradeCost(t);
-  if (upBtn && up !== null) upBtn.disabled = world.charge < up;
+  const lvl = Math.min(E.MAX_LEVEL, t.level || 1);
+  const h = tsel.querySelector('h3'), xp = tsel.querySelector('.xp');
+  if (h) h.textContent = `${E.TOWER_TYPES[t.type].name} · L${lvl}`;
+  if (xp) xp.textContent = lvl >= E.MAX_LEVEL
+    ? 'Fully trained' : `${Math.floor(t.xp)} / ${E.xpForNext(lvl)} xp`;
 }
 
 /* ---------- draw ---------- */
@@ -567,7 +858,7 @@ function drawTowerRange(t) {
   const cx = (t.c + .5) * C(), cy = (t.r + .5) * C();
   ctx.strokeStyle = 'rgba(111,183,232,.6)';
   ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-  ctx.beginPath(); ctx.arc(cx, cy, E.stats(t).range, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, E.stats(world, t).range, 0, TAU); ctx.stroke();
   ctx.setLineDash([]);
 }
 
@@ -626,11 +917,32 @@ function drawCore() {
    board, where a dark body with a lit rim and a face offset behind reads as a
    solid installation bolted to the grid. (Contrast Feedline's head, where the
    same treatment punched a hole in a glowing tube.) */
+/* How far each tower's barrel is deployed, 0..1, keyed by cell. Presentation
+   state, so it lives here rather than on the world — the engine has no opinion
+   about how long a barrel takes to slide out. */
+const barrelOut = new Map();
+const BARREL_SPEED = 5.2;          // full extension in a bit under a fifth of a second
+
+function stepTowerArt(dt) {
+  const live = new Set();
+  for (const t of world.towers) {
+    const key = t.c + ',' + t.r;
+    live.add(key);
+    const want = E.towerReady(world, t) ? 1 : 0;
+    const now = barrelOut.get(key) ?? want;      // a tower built mid-fight starts settled
+    const d = Math.sign(want - now) * BARREL_SPEED * dt;
+    barrelOut.set(key, Math.abs(want - now) <= Math.abs(d) ? want : now + d);
+  }
+  // a sold tower must not leave its barrel behind for the next one built there
+  for (const k of [...barrelOut.keys()]) if (!live.has(k)) barrelOut.delete(k);
+}
+
 function drawTower(t) {
   const cell = C();
   const cx = (t.c + .5) * cell, cy = (t.r + .5) * cell;
   const col = E.TOWER_TYPES[t.type].col;
   const rr = cell * .32;
+  const out = barrelOut.get(t.c + ',' + t.r) ?? 0;
 
   // The body is lifted well above the board colour on purpose. At the default
   // near-black it vanished into the background and the tower read as a hollow
@@ -640,22 +952,42 @@ function drawTower(t) {
     body: 'rgba(24,44,56,.98)', back: 'rgba(13,26,34,.98)',
   });
 
-  // the barrel, aimed at whatever it is tracking
-  if (t.aim && world.enemies.includes(t.aim)) {
-    const p = E.enemyPos(world, t.aim);
-    const a = Math.atan2(p.y - cy, p.x - cx);
+  /* Idle, a tower is an empty ring — the extrudeDisc above and nothing else.
+     As something comes within reach it fills a solid hub and slides its barrel
+     out of it. So a glance at the board says which half of your defence is
+     about to be doing the work, and a quiet stretch of route looks quiet
+     instead of looking identical to a busy one. */
+  if (out > 0.01) {
+    // the hub: solid, and it grows into place rather than popping in
+    ctx.fillStyle = col;
+    ctx.globalAlpha = out;
+    ctx.beginPath(); ctx.arc(cx, cy, rr * .34 * out, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // the barrel, aimed at whatever it is tracking — or straight down the
+    // route while it is only warming up
+    const target = (t.aim && world.enemies.includes(t.aim)) ? E.enemyPos(world, t.aim) : null;
+    const a = target ? Math.atan2(target.y - cy, target.x - cx) : -Math.PI / 2;
+    // extends *from* the hub, so the movement reads as the barrel sliding out
+    const from = rr * .3, to = from + (rr * 1.5 - from) * out;
     glowStroke(ctx, c => {
-      c.moveTo(cx + Math.cos(a) * rr * .3, cy + Math.sin(a) * rr * .3);
-      c.lineTo(cx + Math.cos(a) * rr * 1.5, cy + Math.sin(a) * rr * 1.5);
-    }, col, 2.6);
+      c.moveTo(cx + Math.cos(a) * from, cy + Math.sin(a) * from);
+      c.lineTo(cx + Math.cos(a) * to, cy + Math.sin(a) * to);
+    }, col, 2.6, undefined, out);
   }
 
-  // tier pips, kept as hard little marks rather than glows — they are counted,
-  // not admired, and a halo would blur one into the next. Sat below-left of
-  // the body before, which the tower's own rim partly covered; shifted
-  // further down and left to clear it entirely.
-  for (let i = 0; i <= t.tier; i++) {
-    glowDot(ctx, cx - rr - 4 + i * 6, cy + rr + 6, 1.9, col);
+  /* Level pips, kept as hard little marks rather than glows — they are counted,
+     not admired, and a halo would blur one into the next. Ten of them now, so
+     they ring the base instead of sitting in a row: a row of ten at 6px would
+     be wider than the cell. Unearned levels are drawn dim rather than omitted,
+     so the gauge has a fixed size and you can see how far along it is. */
+  const level = Math.min(E.MAX_LEVEL, t.level || 1);
+  for (let i = 0; i < E.MAX_LEVEL; i++) {
+    // start at the bottom and run clockwise, leaving the top clear for the barrel
+    const a = Math.PI * 0.5 + (i / E.MAX_LEVEL) * TAU;
+    const px = cx + Math.cos(a) * (rr + 5), py = cy + Math.sin(a) * (rr + 5);
+    if (i < level) glowDot(ctx, px, py, 1.9, col);
+    else { ctx.fillStyle = 'rgba(230,233,226,.16)'; ctx.beginPath(); ctx.arc(px, py, 1.3, 0, TAU); ctx.fill(); }
   }
 }
 
@@ -755,7 +1087,7 @@ function drawRangePreview() {
   if (!world.running) return;
   const { c, r } = hoverCell;
   const existing = E.towerAt(world, c, r);
-  const range = existing ? E.stats(existing).range : E.TOWER_TYPES[selected].tiers[0].range;
+  const range = existing ? E.stats(world, existing).range : E.stats(world, { type: selected, level: 1, xp: 0 }).range;
   const cx = (c + .5) * C(), cy = (r + .5) * C();
   const ok = existing || E.canBuild(world, c, r, selected);
   ctx.strokeStyle = ok ? 'rgba(111,183,232,.5)' : 'rgba(224,80,60,.4)';

@@ -101,11 +101,23 @@ export function makeMenu({ stage, audio, title, rows = [], notes = [], lore = ''
   panel.addEventListener('click', e => { if (e.target === panel) set(false); });
   addEventListener('keydown', e => { if (e.key === 'Escape' && paused) set(false); });
 
-  // audio can't play until the user has interacted with the page at all —
-  // resume it on the first gesture, same as the old mute button did
+  /* Audio can't play until the user has interacted with the page at all, so
+     resume it on a gesture — but *every* gesture, not just the first.
+
+     This used to be `{ once: true }`, on the reasoning that one resume is all
+     an AudioContext needs. That is true right up until something suspends it
+     again, and on iOS plenty does: backgrounding the tab, an incoming call,
+     locking the phone, or re-entering the installed PWA. After any of those
+     the context comes back suspended and, with a one-shot listener, nothing
+     was left to wake it — the game played on in silence for the rest of the
+     session with no way back short of a reload. Resuming is a no-op when the
+     context is already running, so there is no cost to doing it often. */
   const wake = () => audio.resume();
-  addEventListener('pointerdown', wake, { once: true });
-  addEventListener('keydown', wake, { once: true });
+  addEventListener('pointerdown', wake);
+  addEventListener('keydown', wake);
+  // and the moment the page becomes visible again, which is the exact point
+  // an interruption ended and before the player has touched anything
+  addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
 
   return { get paused() { return paused; }, pause: () => set(true), resume: () => set(false), toggle };
 }

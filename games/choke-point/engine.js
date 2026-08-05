@@ -34,16 +34,23 @@ export const CELL = 64;
  *  construction, since the grid dimensions swap too, and because cells are
  *  square the transposed path has an identical length. That is what keeps
  *  rotation lossless — see `relayout`. */
+/*  Ordered by difficulty now, easiest first, and a run always starts on the
+ *  first — it used to be picked from the seed, which made the opening board a
+ *  coin toss. Length *is* the difficulty here: a longer route is more seconds
+ *  under fire before anything reaches the core, so route 1 is the most
+ *  forgiving and route 3 the least. Roughly 36 / 31 / 14 cells. */
 const ROUTES = [
-  // A: three long sweeps, doubling back — the original. Plenty of cells that
-  // cover two lanes at once, so it rewards finding the pinch points.
-  [[0, 1], [9, 1], [9, 3], [2, 3], [2, 5], [11, 5], [11, 7]],
-  // B: enters low and climbs, then descends in steps. Longer and more wound,
-  // so there is more time on the board but the lanes are further apart.
+  // 1 — enters low and climbs, then descends in steps. The longest and most
+  // wound: plenty of time on the board, though the lanes sit further apart so
+  // a single tower covers less of it.
   [[0, 6], [10, 6], [10, 1], [3, 1], [3, 4], [7, 4], [7, 7], [11, 7]],
-  // C: fewer turns and long straights. Shortest of the three, so less time to
-  // kill, but the straights concentrate fire nicely.
-  [[0, 0], [8, 0], [8, 4], [1, 4], [1, 7], [11, 7]],
+  // 2 — three long sweeps, doubling back. Plenty of cells that cover two lanes
+  // at once, so it rewards finding the pinch points.
+  [[0, 1], [9, 1], [9, 3], [2, 3], [2, 5], [11, 5], [11, 7]],
+  // 3 — two turns and out. Less than half the length of the first, so there is
+  // barely any time to kill; the compensation is that everything funnels
+  // through one short corridor, and towers there all fire at once.
+  [[0, 3], [7, 3], [7, 6], [11, 6]],
 ];
 export const ROUTE_COUNT = ROUTES.length;
 
@@ -132,68 +139,152 @@ export function pathCells(L, routeIndex = 0) {
 
 /* ---------- towers ---------- */
 
-/** Three tower types. `stats(type, tier)` resolves the effective numbers; read
+/** Three tower types. `stats(w, tower)` resolves the effective numbers; read
  *  from that, not these tables directly. Ranges are in pixels; rate is seconds
  *  between shots; slow is a fraction and duration in seconds. */
-// Each type's upgrade grows a different stat, so tier choices read as a
-// specialization rather than a flat power bump on every tower alike:
-// Node's edge is fire rate, Breaker's is reach, Coil's is splash.
+/* Each type is a base stat line plus two words: the track it is *good* at
+   buying (`spec`, discounted in the armoury) and the one it is bad at (`weak`,
+   surcharged). That pairing is what keeps the three classes from converging on
+   the same build — you can push a Node's fire rate cheaply and its splash only
+   at a painful price, so a Node stays a Node however much you spend on it. */
 export const TOWER_TYPES = {
   node: {
-    name: 'Node', cost: 12, col: '#6fb7e8', blurb: 'Cheap — upgrades for fire rate',
-    upgradeBase: 1.4, upgradeStep: 0.9,
-    tiers: [
-      { range: 92, rate: 0.5, dmg: 4, splash: 0, slow: 0 },
-      { range: 96, rate: 0.32, dmg: 5, splash: 0, slow: 0 },
-      { range: 100, rate: 0.2, dmg: 6, splash: 0, slow: 0 },
-    ],
+    name: 'Node', cost: 12, col: '#6fb7e8', blurb: 'Cheap, quick, single target',
+    base: { range: 92, rate: 0.5, dmg: 4, splash: 0, slow: 0, slowDur: 0 },
+    spec: 'rate', weak: 'splash',
   },
-  // Steeper cost curve than Node/Coil, deliberately: at the shared formula,
-  // Breaker's raw power made it affordable everywhere once charge piled up,
-  // crowding Node out entirely instead of leaving it the answer for single
-  // durable targets (and Phase, which already resists Breaker's splash).
+  // Costs more up front than Node/Coil, deliberately: its raw power made it
+  // affordable everywhere once money piled up, crowding Node out entirely
+  // instead of leaving it the answer for single durable targets (and Phase,
+  // which already resists Breaker's splash).
   breaker: {
-    name: 'Breaker', cost: 48, col: '#e0503c', blurb: 'Splash — upgrades for reach',
-    upgradeBase: 2.0, upgradeStep: 2.0,
-    tiers: [
-      { range: 120, rate: 1.4, dmg: 24, splash: 44, slow: 0 },
-      { range: 150, rate: 1.35, dmg: 28, splash: 46, slow: 0 },
-      { range: 185, rate: 1.3, dmg: 32, splash: 48, slow: 0 },
-    ],
+    name: 'Breaker', cost: 48, col: '#e0503c', blurb: 'Heavy splash, long reach',
+    base: { range: 120, rate: 1.4, dmg: 24, splash: 44, slow: 0, slowDur: 0 },
+    spec: 'splash', weak: 'rate',
   },
   coil: {
-    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Slows — upgrades for splash',
-    upgradeBase: 1.4, upgradeStep: 0.9,
-    tiers: [
-      { range: 84, rate: 0.8, dmg: 2, splash: 0, slow: 0.4, slowDur: 1.2 },
-      { range: 88, rate: 0.76, dmg: 3, splash: 30, slow: 0.5, slowDur: 1.4 },
-      { range: 92, rate: 0.72, dmg: 4, splash: 40, slow: 0.6, slowDur: 1.6 },
-    ],
+    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Slows what it touches',
+    base: { range: 84, rate: 0.8, dmg: 2, splash: 0, slow: 0.4, slowDur: 1.2 },
+    spec: 'range', weak: 'dmg',
   },
 };
 export const TOWER_KEYS = Object.keys(TOWER_TYPES);
-export const MAX_TIER = 2;   // index of the last tier (0-based); three tiers total
 
-/** Cost of the next upgrade for a tower, or null if maxed. Scales off the base
- *  cost so pricier towers cost more to level — and each type's own
- *  `upgradeBase`/`upgradeStep`, so the curve itself can differ by type. */
-export function upgradeCost(tower) {
-  if (tower.tier >= MAX_TIER) return null;
-  const T = TOWER_TYPES[tower.type];
-  return Math.round(T.cost * (T.upgradeBase + tower.tier * T.upgradeStep));
+/* ---------- levelling ---------- */
+
+/* Towers used to be upgraded by hand, three tiers, paid for out of the same
+   pocket that bought new towers. That made every upgrade a question of "or I
+   could just build another one", and the answer was nearly always another one.
+
+   Now a tower levels itself by fighting: XP for damage dealt, a bonus for the
+   killing blow. What you *spend* money on is the class as a whole, in the
+   armoury, and that carries between runs. So the two currencies of progress
+   are separated — placement earns, purchase compounds. */
+export const MAX_LEVEL = 10;
+/** Flat XP for landing a kill, on top of the damage credited. Small on
+ *  purpose: the bulk of a tower's XP should come from steady work, not from
+ *  whoever happens to land the last hit on a Load. */
+export const XP_KILL_BONUS = 3;
+
+/** XP to get from `level` to the next one. */
+export function xpForNext(level) {
+  if (level >= MAX_LEVEL) return Infinity;
+  return Math.round(18 * Math.pow(1.42, level - 1));
 }
 
-/** Charge returned when a tower is sold: half of everything sunk into it. */
+/** How much a stat grows across the whole 1→10 climb, interpolated linearly.
+ *  `rate` is a cooldown in seconds, so it *divides* — a bigger number there
+ *  means a shorter gap between shots. */
+export const LEVEL_GAIN = { dmg: 1.5, range: 0.6, splash: 0.5, rate: 0.8 };
+
+/** Grant XP and level up as far as it carries. Returns true if a level was
+ *  gained, so the shell can pop something. */
+export function addXp(tower, amount) {
+  if (!(amount > 0) || tower.level >= MAX_LEVEL) return false;
+  tower.xp += amount;
+  let gained = false;
+  while (tower.level < MAX_LEVEL && tower.xp >= xpForNext(tower.level)) {
+    tower.xp -= xpForNext(tower.level);
+    tower.level++;
+    gained = true;
+  }
+  if (tower.level >= MAX_LEVEL) tower.xp = 0;
+  return gained;
+}
+
+/* ---------- the armoury: per-class upgrades, bought and kept ---------- */
+
+export const CLASS_TRACKS = ['dmg', 'rate', 'range', 'splash'];
+export const CLASS_MAX = 5;
+/** Per-level growth for a purchased track, same divide-don't-multiply rule for
+ *  `rate` as above. Range is exactly 1/15 a level so five levels is a clean
+ *  +1/3 — see the Breaker reach note on `stats`. */
+export const CLASS_GAIN = { dmg: 0.12, rate: 0.1, range: 1 / 15, splash: 0.15 };
+
+const CLASS_BASE_COST = { dmg: 60, rate: 55, range: 50, splash: 55 };
+/** A class buys its speciality at a discount and its opposite at a surcharge. */
+export const SPEC_DISCOUNT = 0.6;
+export const WEAK_PENALTY = 1.8;
+
+export function newClassUpgrades() {
+  const out = {};
+  for (const k of TOWER_KEYS) {
+    out[k] = {};
+    for (const t of CLASS_TRACKS) out[k][t] = 0;
+  }
+  return out;
+}
+
+/** Cost of the next level of `track` for `type`, or null if maxed. */
+export function classCost(type, track, level) {
+  if (!TOWER_TYPES[type] || !CLASS_TRACKS.includes(track)) return null;
+  if (level >= CLASS_MAX) return null;
+  const T = TOWER_TYPES[type];
+  let c = CLASS_BASE_COST[track] * (1 + level * 0.8);
+  if (T.spec === track) c *= SPEC_DISCOUNT;
+  if (T.weak === track) c *= WEAK_PENALTY;
+  return Math.round(c);
+}
+
+/** Buy one level of a class track out of the run's components. */
+export function buyClassUpgrade(w, type, track) {
+  const have = w.classUpgrades?.[type];
+  if (!have) return false;
+  const cost = classCost(type, track, have[track]);
+  if (cost === null || w.components < cost) return false;
+  w.components -= cost;
+  have[track]++;
+  return true;
+}
+
+/** Components returned when a tower is sold: half its build cost. Levelling is
+ *  earned rather than bought, so there is nothing else sunk in to refund. */
 export function sellValue(tower) {
-  const T = TOWER_TYPES[tower.type];
-  let spent = T.cost;
-  for (let t = 0; t < tower.tier; t++) spent += Math.round(T.cost * (T.upgradeBase + t * T.upgradeStep));
-  return Math.floor(spent * 0.5);
+  return Math.floor(TOWER_TYPES[tower.type].cost * 0.5);
 }
 
-/** Effective stats for a tower's current tier. */
-export function stats(tower) {
-  return TOWER_TYPES[tower.type].tiers[tower.tier];
+/** Effective stats: base × level × whatever the armoury has bought for the
+ *  class. The one place stats come from — never read `base` directly.
+ *
+ *  Two numbers here are requirements rather than taste, and both are pinned by
+ *  tests: a Breaker at level 10 reaches exactly three cells (120 × 1.6 = 192,
+ *  and CELL is 64), and one at level 10 with the range track maxed reaches
+ *  exactly four (192 × 4/3 = 256). */
+export function stats(w, tower) {
+  const T = TOWER_TYPES[tower.type];
+  const b = T.base;
+  const t = (Math.min(MAX_LEVEL, tower.level || 1) - 1) / (MAX_LEVEL - 1);
+  const cls = w?.classUpgrades?.[tower.type] || { dmg: 0, rate: 0, range: 0, splash: 0 };
+
+  const grow = (k) => (1 + LEVEL_GAIN[k] * t) * (1 + CLASS_GAIN[k] * cls[k]);
+  return {
+    range: b.range * grow('range'),
+    dmg: b.dmg * grow('dmg'),
+    splash: b.splash * grow('splash'),
+    rate: b.rate / grow('rate'),
+    slow: b.slow,
+    slowDur: b.slowDur,
+  };
 }
 
 /* ---------- enemies ---------- */
@@ -255,8 +346,22 @@ export const SLOW_BRITTLE = 1.4;
 
 /* ---------- waves ---------- */
 
-export const START_CHARGE = 55;
-export const START_INTEGRITY = 20;
+/* The armoury persists between runs, so without a counterweight every run
+   after the first is easier than the last and the game quietly solves itself.
+   Difficulty is that counterweight, and it is the player's dial rather than an
+   automatic scaling: pick the level that makes your current armoury interesting.
+   Recorded alongside the score, so an easy run is never compared to a hard one. */
+export const DIFFICULTIES = {
+  easy:   { name: 'Easy',   hp: 0.8, components: 80, integrity: 25 },
+  medium: { name: 'Medium', hp: 1.0, components: 55, integrity: 20 },
+  hard:   { name: 'Hard',   hp: 1.35, components: 40, integrity: 14 },
+};
+export const DIFFICULTY_KEYS = Object.keys(DIFFICULTIES);
+export const DEFAULT_DIFFICULTY = 'medium';
+export const diffOf = (k) => DIFFICULTIES[k] || DIFFICULTIES[DEFAULT_DIFFICULTY];
+
+export const START_COMPONENTS = DIFFICULTIES.medium.components;
+export const START_INTEGRITY = DIFFICULTIES.medium.integrity;
 
 /** Deterministic composition of a wave: a list of spawn groups, each a type,
  *  a count, and the gap in seconds between spawns. Escalates forever, and
@@ -294,15 +399,30 @@ export function wavePlan(wave) {
   // tanks arrive rarely — each one is a moving swarm dispenser, so two early
   // would flood the board with more than the towers could ever chew
   if (wave >= ENEMY_UNLOCK.tank) groups.push({ type: 'tank', count: 1 + Math.floor((wave - 10) / 4), gap: 2.4 });
+
+  /* Second releases. Past a point, adding yet more to the *first* group of a
+     type just makes one long queue of the same thing; a separate later release
+     lands while you are still busy with something else, which is what makes a
+     deep wave feel different rather than merely longer. */
+  if (wave >= 12) groups.push({ type: 'surge', count: 4 + past5(wave), gap: 0.5 });
+  if (wave >= 14) groups.push({ type: 'swarm', count: 6 + past5(wave), gap: 0.14 });
+  if (wave >= 16) groups.push({ type: 'spark', count: 4 + Math.floor(wave / 3), gap: 0.35 });
   return groups;
 }
+
+/** How far into a group the next one starts. Groups used to run strictly end
+ *  to end with a breath between, so a wave was a sequence of single-type
+ *  problems solved one at a time — the Sparks were gone before the Loads
+ *  arrived. Overlapping them is what forces a defence to cover several cases
+ *  at once, which is the entire point of having enemy traits. */
+export const GROUP_OVERLAP = 0.55;
 
 /** Enemy hp is multiplied by this, so late waves stay threatening without new
  *  tables. +12% a wave to start, and a second +8% for every wave past the
  *  fifth — same "bend it, don't tilt it" shape as `wavePlan` above, for the
  *  same reason: the early waves were already right. */
-export function hpScale(wave) {
-  return 1 + (wave - 1) * 0.12 + past5(wave) * 0.08;
+export function hpScale(wave, difficulty = DEFAULT_DIFFICULTY) {
+  return (1 + (wave - 1) * 0.12 + past5(wave) * 0.08) * diffOf(difficulty).hp;
 }
 
 /* ---------- randomness ---------- */
@@ -317,9 +437,13 @@ export function rand(w) {
 export function createWorld(opts = {}) {
   const L = opts.layout || LAYOUT;
   const seed = opts.seed ?? 20260722;
-  // which circuit this run uses. Derived from the seed rather than rolled, so a
-  // seed still replays a run exactly — the route is part of what a seed means.
-  const routeIndex = opts.routeIndex ?? (Math.abs(seed) % ROUTE_COUNT);
+  /* Route 1 unless asked otherwise. It used to come from the seed, which meant
+     a first-time player's opening board was a coin toss between the gentlest
+     route and the harshest — now the routes are ordered by difficulty and you
+     start at the easy end, moving along one per replay. */
+  const routeIndex = opts.routeIndex ?? 0;
+  const difficulty = DIFFICULTIES[opts.difficulty] ? opts.difficulty : DEFAULT_DIFFICULTY;
+  const D = diffOf(difficulty);
   const { path, pathLen } = buildPath(L, routeIndex);
   const w = {
     L, path, pathLen, routeIndex,
@@ -331,29 +455,39 @@ export function createWorld(opts = {}) {
     wave: 0,                        // 0 until the first wave starts
     waveActive: false,
     betweenWaves: true,
-    charge: START_CHARGE,
-    integrity: START_INTEGRITY,
+    difficulty,
+    components: D.components,
+    integrity: D.integrity,
+    /* The armoury. Lives on the world so the engine stays the only thing that
+       resolves stats, but it is the *shell* that loads and saves it — the
+       engine touches no storage, same rule as every other engine here. */
+    classUpgrades: opts.classUpgrades || newClassUpgrades(),
     score: 0,
     over: false,
     seed,
-    fx: opts.fx || { kill() {}, leak() {}, shot() {}, build() {} },
+    fx: opts.fx || { kill() {}, leak() {}, shot() {}, build() {}, level() {} },
   };
   return w;
 }
 
-export function resetGame(w) {
-  // Play again gets the *next* circuit, not the same one. Cycling rather than
+export function resetGame(w, opts = {}) {
+  // Play again gets the *next* route, not the same one. Cycling rather than
   // rolling keeps it deterministic while making a replay a different board,
-  // which is the whole point of having more than one.
+  // which is the whole point of having more than one — and since they are
+  // ordered by difficulty, a replay is also a step up.
   w.routeIndex = (w.routeIndex + 1) % ROUTE_COUNT;
   const { path, pathLen } = buildPath(w.L, w.routeIndex);
   w.path = path; w.pathLen = pathLen;
   w.blocked = pathCells(w.L, w.routeIndex);
   w.towers = []; w.enemies = []; w.spawnQueue = [];
   w.clock = 0; w.wave = 0; w.waveActive = false; w.betweenWaves = true;
-  w.charge = START_CHARGE; w.integrity = START_INTEGRITY;
+  if (DIFFICULTIES[opts.difficulty]) w.difficulty = opts.difficulty;
+  const D = diffOf(w.difficulty);
+  w.components = D.components; w.integrity = D.integrity;
   w.score = 0; w.over = false;
   w.seed = 20260722;
+  // classUpgrades deliberately survives: the armoury is the thing that carries
+  // between runs. Clearing it is a separate, explicit action in the menu.
 }
 
 /* ---------- building ---------- */
@@ -363,38 +497,41 @@ export function towerAt(w, c, r) {
 }
 
 /** Can a tower of `type` go on this cell? Requires an on-grid, non-path, empty
- *  cell and enough charge. */
+ *  cell and enough components. */
 export function canBuild(w, c, r, type) {
   if (w.over) return false;
   if (!inGrid(w.L, c, r)) return false;
   if (w.blocked.has(cellKey(c, r))) return false;
   if (towerAt(w, c, r)) return false;
   const T = TOWER_TYPES[type];
-  return !!T && w.charge >= T.cost;
+  return !!T && w.components >= T.cost;
 }
 
 export function buildTower(w, c, r, type) {
   if (!canBuild(w, c, r, type)) return false;
-  w.charge -= TOWER_TYPES[type].cost;
-  w.towers.push({ c, r, type, tier: 0, cool: 0, aim: null });
+  w.components -= TOWER_TYPES[type].cost;
+  w.towers.push({ c, r, type, level: 1, xp: 0, priority: 'first', cool: 0, aim: null });
   w.fx.build(c, r);
   return true;
 }
 
-export function upgradeTower(w, i) {
+/** Which enemy a tower prefers when several are in range. `first` (furthest
+ *  along, nearest the core) is the sensible default; `last` holds the back of
+ *  a pack so a Coil can slow arrivals before they bunch up; `strongest` is the
+ *  answer to a Load or Tank walking past a wall of small guns. */
+export const PRIORITIES = ['first', 'last', 'strongest'];
+
+export function setPriority(w, i, priority) {
   const t = w.towers[i];
-  if (!t) return false;
-  const cost = upgradeCost(t);
-  if (cost === null || w.charge < cost) return false;
-  w.charge -= cost;
-  t.tier++;
+  if (!t || !PRIORITIES.includes(priority)) return false;
+  t.priority = priority;
   return true;
 }
 
 export function sellTower(w, i) {
   const t = w.towers[i];
   if (!t) return false;
-  w.charge += sellValue(t);
+  w.components += sellValue(t);
   w.towers.splice(i, 1);
   return true;
 }
@@ -411,12 +548,16 @@ export function startWave(w) {
   const overlapping = w.waveActive;
   w.wave++;
   const startAt = overlapping ? w.clock : 0;
-  let t = startAt;
   const spawns = [];
+  // Each group opens partway through the one before it rather than waiting for
+  // it to finish, so a wave arrives as a mixture instead of a queue.
+  let groupAt = startAt;
   for (const g of wavePlan(w.wave)) {
+    let t = groupAt;
     for (let i = 0; i < g.count; i++) { spawns.push({ type: g.type, at: t }); t += g.gap; }
-    t += 0.6;   // a breath between groups
+    groupAt += Math.max(0.4, (t - groupAt) * GROUP_OVERLAP);
   }
+  spawns.sort((a, b) => a.at - b.at);
   if (overlapping) {
     w.spawnQueue.push(...spawns);
     // spawn order by time, so interleaving groups (old wave + new) still
@@ -431,19 +572,34 @@ export function startWave(w) {
   return true;
 }
 
-/* `rushWave`/`RUSH_COMPRESSION` used to live here — a per-tap compression of
-   the remaining spawn gaps. It was replaced by two shell-side controls that
-   split what turned out to be two different wants: a fast-forward that runs
-   the whole simulation faster (the shell simply calls `step` more times per
-   frame — the engine needs to know nothing about it), and an auto-advance
-   that starts the next wave as soon as one clears. Neither needs engine
-   support, so the engine got smaller. */
+/** Pull the rest of the current wave forward, compressing the gaps between the
+ *  spawns still queued. Each tap squeezes them again, so holding it empties
+ *  the queue fast.
+ *
+ *  Restored after being deleted in v26, which assumed the new fast-forward
+ *  covered it. It does not, and the difference is worth stating because it was
+ *  got wrong once already: **fast-forward speeds up time, rush speeds up the
+ *  enemy**. Under fast-forward your towers fire proportionally faster too, so
+ *  the wave is exactly as hard and merely shorter — it is a convenience.
+ *  Rushing leaves your towers at normal speed and sends the wave at you sooner,
+ *  which is a real gamble taken for the bounty. They are different controls
+ *  answering different wants, and both belong. */
+export const RUSH_COMPRESSION = 0.55;
+
+export function rushWave(w) {
+  if (w.over || !w.waveActive || w.spawnQueue.length === 0) return false;
+  for (const s of w.spawnQueue) {
+    // compress toward *now*, never into the past
+    s.at = w.clock + Math.max(0, s.at - w.clock) * RUSH_COMPRESSION;
+  }
+  return true;
+}
 
 /** Put an enemy on the path. `dist` defaults to the start, but a Tank
  *  deploying its cargo needs to place Swarm where the Tank currently is. */
 function spawnEnemy(w, type, dist = 0) {
   const E = ENEMY_TYPES[type];
-  const hp = Math.round(E.hp * hpScale(w.wave));
+  const hp = Math.round(E.hp * hpScale(w.wave, w.difficulty));
   const e = { type, dist, hp, maxhp: hp, speed: E.speed, r: E.r, slow: 0 };
   // a deployer counts down to its next stop, then sits still while unloading
   if (E.deploys) { e.deployIn = E.deployEvery; e.stopFor = 0; }
@@ -470,38 +626,57 @@ export function enemyPos(w, e) {
   return atS(w.path, w.pathLen, e.dist);
 }
 
-/** The enemy a tower should fire at: the one furthest along the path (closest
- *  to the core) within range. Prioritising leaders is the sensible default. */
+/** The enemy a tower should fire at, according to its `priority`. Each mode is
+ *  just a different score to maximise over whatever is in range. */
 function acquire(w, tower) {
   const c = cellCenter(w.L, tower.c, tower.r);
-  const range = stats(tower).range;
-  let best = null, bestDist = -1;
+  const range = stats(w, tower).range;
+  const mode = tower.priority || 'first';
+  let best = null, bestKey = -Infinity;
   for (const e of w.enemies) {
+    if (e.hp <= 0) continue;
     const p = enemyPos(w, e);
-    if (Math.hypot(p.x - c.x, p.y - c.y) <= range && e.dist > bestDist) {
-      best = e; bestDist = e.dist;
-    }
+    if (Math.hypot(p.x - c.x, p.y - c.y) > range) continue;
+    const key = mode === 'last' ? -e.dist : mode === 'strongest' ? e.hp : e.dist;
+    if (key > bestKey) { best = e; bestKey = key; }
   }
   return best;
+}
+
+/** How near an enemy has to be for a tower to look alive. A little past its
+ *  firing range, so the barrel is already out by the time anything is worth
+ *  shooting — the shell draws an idle tower as a bare ring, and this is what
+ *  wakes it. Presentation only; nothing in the simulation reads it. */
+export const READY_MARGIN = 46;
+
+export function towerReady(w, tower) {
+  const c = cellCenter(w.L, tower.c, tower.r);
+  const reach = stats(w, tower).range + READY_MARGIN;
+  for (const e of w.enemies) {
+    if (e.hp <= 0) continue;
+    const p = enemyPos(w, e);
+    if (Math.hypot(p.x - c.x, p.y - c.y) <= reach) return true;
+  }
+  return false;
 }
 
 /** Apply a tower's shot: damage the target (plus splash), and slow if it slows.
  *  Kills are resolved here so bounty and fx fire immediately. The caller passes
  *  the target in — `step` already acquired one this frame for the barrel. */
 function fireTower(w, tower, target) {
-  const s = stats(tower);
   if (!target) return;
+  const s = stats(w, tower);
 
   const tc = cellCenter(w.L, tower.c, tower.r);
   w.fx.shot(tc.x, tc.y, target, tower.type);
-  damageEnemy(w, target, s.dmg, s);
+  damageEnemy(w, target, s.dmg, s, false, tower);
 
   if (s.splash > 0) {
     const tp = enemyPos(w, target);
     for (const e of w.enemies) {
       if (e === target || e.hp <= 0) continue;
       const p = enemyPos(w, e);
-      if (Math.hypot(p.x - tp.x, p.y - tp.y) <= s.splash) damageEnemy(w, e, s.dmg * 0.5, s, true);
+      if (Math.hypot(p.x - tp.x, p.y - tp.y) <= s.splash) damageEnemy(w, e, s.dmg * 0.5, s, true, tower);
     }
   }
 }
@@ -511,7 +686,7 @@ function fireTower(w, tower, target) {
  *  the slow that was *already* on the target, so a Coil sets a target up for
  *  the next tower rather than for its own shot; splash resistance scales the
  *  incoming damage; and armour is flat, so it comes off last. */
-function damageEnemy(w, e, dmg, s, isSplash = false) {
+function damageEnemy(w, e, dmg, s, isSplash = false, src = null) {
   if (e.hp <= 0) return;
   const T = ENEMY_TYPES[e.type];
 
@@ -519,7 +694,20 @@ function damageEnemy(w, e, dmg, s, isSplash = false) {
   if (isSplash && T.splashResist) dmg *= (1 - T.splashResist);
   if (T.armor) dmg = Math.max(MIN_DAMAGE, dmg - T.armor);
 
+  const before = e.hp;
   e.hp -= dmg;
+
+  /* XP is credited for damage that actually landed, not damage attempted —
+     capped at the target's remaining health so overkill on a nearly-dead Surge
+     is worth what it killed and no more. Otherwise a Breaker parked over the
+     spawn would level on wasted splash. */
+  if (src) {
+    const dealt = Math.max(0, before - Math.max(0, e.hp));
+    if (addXp(src, dealt + (e.hp <= 0 ? XP_KILL_BONUS : 0))) {
+      const c = cellCenter(w.L, src.c, src.r);
+      w.fx.level?.(c.x, c.y, src);
+    }
+  }
 
   // a slowing tower stamps its strength and refreshes the timer — unless the
   // target is insulated, in which case Coil is simply the wrong pick here
@@ -601,7 +789,9 @@ export function step(w, dt) {
     tower.aim = target;
     if (target && tower.cool <= 0) {
       fireTower(w, tower, target);
-      tower.cool = stats(tower).rate;
+      // read the rate *after* firing: a shot that levelled the tower should
+      // reload at its new speed, not the one it had a moment ago
+      tower.cool = stats(w, tower).rate;
     }
   }
 
@@ -609,7 +799,7 @@ export function step(w, dt) {
   for (let i = w.enemies.length - 1; i >= 0; i--) {
     const e = w.enemies[i];
     if (e.hp <= 0) {
-      w.charge += ENEMY_TYPES[e.type].bounty;
+      w.components += ENEMY_TYPES[e.type].bounty;
       w.score += ENEMY_TYPES[e.type].bounty;
       const p = enemyPos(w, e);
       w.fx.kill(p.x, p.y, e.type);
@@ -652,9 +842,13 @@ export function snapshot(w) {
     seed: w.seed,
     wave: w.wave, waveActive: w.waveActive, betweenWaves: w.betweenWaves,
     clock: w.clock,
-    charge: w.charge, integrity: w.integrity, score: w.score,
+    components: w.components, integrity: w.integrity, score: w.score,
+    difficulty: w.difficulty,
     over: w.over,
-    towers: w.towers.map(t => ({ c: t.c, r: t.r, type: t.type, tier: t.tier, cool: t.cool })),
+    towers: w.towers.map(t => ({
+      c: t.c, r: t.r, type: t.type, level: t.level, xp: t.xp,
+      priority: t.priority, cool: t.cool,
+    })),
     enemies: w.enemies.map(e => ({
       type: e.type, dist: e.dist, hp: e.hp, maxhp: e.maxhp, speed: e.speed, r: e.r,
       slow: e.slow, slowStrength: e.slowStrength,
@@ -684,14 +878,27 @@ export function hydrate(w, snap) {
   w.waveActive = !!snap.waveActive;
   w.betweenWaves = snap.betweenWaves ?? true;
   w.clock = snap.clock ?? 0;
-  w.charge = snap.charge ?? START_CHARGE;
-  w.integrity = snap.integrity ?? START_INTEGRITY;
+  if (DIFFICULTIES[snap.difficulty]) w.difficulty = snap.difficulty;
+  const D = diffOf(w.difficulty);
+  // `charge` is the pre-v27 name for the same field. Reading both means a run
+  // saved on the old build resumes with its money instead of silently at zero.
+  w.components = snap.components ?? snap.charge ?? D.components;
+  w.integrity = snap.integrity ?? D.integrity;
   w.score = snap.score ?? 0;
   w.over = !!snap.over;
 
-  // `aim` is rebuilt: it points at a live enemy object, and object identity
-  // cannot survive JSON. Safe to drop because `step` re-acquires every frame.
-  w.towers = snap.towers.map(t => ({ c: t.c, r: t.r, type: t.type, tier: t.tier, cool: t.cool || 0, aim: null }));
+  /* `aim` is rebuilt: it points at a live enemy object, and object identity
+     cannot survive JSON. Safe to drop because `step` re-acquires every frame.
+     `tier` is the pre-v27 shape — a 0-2 manual upgrade level. Towers level
+     themselves now, so an old save's tier is read as a starting level rather
+     than thrown away; a tier-2 tower comes back as a level-3 one. */
+  w.towers = snap.towers.map(t => ({
+    c: t.c, r: t.r, type: t.type,
+    level: Math.min(MAX_LEVEL, Math.max(1, t.level ?? ((t.tier ?? 0) + 1))),
+    xp: t.xp ?? 0,
+    priority: PRIORITIES.includes(t.priority) ? t.priority : 'first',
+    cool: t.cool || 0, aim: null,
+  }));
   w.enemies = snap.enemies.map(e => ({ ...e, healed: 0 }));
   w.spawnQueue = snap.spawnQueue ? snap.spawnQueue.map(s => ({ type: s.type, at: s.at })) : [];
   return true;
@@ -703,7 +910,7 @@ export function hydrate(w, snap) {
  *
  *  Lossless: the layouts are exact transposes, so towers map (c, r) -> (r, c)
  *  and the path is the same length, so every enemy's `dist` carries over
- *  untouched — as do charge, integrity, wave and score. Turning the phone turns
+ *  untouched — as do components, integrity, wave and score. Turning the phone turns
  *  the board, which is also the least surprising thing that could happen. Same
  *  approach as Feedline. */
 export function relayout(w, L2) {
