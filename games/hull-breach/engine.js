@@ -133,10 +133,32 @@ export const UPGRADES = {
       { dropRMult: 2.0 },
     ],
   },
+  /* The one branch that changes what a shot *is* rather than scaling a number,
+     and priced accordingly — a maxed Pierce costs more than the other three
+     trees put together. A ball that does not stop on a kill can clear a whole
+     column in one pass, which is worth several levels of anything else.
+     Single-step, because there is no sensible half-measure: either the ball
+     carries through a destroyed brick or it doesn't. */
+  pierce: {
+    name: 'Pierce',
+    blurb: 'The ball carries on through a brick it destroys',
+    costs: [420],
+    tiers: [
+      { pierce: 0 },
+      { pierce: 1 },
+    ],
+  },
 };
 
 export const BRANCHES = Object.keys(UPGRADES);
+/** The deepest any branch goes. Kept for callers that just want a ceiling. */
 export const MAX_TIER = 3;
+
+/** How many tiers *this* branch actually has. Not every branch is three deep —
+ *  Pierce is a single on/off step, because "half a pierce" is not a thing — so
+ *  a shared constant would have offered a tier that has no cost and no stats
+ *  behind it. Derived from the cost table, which is the list of purchases. */
+export const maxTier = (branch) => UPGRADES[branch].costs.length;
 
 export function newUpgrades() {
   const u = {};
@@ -147,7 +169,7 @@ export function newUpgrades() {
 /** Cost of the next tier in a branch, or null if it is already maxed. */
 export function upgradeCost(upgrades, branch) {
   const t = upgrades[branch];
-  if (t >= MAX_TIER) return null;
+  if (!UPGRADES[branch] || t >= maxTier(branch)) return null;
   return UPGRADES[branch].costs[t];
 }
 
@@ -170,11 +192,15 @@ export function buyUpgrade(w, branch) {
  *  tables — paddleWidth/paddleBounce/stepDrops all go through it. */
 export function stats(w) {
   const u = w.upgrades;
-  return {
-    ...UPGRADES.paddle.tiers[u.paddle],
-    ...UPGRADES.steer.tiers[u.steer],
-    ...UPGRADES.catch.tiers[u.catch],
-  };
+  // Every branch, resolved by name rather than listed one by one — adding a
+  // branch and forgetting to spread it here is a silent no-op, which is
+  // exactly what nearly happened when Pierce was added.
+  const out = {};
+  for (const b of BRANCHES) {
+    const tiers = UPGRADES[b].tiers;
+    Object.assign(out, tiers[Math.min(u[b] || 0, tiers.length - 1)]);
+  }
+  return out;
 }
 
 /* ---------- bricks ---------- */
@@ -613,9 +639,21 @@ function brickBounce(w, ball) {
     if (hit && (!best || hit.push > best.push)) { best = hit; bestBrick = b; }
   }
   if (!best) return;
-  bounce(ball, best);
+
   bestBrick.hp--;
   bestBrick.flash = 0.12;
+
+  /* Pierce: when the hit *destroys* the brick, the ball carries straight on
+     instead of bouncing, so one pass can take two bricks. A hit that only
+     damages still bounces — the ball is stopped by what is still there.
+     Deliberately does not touch the one-brick-per-sub-step rule above: that
+     exists because resolving two bricks at a corner reflects twice and sends
+     the ball back into itself, and piercing does not make that any safer. The
+     ball simply meets the next brick on the following sub-step, which is
+     exactly what "carries on through" should mean. */
+  const pierced = bestBrick.hp <= 0 && stats(w).pierce;
+  if (!pierced) bounce(ball, best);
+
   if (bestBrick.hp <= 0) {
     bestBrick.alive = false;
     w.score += brickScore(bestBrick.maxhp);

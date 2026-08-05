@@ -403,7 +403,9 @@ function renderShop() {
     const el = document.createElement('div');
     el.className = 'branch';
 
-    const pips = Array.from({ length: E.MAX_TIER }, (_, i) =>
+    // per branch, not a fixed three — Pierce is a single step, and drawing it
+    // with three pips would promise two upgrades that do not exist
+    const pips = Array.from({ length: E.maxTier(b) }, (_, i) =>
       `<i class="${i < tier ? 'on' : ''}"></i>`).join('');
 
     el.innerHTML =

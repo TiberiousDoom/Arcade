@@ -19,6 +19,9 @@ function chain(count, speed, s, wave = ALL_KINDS, spacing = 30) {
   return ch;
 }
 
+/** The first emplacement. Upgrades are per-gun since v27, so anything that used
+ *  to read `w.upgrades` now has to say which mount it means; most of these
+ *  tests only ever have one. */
 const gun0 = (w) => w.battery.guns[0];
 
 const { path, pathLen } = E.buildPath();
@@ -159,8 +162,14 @@ test('the hp cap does not make late waves unwinnable', () => {
   // maxed battery with perfect aim must still clear deep waves untouched.
   const w = E.createWorld();
   w.lives = 999; w.scrap = 1e9;
-  for (const b of E.BRANCHES) while (E.buyUpgrade(w, b));
+  // Mounts first, *then* max every branch on every one of them. Upgrades are
+  // per-emplacement since v27, so buying the tree before the mounts leaves the
+  // new arrivals bare — which is the intended balance, but it is not what this
+  // test means by "fully maxed".
   while (E.buyMount(w));
+  for (let m = 0; m < w.battery.guns.length; m++) {
+    for (const b of E.BRANCHES) while (E.buyUpgrade(w, m, b));
+  }
 
   const aim = () => {
     let best = null, bd = Infinity;
@@ -183,6 +192,31 @@ test('the hp cap does not make late waves unwinnable', () => {
   }
   assert.ok(w.wave >= 20, `stalled at wave ${w.wave} — the hp curve outran the damage ceiling`);
   assert.equal(w.breaches, 0, 'and did it without a single breach');
+});
+
+test('the hp curve keeps climbing past wave 7, where the chain length caps', () => {
+  /* The reported cliff: `waveCount` reaches its 78-craft ceiling at wave 7, so
+     from there the column stops getting longer — and length is the escalation
+     a player can see. The compensating climb has to come from somewhere. */
+  assert.equal(E.waveCount(7), E.waveCount(12), 'length really does cap by wave 7');
+
+  const rise = (a, b) => (E.hpScale(b) - E.hpScale(a)) / (b - a);
+  assert.ok(rise(8, 14) > rise(1, 7),
+    'health climbs faster after the length cap than before it, not slower');
+  // and it does not simply flatten at the ceiling a few waves later
+  assert.ok(E.hpScale(18) > E.hpScale(14), 'still rising at 18');
+});
+
+test('a wave is one column, however deep the run goes', () => {
+  // Splitting a wave across columns was tried and rejected — see the note by
+  // hpScale. Splitters still make extra chains mid-wave; the spawn does not.
+  for (const wave of [1, 7, 12, 20]) {
+    const w = E.createWorld();
+    w.wave = wave;
+    E.spawnWave(w);
+    assert.equal(w.chains.length, 1, `wave ${wave} spawned ${w.chains.length} chains`);
+    assert.equal(w.chains[0].segs.length, E.waveCount(wave), 'and it holds the whole wave');
+  }
 });
 
 test('waves get longer as well as tougher', () => {
@@ -389,7 +423,7 @@ test('a snapshot round-trips a run exactly', () => {
   w.running = true;
   w.wave = 4; E.spawnWave(w);
   w.score = 7700; w.scrap = 55; w.lives = 2; w.breaches = 1;
-  E.buyUpgrade(w, 'barrel');
+  E.buyUpgrade(w, 0, 'barrel');
   E.buyMount(w);
   w.gunUnlocks.rail = true;
   E.setGunType(w, 1, 'rail');
@@ -406,7 +440,9 @@ test('a snapshot round-trips a run exactly', () => {
   assert.equal(fresh.scrap, w.scrap);
   assert.equal(fresh.lives, w.lives);
   assert.equal(fresh.breaches, w.breaches);
-  assert.deepEqual(fresh.upgrades, w.upgrades, 'upgrade tiers came back');
+  assert.deepEqual(fresh.battery.guns.map(g => g.upgrades),
+                   w.battery.guns.map(g => g.upgrades),
+                   'each emplacement brought its own tiers back');
   assert.deepEqual(fresh.gunUnlocks, w.gunUnlocks, 'gun unlocks came back');
   assert.equal(fresh.battery.guns.length, w.battery.guns.length, 'mounts came back');
   assert.deepEqual(fresh.battery.guns.map(g => g.type), w.battery.guns.map(g => g.type));
@@ -1100,49 +1136,49 @@ test('costs escalate within every branch', () => {
 
 test('a new run starts with an empty tree', () => {
   const w = E.createWorld();
-  for (const b of E.BRANCHES) assert.equal(w.upgrades[b], 0);
+  for (const b of E.BRANCHES) assert.equal(gun0(w).upgrades[b], 0);
 });
 
 test('buying spends scrap and raises the tier', () => {
   const w = E.createWorld();
   w.scrap = 1000;
-  const cost = E.upgradeCost(w.upgrades, 'barrel');
-  assert.equal(E.buyUpgrade(w, 'barrel'), true);
-  assert.equal(w.upgrades.barrel, 1);
+  const cost = E.upgradeCost(gun0(w).upgrades, 'barrel');
+  assert.equal(E.buyUpgrade(w, 0, 'barrel'), true);
+  assert.equal(gun0(w).upgrades.barrel, 1);
   assert.equal(w.scrap, 1000 - cost);
 });
 
 test('you cannot buy what you cannot afford', () => {
   const w = E.createWorld();
   w.scrap = 0;
-  assert.equal(E.canAfford(w, 'barrel'), false);
-  assert.equal(E.buyUpgrade(w, 'barrel'), false);
-  assert.equal(w.upgrades.barrel, 0);
+  assert.equal(E.canAfford(w, 0, 'barrel'), false);
+  assert.equal(E.buyUpgrade(w, 0, 'barrel'), false);
+  assert.equal(gun0(w).upgrades.barrel, 0);
 });
 
 test('a branch cannot be pushed past its last tier', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) assert.equal(E.buyUpgrade(w, 'chamber'), true);
-  assert.equal(w.upgrades.chamber, E.MAX_TIER);
-  assert.equal(E.upgradeCost(w.upgrades, 'chamber'), null, 'no cost once maxed');
-  assert.equal(E.buyUpgrade(w, 'chamber'), false);
-  assert.equal(w.upgrades.chamber, E.MAX_TIER, 'tier unchanged');
+  for (let i = 0; i < E.MAX_TIER; i++) assert.equal(E.buyUpgrade(w, 0, 'chamber'), true);
+  assert.equal(gun0(w).upgrades.chamber, E.MAX_TIER);
+  assert.equal(E.upgradeCost(gun0(w).upgrades, 'chamber'), null, 'no cost once maxed');
+  assert.equal(E.buyUpgrade(w, 0, 'chamber'), false);
+  assert.equal(gun0(w).upgrades.chamber, E.MAX_TIER, 'tier unchanged');
 });
 
 test('unknown branches are rejected', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  assert.equal(E.buyUpgrade(w, 'nonsense'), false);
+  assert.equal(E.buyUpgrade(w, 0, 'nonsense'), false);
   assert.equal(w.scrap, 1e6, 'no scrap taken');
 });
 
 test('stats resolve from the current tiers', () => {
   const w = E.createWorld();
-  const base = E.stats(w);
+  const base = E.stats(w, gun0(w));
   w.scrap = 1e6;
-  E.buyUpgrade(w, 'barrel');
-  const up = E.stats(w);
+  E.buyUpgrade(w, 0, 'barrel');
+  const up = E.stats(w, gun0(w));
   assert.ok(up.dmg > base.dmg, 'barrel raises damage');
   assert.equal(up.shotSpeed, base.shotSpeed, 'other branches untouched');
 });
@@ -1150,13 +1186,13 @@ test('stats resolve from the current tiers', () => {
 test('each branch changes something the others do not', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  const base = E.stats(w);
+  const base = E.stats(w, gun0(w));
   const touched = {};
   for (const b of E.BRANCHES) {
     const t = E.createWorld();
     t.scrap = 1e6;
-    for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(t, b);
-    const s = E.stats(t);
+    for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(t, 0, b);
+    const s = E.stats(t, gun0(t));
     touched[b] = Object.keys(s).filter(k => s[k] !== base[k]);
     assert.ok(touched[b].length > 0, `${b} must change something`);
   }
@@ -1194,7 +1230,7 @@ test('a long run cannot afford everything', () => {
 test('upgrades and overdrive multiply rather than replace', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 'barrel');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'barrel');
 
   E.fire(w);
   const plain = w.shots[w.shots.length - 1].dmg;
@@ -1210,7 +1246,7 @@ test('chamber tiers make overheating harder', () => {
   const hot = E.createWorld();
   const cool = E.createWorld();
   cool.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(cool, 'chamber');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(cool, 0, 'chamber');
 
   const shotsUntilLock = (w) => {
     let n = 0;
@@ -1227,7 +1263,7 @@ test('chamber tiers make overheating harder', () => {
 test('munitions grants extra pierce on top of overdrive', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 'munitions');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'munitions');
   E.fire(w);
   const shot = w.shots[w.shots.length - 1];
   assert.ok(shot.pierce >= E.UPGRADES.munitions.tiers[E.MAX_TIER].pierce);
@@ -1252,20 +1288,259 @@ test('optics speeds shots up', () => {
   const v0 = Math.hypot(slow.vx, slow.vy);
 
   w.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 'optics');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'optics');
   gun0(w).cool = 0;
   E.fire(w);
   const fast = w.shots[w.shots.length - 1];
   assert.ok(Math.hypot(fast.vx, fast.vy) > v0);
 });
 
+/* ---------- the mortar actually lobs ---------- */
+
+/** One stationary craft parked on the path, and a shot launched at it from
+ *  `dist` pixels away. Positions come from the real path rather than a faked
+ *  `_pos`, because `stepShots` clears that cache at the top of every frame. */
+function shotAtCraft({ arc, dist }) {
+  const w = E.createWorld();
+  const s = w.pathLen * 0.5;
+  const p = E.atS(w.path, w.pathLen, s);
+  w.chains = [{
+    segs: [{ id: E.nextSegId(), kind: 'std', hp: 99, maxhp: 99, r: 14, flash: 0, deflect: 0 }],
+    s, speed: 0, spacing: E.SEGMENT_SPACING, recoil: 0, split: false,
+  }];
+  // fired from below-left along the path's own direction, at a set distance
+  const spd = 600;
+  w.shots = [{
+    x: p.x, y: p.y + dist, vx: 0, vy: -spd,
+    dmg: 5, pierce: 0, bounces: 9, r: 3, arc, travelled: 0,
+    gun: arc ? 'mortar' : 'standard', col: '#fff',
+  }];
+  const hp = () => w.chains[0]?.segs[0]?.hp ?? 0;
+  for (let i = 0; i < 200 && w.shots.length; i++) E.stepShots(w, 1 / 600);
+  return { hit: hp() < 99, w };
+}
+
+/* The bug these pin: `arc: true` was set on every mortar shot and read by
+   nothing at all, so the gun's whole selling point did not exist. */
+test('a lobbed round passes over anything inside its arming distance', () => {
+  const near = E.MORTAR_ARM * 0.5;
+  assert.equal(shotAtCraft({ arc: true, dist: near }).hit, false,
+    'the mortar round flew over it');
+  assert.equal(shotAtCraft({ arc: false, dist: near }).hit, true,
+    'and an ordinary round at the same range did not — so it is the lob, not the geometry');
+});
+
+test('a lobbed round comes down on anything past its arming distance', () => {
+  const far = E.MORTAR_ARM * 2;
+  assert.equal(shotAtCraft({ arc: true, dist: far }).hit, true,
+    'it armed and struck the craft behind the front rank');
+});
+
+test('a mortar really does fire lobbed rounds', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.unlockGun(w, 'mortar');
+  E.setGunType(w, 0, 'mortar');
+  E.fire(w);
+  assert.ok(w.shots.length > 0, 'it fired');
+  assert.equal(w.shots[0].arc, true);
+  // and the standard cannon does not
+  const w2 = E.createWorld();
+  E.fire(w2);
+  assert.equal(w2.shots[0].arc, false);
+});
+
+/* ---------- barrels fire parallel ---------- */
+
+test('extra barrels fire parallel, not in a fan', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.buyBarrel(w); E.buyBarrel(w);
+  assert.equal(w.barrels, 3);
+  w.battery.ang = -Math.PI / 2 + 0.3;         // off-axis, so a fan would show
+  E.fire(w);
+  assert.equal(w.shots.length, 3, 'three barrels, three rounds');
+
+  const heading = (s) => Math.atan2(s.vy, s.vx);
+  const a0 = heading(w.shots[0]);
+  for (const s of w.shots) {
+    assert.ok(Math.abs(heading(s) - a0) < 1e-9, 'every round shares the heading');
+  }
+  // and they are genuinely displaced, not stacked on the same muzzle
+  const xs = new Set(w.shots.map(s => s.x.toFixed(3)));
+  assert.equal(xs.size, 3, 'three distinct muzzles');
+});
+
+test('flanking rounds are smaller and weaker than the main one', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.buyBarrel(w); E.buyBarrel(w);
+  E.fire(w);
+  const main = w.shots.find(s => !s.sub);
+  const subs = w.shots.filter(s => s.sub);
+  assert.equal(subs.length, 2);
+  for (const s of subs) {
+    assert.ok(s.dmg < main.dmg, 'weaker');
+    assert.ok(s.r < main.r, 'smaller');
+  }
+});
+
+test('the barrel count matches the offsets, so nobody fires a phantom round', () => {
+  for (let n = 1; n <= E.MAX_BARRELS; n++) {
+    assert.equal((E.BARREL_OFFSETS[n] || []).length, n - 1,
+      `${n} barrels means ${n - 1} flanking ones`);
+  }
+});
+
+/* ---------- retrofitting ---------- */
+
+test('changing a mount to another type costs scrap; building one does not', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.unlockGun(w, 'rail');
+  const before = w.scrap;
+  const cost = E.retrofitCost(w, 0, 'rail');
+  assert.ok(cost > 0, 'a retrofit has a price');
+  assert.equal(E.setGunType(w, 0, 'rail'), true);
+  assert.equal(w.scrap, before - cost);
+  assert.equal(gun0(w).type, 'rail');
+
+  // setting it to what it already is costs nothing and does nothing
+  const after = w.scrap;
+  assert.equal(E.retrofitCost(w, 0, 'rail'), null);
+  E.setGunType(w, 0, 'rail');
+  assert.equal(w.scrap, after);
+
+  // a mount bought fresh is standard, and was not billed a retrofit for it
+  const s0 = w.scrap;
+  E.buyMount(w);
+  assert.equal(w.battery.guns[1].type, 'standard');
+  assert.equal(w.scrap, s0 - E.MOUNT_COST[1], 'only the mount was charged');
+});
+
+test('an unresearched type cannot be fitted at any price', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  assert.equal(E.retrofitCost(w, 0, 'ion'), null);
+  assert.equal(E.setGunType(w, 0, 'ion'), false);
+  assert.equal(gun0(w).type, 'standard');
+});
+
+test('a retrofit you cannot afford leaves the mount alone', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.unlockGun(w, 'mortar');
+  w.scrap = 1;
+  assert.equal(E.setGunType(w, 0, 'mortar'), false);
+  assert.equal(gun0(w).type, 'standard');
+  assert.equal(w.scrap, 1, 'and did not take the money');
+});
+
+/* ---------- a breach sends you to the shop ---------- */
+
+test('losing a life opens the shop instead of restarting the wave', () => {
+  const w = E.createWorld();
+  w.wave = 5;
+  E.spawnWave(w);
+  w.running = true;
+  const lives = w.lives;
+  E.breach(w);
+  assert.equal(w.lives, lives - 1);
+  assert.equal(w.shopOpen, true, 'the shop opened');
+  assert.equal(w.running, false, 'and the board is on hold');
+});
+
+test('leaving the shop after a breach retries the same wave, not the next', () => {
+  const w = E.createWorld();
+  w.wave = 5;
+  E.spawnWave(w);
+  w.running = true;
+  E.breach(w);
+  E.nextWave(w);
+  assert.equal(w.wave, 5, 'still wave 5 — this was a retry');
+  assert.equal(w.running, true);
+  assert.equal(w.retry, false, 'and the flag was consumed');
+
+  // whereas clearing a wave normally does advance
+  w.chains = [];
+  E.step(w, 0.01);
+  E.step(w, 2);
+  assert.equal(w.shopOpen, true, 'a clear opens the shop too');
+  E.nextWave(w);
+  assert.equal(w.wave, 6, 'and that one moves on');
+});
+
+test('the last life ends the run rather than opening the shop', () => {
+  const w = E.createWorld();
+  w.lives = 1;
+  E.spawnWave(w);
+  E.breach(w);
+  assert.equal(w.over, true);
+  assert.equal(w.shopOpen, false, 'no shopping after the battery is gone');
+});
+
+/* ---------- upgrades are per emplacement ---------- */
+
+test('buying on one mount leaves the others untouched', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.buyMount(w); E.buyMount(w);
+  assert.equal(w.battery.guns.length, 3);
+
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 1, 'barrel');
+  assert.equal(w.battery.guns[1].upgrades.barrel, E.MAX_TIER);
+  assert.equal(w.battery.guns[0].upgrades.barrel, 0, 'mount 0 untouched');
+  assert.equal(w.battery.guns[2].upgrades.barrel, 0, 'mount 2 untouched');
+
+  // and it shows up in the numbers, not just the counter
+  assert.ok(E.stats(w, w.battery.guns[1]).dmg > E.stats(w, w.battery.guns[0]).dmg);
+});
+
+test('a new mount arrives bare, however deep the others are', () => {
+  // this is the balance: a fifth gun competes with deepening the four you have
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  for (const b of E.BRANCHES) while (E.buyUpgrade(w, 0, b));
+  E.buyMount(w);
+  const fresh = w.battery.guns[1];
+  for (const b of E.BRANCHES) assert.equal(fresh.upgrades[b], 0, `${b} starts at zero`);
+});
+
+test('buying against a mount that does not exist changes nothing', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  const before = w.scrap;
+  assert.equal(E.buyUpgrade(w, 4, 'barrel'), false);
+  assert.equal(E.canAfford(w, 4, 'barrel'), false);
+  assert.equal(w.scrap, before, 'and it did not take the money');
+});
+
+test('each gun cools at its own Chamber tier', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.buyMount(w);
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'chamber');
+  const [hot, cold] = w.battery.guns;
+  hot.heat = 1; cold.heat = 1;
+  E.stepCannon(w, 0.5, false);
+  assert.ok(hot.heat < cold.heat, 'the upgraded mount shed more heat');
+});
+
+test('a maxed battery costs five trees plus the mounts', () => {
+  // the sanity check that a run cannot buy everything: it is five times what
+  // it used to be, which is the whole reason the prices were left alone
+  assert.equal(E.fullBatteryCost(),
+    E.fullTreeCost() * E.MAX_MOUNTS + E.MOUNT_COST.reduce((a, c) => a + c, 0));
+  assert.ok(E.fullBatteryCost() > E.fullTreeCost() * 4, 'a wide battery is a real commitment');
+});
+
 test('resetting a run wipes the tree', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  E.buyUpgrade(w, 'barrel');
-  E.buyUpgrade(w, 'optics');
+  E.buyUpgrade(w, 0, 'barrel');
+  E.buyUpgrade(w, 0, 'optics');
   E.resetRun(w);
-  for (const b of E.BRANCHES) assert.equal(w.upgrades[b], 0, `${b} reset`);
+  for (const b of E.BRANCHES) assert.equal(gun0(w).upgrades[b], 0, `${b} reset`);
   assert.equal(w.scrap, 0);
 });
 
@@ -2184,7 +2459,7 @@ test('splits happen during real play and stay within the cap', () => {
      a stock single cannon sweeping blindly cannot chew deep enough to reach
      one, so testing with one measured the bot, not the mechanic. */
   w.scrap = 1e6;
-  for (const b of E.BRANCHES) for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, b);
+  for (const b of E.BRANCHES) for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, b);
   while (E.buyMount(w)) { /* fill every mount */ }
   E.spawnWave(w);
   w.lives = 99;

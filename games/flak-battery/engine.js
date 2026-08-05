@@ -167,11 +167,42 @@ export function kindForIndex(i, count = Infinity, wave = Infinity) {
 // carries the rest, and is what stops a deep run flattening out once the
 // multiplier caps.
 export const HP_PER_WAVE = 0.26;
-export const HP_SCALE_MAX = 5.5;
+export const HP_SCALE_MAX = 6.5;
+
+/* Wave 7 is where `waveCount` hits its 78-craft ceiling, so from there on the
+   chain stops getting longer — and length is the dial a player can actually
+   *see*. Speed keeps climbing to wave 12 and this multiplier to wave 18, but
+   neither reads as "more" the way a longer column does, which is why the
+   difficulty was reported as falling off a cliff at exactly seven.
+
+   The fix has to come from the dials with headroom, because the length cap is
+   geometric rather than a matter of taste (see `waveCount`). So: a second,
+   steeper hp term past wave 7, and more simultaneous chains. Same "bend it,
+   don't tilt it" shape Choke Point's `past5` uses — waves 1-6 were confirmed
+   fine on device and are left exactly as they were. */
+const past7 = (wave) => Math.max(0, wave - 7);
+export const HP_PER_WAVE_LATE = 0.16;
 
 export function hpScale(wave) {
-  return Math.min(HP_SCALE_MAX, 1 + (wave - 1) * HP_PER_WAVE);
+  return Math.min(HP_SCALE_MAX,
+    1 + (wave - 1) * HP_PER_WAVE + past7(wave) * HP_PER_WAVE_LATE);
 }
+
+/* A second and third *column* was the obvious way to escalate once the chain
+   cannot get longer, and it was tried and rejected here — worth recording so
+   it is not retried on the same reasoning.
+
+   Splitting a wave's craft across two chains is not the neutral rearrangement
+   it looks like. Each chain grows its own head, and a head is both the
+   toughest kind and body-armoured while anything trails it, so two columns of
+   39 carry ~21% more health than one of 78 and a good deal more of it is
+   parked behind armour. Measured against the balance guard below, that step
+   put a *perfectly played, fully maxed* battery into its first breach the
+   moment the second column appeared, at every threshold tried between waves
+   13 and 16. The board got harder in a jump rather than on a curve.
+
+   `hpScale` is the dial with headroom, exactly as the note on `waveCount`
+   says, so the late-game escalation comes from there instead. */
 
 /** Arc-length between consecutive craft in a chain.
  *
@@ -267,12 +298,24 @@ export function isDeflected(seg, heading, vx, vy) {
 
 /** Time bought by cutting at index `headSide` in a chain that has
  *  `remaining` segments left afterward. Cuts nearer the head pay more.
- *  Softened from (0.5 + ratio*2.2): the blowback on a near-head cut was
- *  reading as too punishing a penalty rather than a manageable trade-off. */
+ *
+ *  Softened twice now — (0.5 + ratio*2.2) → (0.35 + ratio*1.3) → this. The
+ *  recoil is nominally a *reward*: the column is shoved backwards, which buys
+ *  time. It kept getting reported as a penalty anyway, and the reason is that
+ *  the shove also drags every target out from under an aim that was already
+ *  laid on them. Past a certain size it stops reading as "I bought time" and
+ *  starts reading as "the game moved my shot". Smaller is better here even
+ *  though it is strictly less generous. */
 export function recoilGain(spacing, headSide, remaining) {
   if (headSide <= 0 || remaining <= 0) return 0;
-  return spacing * (0.35 + (headSide / remaining) * 1.3);
+  return spacing * (0.12 + (headSide / remaining) * 0.5);
 }
+
+/** How fast a chain pays its recoil back, as a multiple of its forward speed.
+ *  Lowered alongside `recoilGain`: the distance travelled matters, but so does
+ *  the speed of the lurch, and at 2.4x the column snapped backwards fast enough
+ *  to look like a glitch rather than a shove. */
+export const RECOIL_RATE = 1.3;
 
 /* ---------- overdrive ---------- */
 
@@ -449,31 +492,55 @@ export function newUpgrades() {
   return u;
 }
 
-/** Cost of the next tier in a branch, or null if it is already maxed. */
+/* Upgrades are **per emplacement**, not battery-wide.
+
+   They used to be one shared set, which meant a second mount arrived already
+   carrying every tier the first had bought — so more mounts was strictly more
+   gun, and the only question was how fast you could afford them. Now each
+   emplacement owns its tiers and starts from nothing, so a fifth mount competes
+   directly against deepening the four you have. That is the intended balance
+   and the reason the prices were left alone: the bill for a fully-kitted
+   five-mount battery is five times the tree, and it should be.
+
+   The trade this creates is the point — a wide battery of shallow guns covers
+   the board, a narrow one of deep guns punches through armour, and no run
+   affords both. */
+
+/** Cost of the next tier in a branch for one gun, or null if already maxed. */
 export function upgradeCost(upgrades, branch) {
   const t = upgrades[branch];
   if (t >= MAX_TIER) return null;
   return UPGRADES[branch].costs[t];
 }
 
-export function canAfford(w, branch) {
-  const c = upgradeCost(w.upgrades, branch);
+export function gunAt(w, mountIndex) {
+  return w.battery.guns[mountIndex] || null;
+}
+
+export function canAfford(w, mountIndex, branch) {
+  const g = gunAt(w, mountIndex);
+  if (!g) return false;
+  const c = upgradeCost(g.upgrades, branch);
   return c !== null && w.scrap >= c;
 }
 
-/** Buy one tier. Returns true if the purchase went through. */
-export function buyUpgrade(w, branch) {
+/** Buy one tier for one emplacement. Returns true if it went through. */
+export function buyUpgrade(w, mountIndex, branch) {
   if (!BRANCHES.includes(branch)) return false;
-  const cost = upgradeCost(w.upgrades, branch);
+  const g = gunAt(w, mountIndex);
+  if (!g) return false;
+  const cost = upgradeCost(g.upgrades, branch);
   if (cost === null || w.scrap < cost) return false;
   w.scrap -= cost;
-  w.upgrades[branch]++;
+  g.upgrades[branch]++;
   return true;
 }
 
-/** Resolved stats for the current tiers. Read this rather than the tables. */
-export function stats(w) {
-  const u = w.upgrades;
+/** Resolved stats for one gun's tiers. Read this rather than the tables.
+ *  Every caller has to say *which* gun — there is no battery-wide answer any
+ *  more, and a default would quietly hand back the wrong numbers. */
+export function stats(w, gun) {
+  const u = (gun && gun.upgrades) || newUpgrades();
   return {
     ...UPGRADES.barrel.tiers[u.barrel],
     ...UPGRADES.chamber.tiers[u.chamber],
@@ -482,10 +549,15 @@ export function stats(w) {
   };
 }
 
-/** Total scrap needed to max every branch — used to sanity-check that a run
- *  cannot buy the whole tree. */
+/** Scrap to max every branch on **one** emplacement. */
 export function fullTreeCost() {
   return BRANCHES.reduce((sum, b) => sum + UPGRADES[b].costs.reduce((a, c) => a + c, 0), 0);
+}
+
+/** Scrap to max every branch on every mount a battery could ever have, plus
+ *  the mounts themselves. The number a run must not be able to reach. */
+export function fullBatteryCost() {
+  return fullTreeCost() * MAX_MOUNTS + MOUNT_COST.reduce((a, c) => a + c, 0);
 }
 
 /* ---------- world ---------- */
@@ -497,7 +569,6 @@ export function createWorld(opts = {}) {
     L, path, pathLen,
     chains: [], shots: [], bits: [], floaters: [],
     wave: 1, score: 0, scrap: 0, lives: 3,
-    upgrades: newUpgrades(),
     gunUnlocks: { auto: false, rail: false, mortar: false, ion: false },
     barrels: 1,
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
@@ -512,7 +583,7 @@ export function createWorld(opts = {}) {
     // extra hit radius, set by the shell from the input device (see
     // AIM_ASSIST_R). Zero for mouse and keyboard, which aim precisely.
     assistR: opts.assist ? AIM_ASSIST_R : 0,
-    shopOpen: false,
+    shopOpen: false, retry: false,
     running: false, over: false,
     waveClear: false, clearTimer: 0,
     breaches: 0,
@@ -560,7 +631,10 @@ export function relayout(w, L2) {
 }
 
 export function spawnWave(w) {
-  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30, SEGMENT_SPACING, w.wave)];
+  // One column. Splitters still make more of them mid-wave; see the note above
+  // hpScale for why the *spawn* does not.
+  w.chains = [makeChain(waveCount(w.wave), waveSpeed(w.wave, w.pathLen), -30,
+                        SEGMENT_SPACING, w.wave)];
   w.shots = []; w.bits = []; w.floaters = [];
   w.pickups = [];
   w.waveClear = false;
@@ -585,8 +659,7 @@ export function snapshot(w) {
     wave: w.wave, score: w.score, scrap: w.scrap, lives: w.lives,
     breaches: w.breaches,
     over: w.over, waveClear: w.waveClear, clearTimer: w.clearTimer,
-    shopOpen: w.shopOpen,
-    upgrades: { ...w.upgrades },
+    shopOpen: w.shopOpen, retry: !!w.retry,
     gunUnlocks: { ...w.gunUnlocks },
     barrels: w.barrels,
     effects: { ...w.effects },
@@ -600,7 +673,13 @@ export function snapshot(w) {
     battery: {
       ang: b.ang, streak: b.streak, od: b.od, clock: b.clock,
       lastHitAt: { ...b.lastHitAt },
-      guns: b.guns.map(g => ({ x: g.x, type: g.type, heat: g.heat, cool: g.cool, locked: g.locked })),
+      // upgrades ride with the gun now, not the world — a mount is defined by
+      // what has been sunk into it, so restoring the two separately would let
+      // them drift apart
+      guns: b.guns.map(g => ({
+        x: g.x, type: g.type, heat: g.heat, cool: g.cool, locked: g.locked,
+        upgrades: { ...g.upgrades },
+      })),
     },
   };
 }
@@ -623,7 +702,7 @@ export function hydrate(w, snap) {
   w.over = !!snap.over;
   w.waveClear = !!snap.waveClear; w.clearTimer = snap.clearTimer ?? 0;
   w.shopOpen = !!snap.shopOpen;
-  w.upgrades = { ...newUpgrades(), ...(snap.upgrades || {}) };
+  w.retry = !!snap.retry;
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false, ...(snap.gunUnlocks || {}) };
   w.barrels = clamp(Math.floor(snap.barrels ?? 1), 1, MAX_BARRELS);
   w.effects = { ...(snap.effects || {}) };
@@ -655,6 +734,11 @@ export function hydrate(w, snap) {
   // run saved in one orientation restores correctly in another
   b.guns = sb.guns.slice(0, MAX_MOUNTS).map((g, i) => ({
     x: w.L.W * MOUNT_X[i], type: g.type, heat: g.heat ?? 0, cool: g.cool ?? 0, locked: g.locked ?? 0,
+    /* Per-gun tiers, falling back to the pre-v27 battery-wide set. A run saved
+       on the old build had one shared tree, and the fair reading of it is that
+       every mount had those tiers — dropping them instead would silently strip
+       a resumed player of everything they had bought. */
+    upgrades: { ...newUpgrades(), ...(snap.upgrades || {}), ...(g.upgrades || {}) },
   }));
   w.battery = b;
   w.cannon = b;              // the alias every call site uses
@@ -665,10 +749,10 @@ export function hydrate(w, snap) {
 export function resetRun(w) {
   w.wave = 1; w.score = 0; w.scrap = 0; w.lives = 3;
   w.over = false; w.breaches = 0;
-  w.upgrades = newUpgrades();
+  // upgrades live on the guns, and makeBattery below builds fresh ones
   w.pickups = []; w.effects = {}; w.shieldCharges = 0; w.dropSeed = 987654321;
   w.shake = 0; w.hitStop = 0;
-  w.shopOpen = false;
+  w.shopOpen = false; w.retry = false;
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false };
   w.barrels = 1;
   w.battery = makeBattery(w.L, 1);
@@ -721,11 +805,38 @@ export function unlockGun(w, type) {
   return true;
 }
 
-/** Assign an unlocked type to a mount. */
-export function setGunType(w, mountIndex, type) {
+/** Distance a lobbed round travels before it can hit anything — roughly two
+ *  craft-spacings, so a mortar clears the leading rank and lands among the
+ *  ones behind it. The whole reason to own one. */
+export const MORTAR_ARM = 96;
+
+/** Refitting a mount to a different type, on top of the one-time `unlock`
+ *  cost of researching that type at all. A flat fraction of the type's unlock
+ *  price: the research is the expensive part, but swapping a gun should still
+ *  be a decision rather than a free dial you flick every wave. */
+export const RETROFIT_FRACTION = 0.45;
+
+export function retrofitCost(w, mountIndex, type) {
+  const g = w.battery.guns[mountIndex];
+  const G = GUN_TYPES[type];
+  if (!g || !G) return null;
+  if (g.type === type) return null;                 // already this
+  if (type !== 'standard' && !w.gunUnlocks[type]) return null;   // not researched
+  return Math.round(G.unlock * RETROFIT_FRACTION);
+}
+
+/** Assign an unlocked type to a mount, charging the retrofit.
+ *  `free` is for building a mount rather than converting one — a fresh
+ *  emplacement arrives as `standard` and nobody should be billed for that. */
+export function setGunType(w, mountIndex, type, free = false) {
   const g = w.battery.guns[mountIndex];
   if (!g || !GUN_TYPES[type]) return false;
   if (type !== 'standard' && !w.gunUnlocks[type]) return false;
+  if (!free && g.type !== type) {
+    const cost = retrofitCost(w, mountIndex, type);
+    if (cost === null || w.scrap < cost) return false;
+    w.scrap -= cost;
+  }
   g.type = type;
   return true;
 }
@@ -748,12 +859,13 @@ function fireGun(w, gun) {
   if (gun.locked > 0 || gun.cool > 0) return null;
   const b = w.battery;
   const T = OD_TIERS[b.od];
-  const S = stats(w);
+  const S = stats(w, gun);
   const G = GUN_TYPES[gun.type];
+  const mount = b.guns.indexOf(gun);
 
   const muzzleX = gun.x, muzzleY = b.y;
   const tp = aimPoint(w);
-  const ang = Math.atan2(tp.y - muzzleY, tp.x - muzzleX);
+  const a0 = Math.atan2(tp.y - muzzleY, tp.x - muzzleX);
 
   // A multi-barrel mount fires all its barrels in one volley, at a small
   // angular fan, sharing this one heat/cooldown pool — the natural balancing
@@ -771,16 +883,30 @@ function fireGun(w, gun) {
   }
 
   const spd = S.shotSpeed * G.spd;
-  const makeShot = (a) => ({
-    x: muzzleX + Math.cos(a) * b.len,
-    y: muzzleY + Math.sin(a) * b.len,
-    vx: Math.cos(a) * spd,
-    vy: Math.sin(a) * spd,
-    dmg: T.dmg * S.dmg * G.dmg,
+  /* `off` is a *lateral* displacement now, not an angular one, and `sub` marks
+     a round from one of the flanking barrels.
+
+     The barrels used to fan: same muzzle, slightly different headings. That is
+     not what extra barrels look like — they sit either side of the main one and
+     fire alongside it. So the offset moves the muzzle perpendicular to the aim
+     and every round keeps the identical heading, which means they stay parallel
+     for their whole flight instead of diverging. The flanking rounds are
+     smaller and weaker, so a third barrel is a real increase without being
+     three whole cannons. */
+  const makeShot = (off, sub) => ({
+    x: muzzleX + Math.cos(a0) * b.len - Math.sin(a0) * off,
+    y: muzzleY + Math.sin(a0) * b.len + Math.cos(a0) * off,
+    vx: Math.cos(a0) * spd,
+    vy: Math.sin(a0) * spd,
+    dmg: T.dmg * S.dmg * G.dmg * (sub ? SUB_BARREL_DMG : 1),
     pierce: T.pierce + S.pierce + G.pierce + (hasEffect(w, 'pierce') ? 2 : 0),
     bounces: S.bounces + (hasEffect(w, 'ricochet') ? 4 : 0),
-    r: S.shotR,
+    r: S.shotR * (sub ? SUB_BARREL_R : 1),
+    // a lobbed round: `travelled` counts up in stepShots and nothing can be hit
+    // until it passes MORTAR_ARM, which is what carries it over the front rank
     arc: G.arc ? true : false,
+    travelled: 0,
+    sub: !!sub,
     gun: gun.type,      // which mount fired this — damageSeg/isDeflected check this
     // The colour to draw this shot, baked in at fire time rather than read
     // live off the battery every frame — a shot fired while cool must stay
@@ -790,20 +916,33 @@ function fireGun(w, gun) {
     col: gun.type === 'ion' ? G.col : T.col,
   });
 
+  // the main barrel first, so it is the shot returned to the caller
   const offsets = BARREL_OFFSETS[w.barrels] ?? BARREL_OFFSETS[1];
-  const shot = makeShot(ang + offsets[0]);
+  const shot = makeShot(0, false);
   w.shots.push(shot);
-  for (let i = 1; i < offsets.length; i++) w.shots.push(makeShot(ang + offsets[i]));
+  for (const off of offsets) w.shots.push(makeShot(off, true));
 
+  // Spread stays an angular fan: it is a power-up that widens your cone, which
+  // is a different idea from a barrel that sits alongside the main one.
   if (hasEffect(w, 'spread')) {
-    for (const off of [-0.16, 0.16]) w.shots.push(makeShot(ang + off));
+    for (const da of [-0.16, 0.16]) {
+      const s = makeShot(0, true);
+      s.vx = Math.cos(a0 + da) * spd; s.vy = Math.sin(a0 + da) * spd;
+      w.shots.push(s);
+    }
   }
   return shot;
 }
 
-/** Angular fan for a mount's barrels — one entry per barrel, fired in the
- *  same volley off the one heat/cooldown pool. */
-const BARREL_OFFSETS = { 1: [0], 2: [-0.09, 0.09], 3: [-0.15, 0, 0.15] };
+/** Lateral offsets, in pixels, for a mount's *flanking* barrels — the main one
+ *  always sits at 0 and is never listed, so the count here is one less than
+ *  `w.barrels`. Perpendicular to the aim, so the rounds fly parallel rather
+ *  than diverging. Two barrels puts the extra on one side; three brackets the
+ *  main barrel with one either way, which is the shape that was asked for. */
+export const BARREL_OFFSETS = { 1: [], 2: [11], 3: [-13, 13] };
+/** Flanking rounds are smaller and hit softer than the main barrel's. */
+export const SUB_BARREL_DMG = 0.5;
+export const SUB_BARREL_R = 0.7;
 
 /** Fire the whole battery. Every ready gun looses a shot toward the shared
  *  aim point. Returns the number of guns that fired. */
@@ -862,7 +1001,8 @@ export const CONVERGE_WINDOW = 0.12;
 export const CONVERGE_BONUS = 0.6;                  // extra damage fraction
 
 export function makeGun(x, type = 'standard') {
-  return { x, type, heat: 0, cool: 0, locked: 0 };
+  // its own upgrade tiers: a new mount arrives bare, however deep the others are
+  return { x, type, heat: 0, cool: 0, locked: 0, upgrades: newUpgrades() };
 }
 
 /** Build the battery for a given mount count. The shared aim, streak and
@@ -1156,7 +1296,7 @@ export function stepChains(w, dt) {
       continue;
     }
     if (ch.recoil > 0) {
-      const pay = Math.min(ch.recoil, ch.speed * 2.4 * dt);
+      const pay = Math.min(ch.recoil, ch.speed * RECOIL_RATE * dt);
       ch.recoil -= pay;
       ch.s -= pay;
     } else {
@@ -1186,11 +1326,12 @@ export function queueShot(w) {
 
 export function stepCannon(w, dt, firing) {
   const b = w.battery;
-  const coolMult = stats(w).cool;
   for (const g of b.guns) {
     g.cool = Math.max(0, g.cool - dt);
     g.locked = Math.max(0, g.locked - dt);
-    const rate = (g.locked > 0 ? HEAT_COOL_LOCKED : HEAT_COOL) * coolMult;
+    // each mount cools at its own Chamber tier — a gun you have invested in
+    // recovers faster than the one beside it, which is the whole point
+    const rate = (g.locked > 0 ? HEAT_COOL_LOCKED : HEAT_COOL) * stats(w, g).cool;
     g.heat = clamp(g.heat - rate * dt, 0, 1);
   }
   b.clock += dt;
@@ -1219,6 +1360,7 @@ export function stepShots(w, dt) {
     const p = w.shots[k];
     p.x += p.vx * dt;
     p.y += p.vy * dt;
+    p.travelled = (p.travelled || 0) + Math.hypot(p.vx, p.vy) * dt;
     // walls reflect, but only for as many bounces as Munitions allows
     const maxB = p.bounces ?? 2;
     if (p.x < 6) {
@@ -1246,6 +1388,18 @@ export function stepShots(w, dt) {
       }
     }
     if (claimed) continue;
+
+    /* A lobbed round is *over* the column for the first stretch of its flight,
+       so nothing can be hit until it comes back down. That is what "reaches
+       over the front rank" means, and until now it meant nothing at all: the
+       mortar set `arc: true` on its shots and no code anywhere read it, so a
+       mortar round behaved exactly like a cannon round with a slow, heavy
+       description attached.
+       Implemented as an arming distance rather than a real parabola because
+       the board is top-down — there is no third axis to arc through, and
+       "cannot hit anything for the first N pixels" is the same rule a lob
+       actually gives you. The shell draws the height that isn't in the model. */
+    if (p.arc && p.travelled < MORTAR_ARM) continue;
 
     let hit = false;
     outer:
@@ -1331,8 +1485,17 @@ export function breach(w) {
   w.breaches++;
   w.battery.streak = 0; w.battery.od = 0; w.battery.queued = false;
   for (const g of w.battery.guns) g.heat = 0;
-  if (w.lives <= 0) { w.running = false; w.over = true; }
-  else spawnWave(w);
+  if (w.lives <= 0) { w.running = false; w.over = true; return; }
+
+  /* Losing a life opens the shop, rather than throwing the same wave straight
+     back at you. You have just earned scrap off the column that broke through
+     and had nowhere to spend it — the wave restarted immediately and the only
+     chance to buy anything was a clean clear, which is exactly the run you did
+     not have. `retry` tells `nextWave` not to advance the counter: this is the
+     same wave again, not the next one. */
+  w.shopOpen = true;
+  w.retry = true;
+  w.running = false;
 }
 
 export function step(w, dt, firing = false) {
@@ -1378,10 +1541,15 @@ export function step(w, dt, firing = false) {
   }
 }
 
-/** Leave the shop and start the next wave. */
+/** Leave the shop and put a wave on the board. Advances the counter unless the
+ *  shop was opened by a breach, in which case this is a retry of the wave you
+ *  just lost rather than the next one. */
 export function nextWave(w) {
   w.shopOpen = false;
-  w.wave++;
+  // read the flag before clearing it, or every visit reads as a fresh wave
+  const retrying = !!w.retry;
+  w.retry = false;
+  if (!retrying) w.wave++;
   spawnWave(w);
   w.running = true;
 }

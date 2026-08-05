@@ -592,6 +592,86 @@ test('unknown branches are rejected', () => {
   assert.equal(E.buyUpgrade(w, 'nope'), false);
 });
 
+test('every branch stops at its own last tier, not a shared one', () => {
+  // Pierce is one step deep while the others are three. A single MAX_TIER
+  // would offer a fourth Pierce with no cost behind it.
+  const w = E.createWorld();
+  w.salvage = 1e6;
+  for (const b of E.BRANCHES) {
+    let bought = 0;
+    while (E.buyUpgrade(w, b)) bought++;
+    assert.equal(bought, E.maxTier(b), `${b} bought ${bought} of ${E.maxTier(b)}`);
+    assert.equal(E.upgradeCost(w.upgrades, b), null, `${b} reports maxed`);
+  }
+  assert.equal(E.maxTier('pierce'), 1, 'pierce is a single step');
+});
+
+/* ---------- pierce ---------- */
+
+/** A world with one brick sitting directly above a ball moving up into it.
+ *
+ *  `running` and `held` both matter: `step` returns early unless the run is
+ *  live and no ball is racked, and a test that forgets makes the ball sit
+ *  perfectly still — which quietly *passes* any assertion about the velocity
+ *  it started with. The decoy brick is the documented trick for keeping a
+ *  board from reading as cleared the moment the brick under test dies. */
+function ballIntoBrick(hp) {
+  const w = E.createWorld();
+  const alive = w.bricks.filter(x => x.alive);
+  const b = alive[0], decoy = alive[alive.length - 1];
+  for (const x of w.bricks) x.alive = false;
+  b.alive = true; b.hp = hp; b.maxhp = hp;
+  decoy.alive = true;
+  w.running = true;
+  w.held = false;
+  w.balls = [{
+    x: b.x + b.w / 2, y: b.y + b.h + 6, r: 6,
+    vx: 0, vy: -240,
+  }];
+  return { w, brick: b };
+}
+
+test('without pierce, destroying a brick still bounces the ball', () => {
+  const { w, brick } = ballIntoBrick(1);
+  const y0 = w.balls[0].y;
+  E.step(w, 1 / 60);
+  assert.equal(brick.alive, false, 'the brick died');
+  assert.ok(w.balls[0].vy > 0, 'the ball turned around');
+  assert.ok(w.balls[0].y >= y0 - 1, 'and it is heading back down, not through');
+});
+
+test('with pierce, destroying a brick lets the ball carry on through', () => {
+  const { w, brick } = ballIntoBrick(1);
+  w.upgrades.pierce = 1;
+  const y0 = w.balls[0].y;
+  E.step(w, 1 / 60);
+  assert.equal(brick.alive, false, 'the brick died');
+  assert.ok(w.balls[0].vy < 0, 'the ball kept the heading it had');
+  assert.ok(w.balls[0].y < y0, 'and it really did travel onward');
+});
+
+test('pierce does not apply to a brick that survives the hit', () => {
+  // the ball is stopped by what is still there, which is the whole reason a
+  // three-hit back-row brick is worth more than a front one
+  const { w, brick } = ballIntoBrick(3);
+  w.upgrades.pierce = 1;
+  E.step(w, 1 / 60);
+  assert.equal(brick.hp, 2, 'it took damage');
+  assert.ok(brick.alive, 'but it is still standing');
+  assert.ok(w.balls[0].vy > 0, 'so the ball bounced');
+});
+
+test('one Pierce costs more than maxing any other whole branch', () => {
+  // It was asked for as expensive, and it changes what a shot *is* rather than
+  // scaling a number, so the bar is: a single step outprices any full tree.
+  const sum = (b) => E.UPGRADES[b].costs.reduce((a, c) => a + c, 0);
+  for (const b of E.BRANCHES) {
+    if (b === 'pierce') continue;
+    assert.ok(E.UPGRADES.pierce.costs[0] > sum(b),
+      `pierce ${E.UPGRADES.pierce.costs[0]} should outprice all of ${b} (${sum(b)})`);
+  }
+});
+
 test('stats resolve from the current tiers', () => {
   const w = E.createWorld();
   assert.equal(E.stats(w).paddleMult, 1.0);

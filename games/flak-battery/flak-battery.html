@@ -55,12 +55,38 @@
   .shopSection{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);
     border-bottom:1px solid var(--line);padding-bottom:5px;margin-top:4px}
   .assign{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
+
+  /* One tab per emplacement, plus the battery. Upgrades are per-gun, so the
+     tabs are the only thing in the shop that says *which* gun you are
+     spending on — they need to be unmissable and thumb-sized. Each carries
+     its mount's own colour, so "which of these is my railgun" is a glance. */
+  #shopTabs{display:flex;gap:5px;flex-wrap:wrap}
+  .tab{flex:1 1 0;min-width:62px;min-height:46px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:2px;cursor:pointer;border-radius:3px;
+    border:1px solid var(--line);background:#0f2027;color:var(--dim);padding:5px 4px}
+  .tab b{font:700 13px/1 'Chivo Mono',monospace;color:var(--tab,var(--bone))}
+  .tab span{font-size:8px;letter-spacing:.1em;text-transform:uppercase}
+  .tab.on{border-color:var(--tab,var(--brass));background:#16303a;color:var(--bone)}
+
+  /* The portrait spans the whole grid: it is the identity of the tab, not one
+     card among four. */
+  .portrait{grid-column:1/-1;border:1px solid var(--line);background:#0b1a20;
+    border-radius:3px;padding:6px;display:flex;flex-direction:column;gap:4px}
+  .portrait canvas{width:100%;height:auto;display:block}
+  .portrait .caption{display:flex;flex-direction:column;gap:2px;padding:0 4px 2px}
+  .portrait .caption b{font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+  .portrait .caption span{font-size:10px;color:var(--dim);line-height:1.45}
+  .retro{grid-column:1/-1}
+
   /* Shop controls are thumb targets, not cursor targets. These were all sized
      for a mouse: .buy computed to ~28px tall and .chip was 26px square, both
      well under a comfortable tap. */
-  .chip{width:34px;height:34px;border:1px solid var(--line);background:#0f2027;color:var(--dim);
-    font:700 12px/1 'Chivo Mono',monospace;cursor:pointer;border-radius:3px}
+  .chip{min-height:34px;padding:8px 10px;border:1px solid var(--line);background:#0f2027;color:var(--dim);
+    font:700 10px/1 'Chivo Mono',monospace;letter-spacing:.08em;text-transform:uppercase;
+    cursor:pointer;border-radius:3px}
   .chip.on{background:var(--scale);color:#06201a;border-color:var(--scale)}
+  .chip:disabled{opacity:.5;cursor:default}
+  .chip.on:disabled{opacity:1}
   .branch{border:1px solid var(--line);background:#0f2027;padding:9px 10px;display:flex;flex-direction:column;gap:6px;text-align:left}
   .branch h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--bone);font-weight:700}
   /* no min-height: it reserved two lines for every blurb whether or not the
@@ -108,9 +134,8 @@
         <h2>Refit</h2>
         <div id="shopScrap">Scrap 0</div>
       </div>
-      <div class="shopSection">Cannon Upgrades</div>
+      <div id="shopTabs"></div>
       <div id="branches"></div>
-      <div class="shopSection">The Battery</div>
       <div id="battery"></div>
       <button id="shopGo">Next Wave</button>
     </div>
@@ -132,7 +157,7 @@
 <script type="module">
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
-import { glowStroke, glowDot, dim, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
+import { glowStroke, glowDot, dim, extrudeRect, extrudeDisc, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
 import { recordProgress } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
@@ -226,25 +251,47 @@ function aimAt(p) {
   aimTarget = E.clampAim(Math.atan2(p.y - world.cannon.y, p.x - world.cannon.x));
 }
 
-/* Touch: the field is one control. Press anywhere to start firing, then drag
-   to aim relatively — the angle follows how far you move, not where you are,
-   so you can rest a thumb low and never cover the snake.
-   Mouse keeps absolute aiming, which is what a cursor is good at. */
+/* Touch aiming, in two modes split by the breach line.
+
+   BELOW the line — the band holding the battery and the thumb rest — is the
+   original relative drag: the angle follows how far you move, not where you
+   are, so you can hold low and never cover the board.
+
+   ABOVE the line, on the playfield itself, the guns simply point where your
+   finger is. If you have already reached into the play area then your hand is
+   over the board regardless, and at that point relative dragging is strictly
+   worse than saying "there". The traverse cap still applies (it goes through
+   `aimTarget`, the same path mouse aiming uses), so the battery swings rather
+   than snapping — you cannot teleport aim by tapping across the screen.
+
+   The line is `FLOOR`, which is the same line a craft breaches at, so the rule
+   is one a player can see rather than an invisible band. */
 let drag = null;
+
+const abovePlay = (p) => p.y < world.L.FLOOR;
 
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   cv.setPointerCapture(e.pointerId);
   if (e.pointerType === 'mouse') { aimAt(stagePt(e)); firing = true; return; }
-  drag = { x: e.clientX, t: performance.now() };
+
+  const p = stagePt(e);
   firing = true;
   E.queueShot(world);          // the press itself always produces a shot
   tapPulse = 1;
+  if (abovePlay(p)) { aimAt(p); drag = null; }   // point-at aiming
+  else { drag = { x: e.clientX, t: performance.now() }; aimTarget = null; }
 });
 
 cv.addEventListener('pointermove', e => {
   if (e.pointerType === 'mouse') { if (firing || !isTouch) aimAt(stagePt(e)); return; }
-  if (!drag) return;
+  if (!firing) return;
+  const p = stagePt(e);
+  // crossing the line mid-gesture switches modes, which is what you would
+  // expect from a rule stated as "above the line" rather than "if you started
+  // above it" — and it lets a thumb drag up into the field to fine-aim
+  if (abovePlay(p)) { aimAt(p); drag = null; return; }
+  if (!drag) { drag = { x: e.clientX, t: performance.now() }; aimTarget = null; return; }
   const now = performance.now();
   const dx = e.clientX - drag.x;
   const dt = Math.max((now - drag.t) / 1000, 1e-3);
@@ -386,7 +433,10 @@ let tapPulse = 0;
    advancing the chains at the same time. Cheap, and exact enough to trust. */
 function predictHit() {
   const c = world.cannon;
-  const S = E.stats(world);
+  // the intercept marker follows mount 1's optics: with per-emplacement
+  // upgrades there is no single battery-wide shot speed to predict from, and
+  // the centre gun is the one the aim line is drawn through
+  const S = E.stats(world, world.battery.guns[0]);
   const step = 1 / 90, maxT = S.predict;
   let x = c.x + Math.cos(c.ang) * c.len;
   let y = c.y + Math.sin(c.ang) * c.len;
@@ -421,18 +471,50 @@ function predictHit() {
   return null;
 }
 
-/* ---------- shop ---------- */
+/* ---------- shop ----------
+
+   Tabbed, one tab per emplacement plus a battery-wide one. Upgrades are
+   per-gun since v27, so a single flat list would have had no way to say
+   *which* gun it was spending on — and with five mounts and four branches
+   there is far too much to show at once anyway. Each mount's tab carries its
+   own portrait, its own four branches, and its own retrofit row. */
+let shopTab = 0;      // 0..n-1 are mounts, -1 is the battery tab
+
 function renderShop() {
   $('shopScrap').textContent = 'Scrap ' + world.scrap;
+  // a mount can be sold out from under the tab by a reset
+  if (shopTab >= world.battery.guns.length) shopTab = 0;
+
+  renderTabs();
   const host = $('branches');
   host.innerHTML = '';
 
+  if (shopTab < 0) { $('battery').style.display = ''; renderBattery(); return; }
+  $('battery').style.display = 'none';
+
+  const gun = world.battery.guns[shopTab];
+  const G = E.GUN_TYPES[gun.type];
+
+  // the portrait: a big, detailed drawing of this mount's actual gun type
+  const port = document.createElement('div');
+  port.className = 'portrait';
+  const pc = document.createElement('canvas');
+  pc.width = 420; pc.height = 190;
+  port.appendChild(pc);
+  const cap = document.createElement('div');
+  cap.className = 'caption';
+  cap.innerHTML = `<b style="color:${G.col}">${G.name}</b><span>${gunBlurb(gun.type)}</span>`;
+  port.appendChild(cap);
+  host.appendChild(port);
+  drawCannonPortrait(pc.getContext('2d'), gun.type, world.barrels);
+
+  // this mount's four branches
   for (const b of E.BRANCHES) {
     const U = E.UPGRADES[b];
-    const tier = world.upgrades[b];
-    const cost = E.upgradeCost(world.upgrades, b);
+    const tier = gun.upgrades[b];
+    const cost = E.upgradeCost(gun.upgrades, b);
     const maxed = cost === null;
-    const afford = E.canAfford(world, b);
+    const afford = E.canAfford(world, shopTab, b);
 
     const el = document.createElement('div');
     el.className = 'branch';
@@ -453,13 +535,60 @@ function renderShop() {
       : `${cost} · need ${cost - world.scrap} more`;
     btn.disabled = maxed || !afford;
     btn.addEventListener('click', () => {
-      if (E.buyUpgrade(world, b)) { renderShop(); sync(); }
+      if (E.buyUpgrade(world, shopTab, b)) { renderShop(); sync(); }
     });
     el.appendChild(btn);
     host.appendChild(el);
   }
 
-  renderBattery();
+  host.appendChild(renderRetrofit(gun));
+}
+
+function renderTabs() {
+  const host = $('shopTabs');
+  host.innerHTML = '';
+  world.battery.guns.forEach((g, i) => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (i === shopTab ? ' on' : '');
+    b.style.setProperty('--tab', E.GUN_TYPES[g.type].col);
+    b.innerHTML = `<b>${i + 1}</b><span>${E.GUN_TYPES[g.type].name}</span>`;
+    b.addEventListener('click', () => { shopTab = i; renderShop(); });
+    host.appendChild(b);
+  });
+  const bt = document.createElement('button');
+  bt.className = 'tab' + (shopTab < 0 ? ' on' : '');
+  bt.innerHTML = `<b>&#9632;</b><span>Battery</span>`;
+  bt.addEventListener('click', () => { shopTab = -1; renderShop(); });
+  host.appendChild(bt);
+}
+
+/** The retrofit row for one mount: swap it to any researched type, for a fee.
+ *  Research itself is bought once on the Battery tab; this is the per-mount
+ *  conversion, so kitting five guns out costs five retrofits. */
+function renderRetrofit(gun) {
+  const el = document.createElement('div');
+  el.className = 'branch retro';
+  el.innerHTML = `<h3>Refit</h3><p>Change what this emplacement is. Research a type on the Battery tab first.</p>`;
+  const row = document.createElement('div');
+  row.className = 'assign';
+  for (const type of E.GUN_KEYS) {
+    const G = E.GUN_TYPES[type];
+    const owned = type === 'standard' || world.gunUnlocks[type];
+    const cost = E.retrofitCost(world, shopTab, type);
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (gun.type === type ? ' on' : '');
+    chip.textContent = gun.type === type ? G.name
+      : !owned ? `${G.name} ·  locked`
+      : `${G.name} · ${cost}`;
+    chip.disabled = gun.type === type || !owned || world.scrap < cost;
+    chip.style.borderColor = G.col;
+    chip.addEventListener('click', () => {
+      if (E.setGunType(world, shopTab, type)) { renderShop(); sync(); }
+    });
+    row.appendChild(chip);
+  }
+  el.appendChild(row);
+  return el;
 }
 
 function renderBattery() {
@@ -519,35 +648,166 @@ function renderBattery() {
       `<h3 style="color:${G.col}">${G.name}</h3>` +
       `<p>${gunBlurb(type)}</p>`;
 
+    const btn = document.createElement('button');
+    btn.className = 'buy';
     if (!unlocked) {
-      const btn = document.createElement('button');
-      btn.className = 'buy';
-      btn.textContent = `Unlock · ${G.unlock}`;
+      btn.textContent = `Research · ${G.unlock}`;
       btn.disabled = world.scrap < G.unlock;
       btn.addEventListener('click', () => {
         if (E.unlockGun(world, type)) { renderShop(); sync(); }
       });
-      el.appendChild(btn);
     } else {
-      // once unlocked, show a per-mount assignment row
-      const row = document.createElement('div');
-      row.className = 'assign';
-      world.battery.guns.forEach((g, idx) => {
-        const chip = document.createElement('button');
-        chip.className = 'chip' + (g.type === type ? ' on' : '');
-        chip.textContent = idx + 1;
-        chip.title = `Mount ${idx + 1}`;
-        chip.addEventListener('click', () => {
-          // toggle: assigning the same type again reverts to standard
-          E.setGunType(world, idx, g.type === type ? 'standard' : type);
-          renderShop(); sync();
-        });
-        row.appendChild(chip);
-      });
-      el.appendChild(row);
+      /* Researched types are fitted from the mount's own tab now, not from a
+         row of numbered chips here. The chips were the only place the shop
+         ever said which mount it meant, and with per-emplacement upgrades
+         that job belongs to the tabs. */
+      const on = world.battery.guns.filter(g => g.type === type).length;
+      btn.textContent = on ? `Fitted on ${on}` : 'Researched';
+      btn.disabled = true;
     }
+    el.appendChild(btn);
     host.appendChild(el);
   }
+}
+
+/* ---------- cannon portraits ----------
+
+   A large side-on drawing of one gun type, for its tab in the shop. Same
+   vector/CRT vocabulary as the board — glowStroke for lit edges, a body fill
+   lifted well off the background so it reads as solid rather than as an
+   outline, and an offset back face for depth. Deliberately *not* a second art
+   style: the portrait should look like the thing on the board, drawn bigger
+   and with the detail there is no room for at 40px.
+
+   Each type gets its own silhouette, because "which gun is this" should be
+   answerable from the shape alone. Mount and carriage are shared; everything
+   above the trunnion is per type. */
+function drawCannonPortrait(g, type, barrels = 1) {
+  const G = E.GUN_TYPES[type];
+  const col = G.col;
+  const W2 = 420, H2 = 190;
+  g.clearRect(0, 0, W2, H2);
+
+  const BODY = 'rgba(24,44,56,.98)';
+  const BACK = 'rgba(13,26,34,.98)';
+  const px = 130, py = 132;                 // trunnion: where the barrel pivots
+
+  // --- carriage: a wide splayed base, drawn back-face first for depth
+  const carriage = (dx, dy, fill) => {
+    g.beginPath();
+    g.moveTo(px - 74 + dx, H2 - 16 + dy);
+    g.lineTo(px - 40 + dx, py + 10 + dy);
+    g.lineTo(px + 46 + dx, py + 10 + dy);
+    g.lineTo(px + 84 + dx, H2 - 16 + dy);
+    g.closePath();
+    g.fillStyle = fill; g.fill();
+  };
+  carriage(7, 6, BACK);
+  carriage(0, 0, BODY);
+  glowStroke(g, c => {
+    c.moveTo(px - 74, H2 - 16); c.lineTo(px - 40, py + 10);
+    c.lineTo(px + 46, py + 10); c.lineTo(px + 84, H2 - 16);
+  }, col, 2.4);
+  // ground line
+  glowStroke(g, c => { c.moveTo(20, H2 - 15); c.lineTo(W2 - 20, H2 - 15); }, col, 1.6, undefined, 0.5);
+  // the joining edges that say "solid", same cue the board's craft use
+  glowStroke(g, c => {
+    c.moveTo(px - 74, H2 - 16); c.lineTo(px - 67, H2 - 10);
+    c.moveTo(px + 84, H2 - 16); c.lineTo(px + 91, H2 - 10);
+  }, col, 1.4, undefined, 0.6);
+
+  // --- the receiver block at the pivot
+  extrudeRect(g, px - 26, py - 16, 58, 32, col, { depth: 7, width: 2, body: BODY, back: BACK });
+
+  /* --- the barrel assembly, per type. `len`/`bore` are the silhouette; each
+         branch then adds the detail that names the gun. */
+  const spec = {
+    standard: { len: 172, bore: 15 },
+    auto:     { len: 150, bore: 11 },
+    rail:     { len: 226, bore: 10 },
+    mortar:   { len: 104, bore: 30, rise: -0.5 },
+    ion:      { len: 178, bore: 17 },
+  }[type] || { len: 172, bore: 15 };
+
+  g.save();
+  g.translate(px, py);
+  g.rotate(spec.rise || -0.12);            // mortars sit steeply up; the rest barely
+
+  const bx = 18, half = spec.bore / 2;
+  // back face then body, so the barrel reads as a tube rather than a bar
+  g.fillStyle = BACK; g.fillRect(bx + 6, -half + 5, spec.len, spec.bore);
+  g.fillStyle = BODY; g.fillRect(bx, -half, spec.len, spec.bore);
+  glowStroke(g, c => c.rect(bx, -half, spec.len, spec.bore), col, 2.2);
+  // muzzle
+  glowStroke(g, c => {
+    c.moveTo(bx + spec.len, -half - 3); c.lineTo(bx + spec.len, half + 3);
+  }, col, 3);
+
+  if (type === 'standard') {
+    // reinforcing bands along the tube
+    for (let i = 1; i <= 3; i++) {
+      const x = bx + (spec.len * i) / 4;
+      glowStroke(g, c => { c.moveTo(x, -half - 3); c.lineTo(x, half + 3); }, col, 1.8);
+    }
+  } else if (type === 'auto') {
+    // cooling fins: many short ribs, the read for a fast-firing gun
+    for (let i = 0; i < 11; i++) {
+      const x = bx + 16 + i * 11;
+      glowStroke(g, c => { c.moveTo(x, -half - 6); c.lineTo(x, half + 6); }, col, 1.3, undefined, 0.75);
+    }
+    // and a box magazine under the receiver
+    extrudeRect(g, -6, half + 4, 30, 34, col, { depth: 5, width: 1.6, body: BODY, back: BACK });
+  } else if (type === 'rail') {
+    // twin accelerator rails above and below, with coils between them
+    for (const s of [-1, 1]) {
+      glowStroke(g, c => {
+        c.moveTo(bx + 10, s * (half + 7)); c.lineTo(bx + spec.len - 6, s * (half + 7));
+      }, col, 2);
+    }
+    for (let i = 0; i < 6; i++) {
+      const x = bx + 24 + i * 32;
+      glowStroke(g, c => { c.moveTo(x, -half - 7); c.lineTo(x, half + 7); }, col, 1.4, undefined, 0.7);
+    }
+    glowDot(g, bx + spec.len + 6, 0, 3.4, col);
+  } else if (type === 'mortar') {
+    // squat, wide-bored, with a recoil spring stack and a baseplate
+    for (let i = 0; i < 5; i++) {
+      const x = bx + 14 + i * 17;
+      glowStroke(g, c => { c.moveTo(x, -half - 5); c.lineTo(x, half + 5); }, col, 1.6, undefined, 0.8);
+    }
+    glowStroke(g, c => {
+      c.moveTo(bx + spec.len + 2, -half - 7); c.lineTo(bx + spec.len + 2, half + 7);
+    }, col, 3);
+  } else if (type === 'ion') {
+    // an emitter ring near the muzzle and a charge core at the breech
+    glowStroke(g, c => c.arc(bx + spec.len - 26, 0, half + 9, 0, TAU), col, 2);
+    glowStroke(g, c => c.arc(bx + spec.len - 8, 0, half + 5, 0, TAU), col, 1.6);
+    glowDot(g, bx + 14, 0, 4.2, col);
+    // conduits running the length of the tube
+    for (const s of [-1, 1]) {
+      glowStroke(g, c => {
+        c.moveTo(bx + 20, s * (half - 3)); c.lineTo(bx + spec.len - 30, s * (half - 3));
+      }, col, 1.2, undefined, 0.6);
+    }
+  }
+
+  /* Flanking barrels, one per purchased extra, drawn parallel to the main one
+     and smaller — matching the rounds they fire, which are also parallel and
+     also smaller. The offsets come from the engine so the picture cannot drift
+     away from the geometry. */
+  const offs = E.BARREL_OFFSETS[barrels] || [];
+  for (const off of offs) {
+    const sub = spec.bore * 0.62, sh = sub / 2;
+    const y = off * 1.7;                    // scaled for the portrait's size
+    g.fillStyle = BACK; g.fillRect(bx + 10 + 5, y - sh + 4, spec.len * 0.76, sub);
+    g.fillStyle = BODY; g.fillRect(bx + 10, y - sh, spec.len * 0.76, sub);
+    glowStroke(g, c => c.rect(bx + 10, y - sh, spec.len * 0.76, sub), col, 1.6, undefined, 0.85);
+  }
+  g.restore();
+
+  // --- the pivot itself, last so it sits over the barrel root
+  extrudeDisc(g, px, py, 17, col, { depth: 6, width: 2.2, body: BODY, back: BACK });
+  glowDot(g, px, py, 3, col);
 }
 
 function gunBlurb(type) {
@@ -560,6 +820,15 @@ function gunBlurb(type) {
 }
 
 function openShop() {
+  /* The shop opens on a wave clear *and* on a breach now. Those are very
+     different moments — one is a reward, the other is a second chance — so it
+     says which, and the button says what leaving it will actually do. Without
+     that, losing a life and landing in a shop titled "Refit / Next Wave" reads
+     as the game having skipped the wave you just lost. */
+  $('shopHead').querySelector('h2').textContent = world.retry ? 'Regroup' : 'Refit';
+  $('shopGo').textContent = world.retry ? `Retry Wave ${world.wave}` : 'Next Wave';
+  // firing must not survive into the shop, or the first frame back is a volley
+  firing = false; drag = null;
   $('shop').classList.add('on');
   renderShop();
 }
@@ -1016,18 +1285,43 @@ function draw() {
     // barrel, tinted by gun type; greyed while locked, reddening with heat.
     // Scaled up from 10px tall / full b.len — feedback wanted the battery
     // bigger alongside the column and the road.
-    ctx.fillStyle = g.locked > 0 ? '#4a5765'
-      : g.heat > 0.6 ? '#e0774d' : G.col;
-    ctx.fillRect(0, -6.5, b.len * 1.12, 13);
-    ctx.fillStyle = '#0b1418'; ctx.fillRect(b.len * 1.12 - 6, -4, 4, 8);
+    const barCol = g.locked > 0 ? '#4a5765' : g.heat > 0.6 ? '#e0774d' : G.col;
+    const len = b.len * 1.12;
+    ctx.fillStyle = barCol;
+    ctx.fillRect(0, -6.5, len, 13);
+    ctx.fillStyle = '#0b1418'; ctx.fillRect(len - 6, -4, 4, 8);
     // railgun reads longer, mortar stubbier
-    if (g.type === 'rail') { ctx.fillStyle = G.col; ctx.fillRect(b.len * 1.12, -2.5, 10, 5); }
+    if (g.type === 'rail') { ctx.fillStyle = G.col; ctx.fillRect(len, -2.5, 10, 5); }
+
+    /* Extra barrels: smaller, flanking, and *parallel* — the same geometry the
+       rounds now use. The offsets come from the engine rather than being
+       eyeballed here, so the picture cannot drift away from where the shots
+       actually leave. */
+    for (const off of (E.BARREL_OFFSETS[world.barrels] || [])) {
+      ctx.fillStyle = barCol;
+      ctx.fillRect(4, off - 3.5, len * 0.78, 7);
+      ctx.fillStyle = '#0b1418'; ctx.fillRect(4 + len * 0.78 - 4, off - 2, 3, 4);
+    }
     ctx.restore();
 
-    // mount base — a darker offset face behind it first, the same
-    // dark-body/lit-rim/offset-back depth cue the segments and Choke
-    // Point's towers use
+    /* Mount base, built like a side-on Choke Point tower: an offset back face,
+       a lifted body well above the board colour, and a lit rim. Same
+       vocabulary, so the two games' hardware looks like it came from the same
+       factory — a squat trapezoid housing under the dome, which is the bit
+       that reads as "tower seen from the side" rather than "half a circle". */
     const baseR = 18;
+    const housing = (dx, dy, fill) => {
+      ctx.beginPath();
+      ctx.moveTo(g.x - baseR - 4 + dx, b.y + 20 + dy);
+      ctx.lineTo(g.x - baseR + 1 + dx, b.y + dy);
+      ctx.lineTo(g.x + baseR - 1 + dx, b.y + dy);
+      ctx.lineTo(g.x + baseR + 4 + dx, b.y + 20 + dy);
+      ctx.closePath();
+      ctx.fillStyle = fill; ctx.fill();
+    };
+    housing(4, 4, '#0f1b20');
+    housing(0, 0, '#1a2f37');
+
     ctx.beginPath(); ctx.arc(g.x + 3, b.y + 4, baseR, Math.PI, 0);
     ctx.fillStyle = '#0f1b20'; ctx.fill();
 
@@ -1035,11 +1329,26 @@ function draw() {
     ctx.fillStyle = '#23383f'; ctx.fill();
     ctx.beginPath(); ctx.arc(g.x, b.y, baseR, Math.PI, 0);
     ctx.strokeStyle = g.locked > 0 ? '#e0503c' : G.col; ctx.lineWidth = 2.4; ctx.stroke();
+    glowStroke(ctx, c => {
+      c.moveTo(g.x - baseR - 4, b.y + 20); c.lineTo(g.x - baseR + 1, b.y);
+      c.moveTo(g.x + baseR - 1, b.y); c.lineTo(g.x + baseR + 4, b.y + 20);
+    }, g.locked > 0 ? '#e0503c' : G.col, 1.8, GLOW_PASSES_CHEAP);
 
-    // per-gun heat pip under the mount
-    if (g.heat > 0.02) {
-      ctx.fillStyle = g.heat > 0.85 ? '#e0503c' : '#3fae8f';
-      ctx.fillRect(g.x - 15, b.y + 4, 30 * g.heat, 2.5);
+    /* Per-mount heat gauge. Each gun has its own heat and its own Chamber tier
+       now, so "which of my guns is about to lock" is a real question and the
+       old 30x2.5px pip was too small to answer it. Tracked, so an empty gauge
+       still shows where the full one will be. */
+    const gw = baseR * 2 + 8, gx = g.x - gw / 2, gy = b.y + 22;
+    ctx.fillStyle = '#0d1c22'; ctx.fillRect(gx, gy, gw, 5);
+    ctx.strokeStyle = 'rgba(230,233,226,.14)'; ctx.lineWidth = 1;
+    ctx.strokeRect(gx + .5, gy + .5, gw - 1, 4);
+    if (g.locked > 0) {
+      // locked reads as a full red bar draining back, not as heat
+      ctx.fillStyle = '#e0503c';
+      ctx.fillRect(gx + 1, gy + 1, (gw - 2) * (g.locked / (E.LOCK_TIME * E.stats(world, g).lock)), 3);
+    } else if (g.heat > 0.02) {
+      ctx.fillStyle = g.heat > 0.85 ? '#e0503c' : g.heat > 0.6 ? '#e0774d' : '#3fae8f';
+      ctx.fillRect(gx + 1, gy + 1, (gw - 2) * g.heat, 3);
     }
   }
 
@@ -1141,11 +1450,16 @@ function sync() {
   }
   $('fxbar').innerHTML = fx.join('');
 
+  /* The header's build readout is the *deepest* tier reached on any mount for
+     each branch. Upgrades are per-gun now, so there is no one tree to show —
+     and a sum or an average would say nothing useful. The high-water mark
+     answers the question the strip is actually for: "how far along am I". The
+     shop's tabs are where per-mount detail lives. */
   $('uiBuild').innerHTML = E.BRANCHES.map(b => {
-    const t = world.upgrades[b];
+    const t = world.battery.guns.reduce((m, g) => Math.max(m, g.upgrades[b]), 0);
     const pips = Array.from({ length: E.MAX_TIER }, (_, i) =>
       `<i class="${i < t ? 'on' : ''}"></i>`).join('');
-    return `<span title="${E.UPGRADES[b].name}">${pips}</span>`;
+    return `<span title="${E.UPGRADES[b].name} (best mount)">${pips}</span>`;
   }).join('');
 }
 function showBanner(h, p, btn) {
