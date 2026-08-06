@@ -786,3 +786,78 @@ The cause was two helpers that took `firstBuildable(w)` (the first non-path cell
 The pattern is worth naming: **a fixture that depends on incidental map geometry fails far from its cause.** Nothing in "armour blunts small hits" hints that it is coupled to where route A starts. Searching for what the test actually needs is barely more code and does not care what shape the board is.
 
 A second instance of the same class, in Hull Breach: a new pierce test set up a ball and a brick but left `w.running` false, so `step` returned immediately and the ball never moved. The assertion was on the velocity the ball *started* with — so it passed, for entirely the wrong reason. Assertions about "did this change" want a before-and-after, not a state that a no-op also satisfies.
+
+## 2026-08-06 — Two flicker fixes are needed, not one
+
+Choke Point's towers "cycled between ready and unready when squares are right on their periphery". The shell drove the barrel animation straight off `towerReady`, a bare distance test — so an enemy sitting on that circle flipped the answer every frame, and `BARREL_SPEED` (full extension in ~0.19s) made the pump fast enough to read as a strobe.
+
+The fix is two mechanisms, because either alone leaves a real case open. **`READY_SLEEP_MARGIN`** makes waking and sleeping happen at different distances, which covers a single target loitering exactly on the threshold — jitter in *space*. A **hold timer in the shell** keeps a tower deployed for 1.2s after the last frame that had something in reach, which covers a stream of enemies passing with gaps between them — jitter in *time*. Hysteresis alone still pumps on the second case; a timer alone still pumps on the first, just more slowly.
+
+The margin lives in the engine (it is a number about the simulation's geometry) and the timer lives in the shell (it is about how long a picture holds). `towerReady` kept its signature and gained an optional margin, so nothing else had to change.
+
+## 2026-08-06 — A discounted upgrade that does nothing is worse than no discount
+
+"Coil's cheap upgrade is splash" turned out not to be a one-line swap. Coil's base splash was **0**, and `stats` grows splash multiplicatively — so the splash track changed nothing on a Coil at any price. Making it the discounted track would have been advertising a bargain on an upgrade that does not exist.
+
+Worse, the same bug was already live on **Node**, where splash is the `weak` track: the armoury charged a *surcharge* for an upgrade that did nothing whatsoever. A dear option is a judgement call the player gets to make; a dear option that does nothing is a trap.
+
+Both classes got a real base splash — Coil 24px (about a third of a cell, so it chills a small cluster, which is what `SLOW_BRITTLE` wants since setting up three targets is worth three times setting up one) and Node a token 12px that stays under half a cell even maxed, so a Node never becomes a cut-price Breaker. Coil's `weak` moved to range in exchange, making it short-reach area support rather than a long-reach single-target debuff.
+
+There is now a test asserting **every track moves a stat on every class**. The general shape is worth remembering: a multiplicative growth on a zero base is a silent no-op, and no test that only checks "the number went up" will ever see it.
+
+## 2026-08-06 — Cutting XP tenfold, not a hundredfold
+
+The feedback said reduce the XP bounty by 100x, then corrected to 10x. Worth recording *why* the number mattered, because the two are not the same feature.
+
+At 100x, the full 1→10 climb costs about 60,000 damage from a single tower, against a wave-14 board of roughly 4,600 total hp — a tower would need the damage of a dozen deep waves to max out, so level 10 would simply not be reachable inside a run and levelling would become a background drift with no visible pay-off. At 10x it is about 6,000 damage, so a well-sited tower maxes out somewhere in the low-to-mid teens: still a real climb, still an achievement, but one that happens.
+
+Implemented as a named `XP_PER_DAMAGE` beside `XP_KILL_BONUS` rather than by scaling `xpForNext`, so the curve's shape — and the two tested Breaker-reach requirements that hang off levels — are untouched, and there is exactly one number to turn next time.
+
+Knock-on worth noting: the popup printed `Math.floor(t.xp)`, which at a tenth the rate sat on 0 through the first dozen kills and read as levelling being broken. It is a progress bar now. **A display that rounds is a display that has an assumption about scale baked into it.**
+
+## 2026-08-06 — Moving a tower costs exactly what selling and rebuilding would
+
+Choke Point gained a move verb. The design question was the fee, and there are only really three answers: free, full price, or the sell-and-rebuild cost.
+
+**Free** makes placement weightless — the right play becomes dragging the whole defence along behind every wave, which is busywork, not a decision. **Full price** leaves the sell-and-rebuild workaround strictly cheaper, so the button would be a trap. `sellValue` (half the build cost) is exactly the money the workaround burns: moving is never a worse deal than what players would do anyway, and never free either.
+
+Level and XP survive the move. They were earned by fighting rather than bought, and a veteran tower you can never re-site is the exact situation the verb exists for. The cooldown resets on arrival so a move cannot double as a free reload, and moving is allowed mid-wave — the fee is the brake, and the moment you learn a placement is wrong is the moment it is being tested.
+
+The gesture change is the part that needed care: a press on a tower is **ambiguous** until it either travels or lets go. Opening the popup on `pointerdown` (as it did) made the popup flash open at the start of every drag, so the popup moved to `pointerup` behind a small travel threshold. And the board draws every legal destination while a move is pending, because a tap that silently does nothing reads as a broken feature rather than as an illegal cell.
+
+## 2026-08-06 — Multi-barrel goes per-emplacement, reversing 2026-08-02
+
+The 2026-08-02 entry chose battery-wide barrels over per-gun, on two grounds: it matched how mount *count* already worked, and it avoided introducing the repo's first per-gun-instance upgrade path.
+
+**The second reason no longer exists.** v27 moved the entire four-branch tree onto the gun, so per-gun-instance upgrades became the norm — and that left the barrel count as the one thing about an emplacement that was not bought on that emplacement's tab. Reversing the decision is what makes the shop consistent, so this is a follow-on from v27 rather than a change of mind about the original trade-off.
+
+Nothing about the balancing needed rework, which is the tell that the original heat design was right: heat is per-gun and already scales with barrel count, so three barrels still costs three times the heat. Only the price moved — `[260, 460]` was priced as a single battery-wide purchase and would have been an unreachable bill paid five times, so it came down to `[140, 250]`.
+
+`hydrate` reads the old top-level `w.barrels` as a fallback and applies it to every mount, which is exactly what the old build did. Same move as v27 reading both `charge` and `components` in Choke Point. **When a field moves from the world onto its parts, the old shape is not junk — it is a statement about all of the parts.**
+
+## 2026-08-06 — Research: a second currency, because the first one kept buying the same thing twice
+
+Gun types were unlocked with scrap, per run. So researching the railgun, dying, and researching it again was the same discovery bought over and over — out of the same pocket that was supposed to be buying guns, which made every unlock a question of "or I could just upgrade what I have". That is the identical failure Choke Point's manual tower upgrades had, and it gets the identical answer: **separate what a run earns from what a player keeps.**
+
+Scrap stays the run economy. Research points are what a whole run was *worth*, and they buy two things: gun types, learned once and forever, and the last two tiers of each branch. Fitting a gun still costs scrap every run, so the in-run decision survives and only the repetition goes.
+
+Points are paid **at the end of a run, from the wave reached**. End-of-run so a strong opening cannot be farmed by restarting; from the wave reached so the thing that earns progression is the thing the player is already trying to do. `awardResearch` is idempotent, because a game-over screen can re-render.
+
+Shape copied wholesale from the armoury: the engine holds it on the world so `upgradeCost`/`canAfford` stay the only things that decide what is buyable, and the *shell* does the storage. The key stayed local to the shell rather than going into `shared/` — same call as `ARMOURY_KEY`, since one game having a feature is not yet a shared abstraction.
+
+Two consequences that were not obvious going in:
+
+- **`gunUnlocks` had to leave the snapshot.** It is a projection of permanent research now, not run state. Storing it would let a save carry a gun the current research has not bought, and — the case that actually matters — would pin a resumed run to whatever was known at save time, even after more had been researched since. It is re-derived on `hydrate` instead.
+- **A locked tier must not read as "Maxed".** Both are disabled buttons, but one is the end of the road and the other is a signpost to the Research tab. Same pixel, opposite meanings; it says "Needs research" and is tinted toward the research colour.
+
+The counterweight problem is **open, deliberately**. Persistent progression makes each run easier than the last, and the current difficulty was explicitly praised ("I like the difficulty. The ramp up after level seven is challenging"). Choke Point answered this with `DIFFICULTIES`; Flak Battery has no such dial and is not getting one this round, because it should be tuned against evidence of how soft the curve actually goes rather than pre-emptively. `researchEarned`'s constants and the RP prices are first drafts.
+
+## 2026-08-06 — Hull Breach's easier opening had to pay for itself
+
+Levels 1-2 are single-hit plating now and level 3 caps at two hits, because level 1 shipped three-hit bricks in its back rows — repeat hits on one cell, asked of a player who does not yet have the paddle-angle control to aim them.
+
+The catch: salvage is `brickSalvage(maxhp)` per brick, so softening the opening also roughly halved what it pays — and the **shop opens on the first clear**, so an easier opener would have bought a slower one. `softClearBonus(level)` pays back exactly the difference, computed from the same `brickPresent`/`brickHp` the field is built from so it cannot drift, and returning zero from `ARMOUR_FROM` on where nothing was taken away.
+
+The alternative — raising `brickSalvage` — was rejected because it would decouple pay from armour on *every* level to fix three, and pay-scales-with-armour is the property that makes digging out a back row worth doing.
+
+Worth generalising: **changing a difficulty knob that also feeds an economy changes the economy.** Nothing in "make the early levels easier" says "and halve the opening income", but that is what it did.
