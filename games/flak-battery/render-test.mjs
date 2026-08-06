@@ -65,7 +65,9 @@ test('every barrel count draws, including the flanking pair', async () => {
   const { world, E } = g;
   let t = 1000;
   for (let n = 1; n <= E.MAX_BARRELS; n++) {
-    world.barrels = n;
+    // per-emplacement since v28 — setting a world-level count would silently
+    // draw nothing different
+    world.battery.guns[0].barrels = n;
     world.battery.guns[0].locked = n === E.MAX_BARRELS ? 0.5 : 0;   // locked art too
     g.frame(t += 20);
   }
@@ -81,7 +83,9 @@ test('every cannon portrait draws something', async () => {
   const { world, E, window: w } = g;
   const doc = w.document;
   world.scrap = 1e6;
-  for (const type of E.GUN_KEYS) if (type !== 'standard') E.unlockGun(world, type);
+  // gun types cost research points now, not scrap
+  world.research.points = 1e6;
+  for (const type of E.GUN_KEYS) if (type !== 'standard') E.researchGun(world, type);
   // a mount per type, so every tab exists at once
   while (world.battery.guns.length < E.GUN_KEYS.length && E.buyMount(world));
   E.GUN_KEYS.forEach((type, i) => {
@@ -94,7 +98,7 @@ test('every cannon portrait draws something', async () => {
   assert.ok(doc.getElementById('shop').classList.contains('on'), 'the shop opened');
 
   for (let barrels = 1; barrels <= E.MAX_BARRELS; barrels++) {
-    world.barrels = barrels;
+    for (const g2 of world.battery.guns) g2.barrels = barrels;
     for (let i = 0; i < world.battery.guns.length; i++) {
       doc.querySelectorAll('#shopTabs .tab')[i]?.dispatchEvent(
         new w.MouseEvent('click', { bubbles: true }));
@@ -149,7 +153,7 @@ test('a touch above the breach line aims at the finger, below it drags', async (
   assert.deepEqual(g.errors, [], 'aiming threw');
 });
 
-test('the battery tab renders alongside the mount tabs', async () => {
+test('the research tab renders alongside the mount tabs and the add slot', async () => {
   const g = await bootAndStart(SHELL);
   const { world, window: w } = g;
   const doc = w.document;
@@ -157,8 +161,118 @@ test('the battery tab renders alongside the mount tabs', async () => {
   world.shopOpen = true;
   g.frame(1000);
   const tabs = doc.querySelectorAll('#shopTabs .tab');
-  assert.equal(tabs.length, world.battery.guns.length + 1, 'a tab per mount plus the battery');
+  assert.equal(tabs.length, world.battery.guns.length + 2,
+    'a tab per mount, plus the add slot, plus research');
   tabs[tabs.length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-  assert.ok(doc.querySelectorAll('#battery .branch').length > 0, 'the battery tab has cards');
-  assert.deepEqual(g.errors, [], 'the battery tab threw');
+  assert.ok(doc.querySelectorAll('#battery .branch').length > 0, 'the research tab has cards');
+  assert.deepEqual(g.errors, [], 'the research tab threw');
+});
+
+test('research is bought on the research tab and gates the deep tiers', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+
+  /* Tier 4 must read as "go and research this", not as "maxed" — those are a
+     signpost and a dead end, and the whole feature fails if they look alike. */
+  const tabs = () => doc.querySelectorAll('#shopTabs .tab');
+  const renderTab = (i) => tabs()[i].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+
+  for (let i = 0; i < E.FREE_TIER; i++) E.buyUpgrade(world, 0, 'barrel');
+  renderTab(0);
+  const branch = [...doc.querySelectorAll('#branches .branch')]
+    .find(el => /^Barrel$/.test(el.querySelector('h3')?.textContent || ''));
+  assert.ok(branch, 'the mount tab shows the Barrel branch');
+  assert.match(branch.querySelector('button').textContent, /research/i,
+    'a gated tier says so rather than claiming to be maxed');
+
+  // now buy the depth on the research tab, through the real button
+  world.research.points = 1e6;
+  tabs()[tabs().length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const depthCard = [...doc.querySelectorAll('#battery .branch')]
+    .find(el => /Barrel depth/.test(el.querySelector('h3')?.textContent || ''));
+  assert.ok(depthCard, 'the research tab offers branch depth');
+  const before = world.research.points;
+  depthCard.querySelector('button').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.ok(world.research.points < before, 'it spent research points');
+  assert.equal(E.tierCap(world, 'barrel'), E.FREE_TIER + 1);
+
+  // and the mount's tab now sells the tier it refused a moment ago
+  renderTab(0);
+  const again = [...doc.querySelectorAll('#branches .branch')]
+    .find(el => /^Barrel$/.test(el.querySelector('h3')?.textContent || ''));
+  assert.match(again.querySelector('button').textContent, /buy/i, 'tier 4 is for sale now');
+  assert.deepEqual(g.errors, [], 'the research tab threw');
+});
+
+test('a gun type is learned with research points, not scrap', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+
+  const tabs = doc.querySelectorAll('#shopTabs .tab');
+  tabs[tabs.length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const card = [...doc.querySelectorAll('#battery .branch')]
+    .find(el => /Railgun/.test(el.querySelector('h3')?.textContent || ''));
+  assert.ok(card, 'the research tab lists the railgun');
+  // a pile of scrap must not be enough
+  assert.equal(card.querySelector('button').disabled, true, 'scrap does not buy research');
+
+  world.research.points = E.GUN_RP.rail;
+  tabs[tabs.length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const live = [...doc.querySelectorAll('#battery .branch')]
+    .find(el => /Railgun/.test(el.querySelector('h3')?.textContent || ''));
+  live.querySelector('button').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.equal(world.research.guns.rail, true, 'learned');
+  assert.equal(world.scrap, 1e6, 'and no scrap was spent');
+  assert.deepEqual(g.errors, [], 'researching a gun threw');
+});
+
+test('the + tab builds an emplacement and lands you on it', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+  const before = world.battery.guns.length;
+
+  const add = doc.querySelector('#shopTabs .tab.add');
+  assert.ok(add, 'the add slot exists');
+  assert.equal(add.disabled, false, 'and is live when it is affordable');
+  add.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+
+  assert.equal(world.battery.guns.length, before + 1, 'a mount was built');
+  // the new mount's own tab is the one showing, and it arrived bare
+  const on = doc.querySelector('#shopTabs .tab.on');
+  assert.equal(on.querySelector('b').textContent, String(before + 1),
+    'the shop landed on the gun just bought');
+  assert.equal(world.battery.guns[before].barrels, 1, 'and it has one barrel of its own');
+  assert.deepEqual(g.errors, [], 'buying a mount threw');
+});
+
+test('barrels are bought on the mount they belong to', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  E.buyMount(world);
+  world.shopOpen = true;
+  g.frame(1000);
+
+  // mount 1's tab is showing; its Barrels card must move mount 1 and nothing else
+  const card = [...doc.querySelectorAll('#branches .branch')]
+    .find(el => /Barrels/.test(el.querySelector('h3')?.textContent || ''));
+  assert.ok(card, 'the mount tab carries a Barrels card');
+  card.querySelector('button').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+
+  assert.equal(world.battery.guns[0].barrels, 2, 'this mount gained a barrel');
+  assert.equal(world.battery.guns[1].barrels, 1, 'the other did not');
+  assert.deepEqual(g.errors, [], 'buying a barrel threw');
 });

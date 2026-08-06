@@ -506,10 +506,17 @@ export function newUpgrades() {
    the board, a narrow one of deep guns punches through armour, and no run
    affords both. */
 
-/** Cost of the next tier in a branch for one gun, or null if already maxed. */
-export function upgradeCost(upgrades, branch) {
+/** Cost of the next tier in a branch for one gun, or null if it cannot be
+ *  bought — either the branch is maxed, or the next tier is past what research
+ *  has opened up.
+ *
+ *  `cap` is optional so the many callers that only care about the price still
+ *  work; anything enforcing the research gate passes `tierCap(w, branch)`.
+ *  Returning null for a locked tier means the shop's existing "maxed" path
+ *  renders it with no new state to thread through. */
+export function upgradeCost(upgrades, branch, cap = MAX_TIER) {
   const t = upgrades[branch];
-  if (t >= MAX_TIER) return null;
+  if (t >= Math.min(MAX_TIER, cap)) return null;
   return UPGRADES[branch].costs[t];
 }
 
@@ -520,7 +527,7 @@ export function gunAt(w, mountIndex) {
 export function canAfford(w, mountIndex, branch) {
   const g = gunAt(w, mountIndex);
   if (!g) return false;
-  const c = upgradeCost(g.upgrades, branch);
+  const c = upgradeCost(g.upgrades, branch, tierCap(w, branch));
   return c !== null && w.scrap >= c;
 }
 
@@ -529,7 +536,7 @@ export function buyUpgrade(w, mountIndex, branch) {
   if (!BRANCHES.includes(branch)) return false;
   const g = gunAt(w, mountIndex);
   if (!g) return false;
-  const cost = upgradeCost(g.upgrades, branch);
+  const cost = upgradeCost(g.upgrades, branch, tierCap(w, branch));
   if (cost === null || w.scrap < cost) return false;
   w.scrap -= cost;
   g.upgrades[branch]++;
@@ -573,8 +580,14 @@ export function createWorld(opts = {}) {
     L, path, pathLen,
     chains: [], shots: [], bits: [], floaters: [],
     wave: 1, score: 0, scrap: 0, lives: START_LIVES,
+    /* What this run may fit. Derived from `research.guns` below rather than
+       owned: research is permanent, this is the run's view of it. */
     gunUnlocks: { auto: false, rail: false, mortar: false, ion: false },
-    barrels: 1,
+    /* Permanent progression. Lives on the world so the engine stays the only
+       thing that resolves what is buyable, but the *shell* loads and saves it —
+       the engine touches no storage, same rule as every other engine here. */
+    research: sanitizeResearch(opts.research),
+    researchPaid: false,
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
     /* Whether carriers drop power-ups at all. Off by default: the owner
        wanted to see how the game plays without them, and that is a question
@@ -598,6 +611,17 @@ export function createWorld(opts = {}) {
   // existing call sites keep working; per-gun state lives in battery.guns
   w.cannon = w.battery;
   w.cannon.x = L.W / 2;
+  syncGunUnlocks(w);
+  return w;
+}
+
+/** Push permanent research down into the run's `gunUnlocks`. Called anywhere a
+ *  run starts or restarts, so a researched gun is fittable from wave 1 without
+ *  every call site having to know research exists. */
+export function syncGunUnlocks(w) {
+  for (const t of Object.keys(w.gunUnlocks)) {
+    if (w.research?.guns?.[t]) w.gunUnlocks[t] = true;
+  }
   return w;
 }
 
@@ -664,8 +688,11 @@ export function snapshot(w) {
     breaches: w.breaches,
     over: w.over, waveClear: w.waveClear, clearTimer: w.clearTimer,
     shopOpen: w.shopOpen, retry: !!w.retry,
-    gunUnlocks: { ...w.gunUnlocks },
-    barrels: w.barrels,
+    /* `gunUnlocks` is deliberately NOT stored. It stopped being run state in
+       v28: it is a projection of permanent research, which the shell reads from
+       storage. Storing it would let a save carry a gun the current research has
+       not bought — and, worse, would pin a resumed run to whatever was learned
+       at save time even after more has been researched since. */
     effects: { ...w.effects },
     shieldCharges: w.shieldCharges,
     dropSeed: w.dropSeed,
@@ -682,6 +709,7 @@ export function snapshot(w) {
       // them drift apart
       guns: b.guns.map(g => ({
         x: g.x, type: g.type, heat: g.heat, cool: g.cool, locked: g.locked,
+        barrels: barrelsOf(g),
         upgrades: { ...g.upgrades },
       })),
     },
@@ -707,8 +735,8 @@ export function hydrate(w, snap) {
   w.waveClear = !!snap.waveClear; w.clearTimer = snap.clearTimer ?? 0;
   w.shopOpen = !!snap.shopOpen;
   w.retry = !!snap.retry;
-  w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false, ...(snap.gunUnlocks || {}) };
-  w.barrels = clamp(Math.floor(snap.barrels ?? 1), 1, MAX_BARRELS);
+  // re-derived from research below, not read from the save — see `snapshot`
+  w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false };
   w.effects = { ...(snap.effects || {}) };
   w.shieldCharges = snap.shieldCharges ?? 0;
   w.dropSeed = snap.dropSeed ?? 987654321;
@@ -743,10 +771,20 @@ export function hydrate(w, snap) {
        every mount had those tiers — dropping them instead would silently strip
        a resumed player of everything they had bought. */
     upgrades: { ...newUpgrades(), ...(snap.upgrades || {}), ...(g.upgrades || {}) },
+    /* Same fallback for barrels, which were battery-wide until v28: a run saved
+       on the old build stored one top-level count, and the fair reading is that
+       every mount had it — that is exactly what the old build did. Reading only
+       the per-gun field would resume a three-barrel battery as a one-barrel
+       one, silently deleting the most expensive thing the player had bought. */
+    barrels: clamp(Math.floor(g.barrels ?? snap.barrels ?? 1), 1, MAX_BARRELS),
   }));
   w.battery = b;
   w.cannon = b;              // the alias every call site uses
   w.cannon.x = w.L.W / 2;
+  /* Research is *not* in the snapshot — it is not run state, and the shell
+     reads the current one from storage. But a resumed run still has to be able
+     to fit what has been researched since, so the unlocks are re-derived. */
+  syncGunUnlocks(w);
   return true;
 }
 
@@ -758,7 +796,10 @@ export function resetRun(w) {
   w.shake = 0; w.hitStop = 0;
   w.shopOpen = false; w.retry = false;
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false };
-  w.barrels = 1;
+  // research deliberately survives: it is the thing that carries between runs.
+  // Its unlocks come straight back, so a researched gun is fittable from wave 1.
+  w.researchPaid = false;
+  syncGunUnlocks(w);
   w.battery = makeBattery(w.L, 1);
   w.cannon = w.battery;
   w.cannon.x = w.L.W / 2;
@@ -781,32 +822,160 @@ export function mountCost(w) {
   return n >= MAX_MOUNTS ? null : MOUNT_COST[n];
 }
 
-/** A top-tier upgrade: every mount fires this many barrels per volley
- *  instead of one, all sharing that mount's own heat/cooldown. Battery-wide
- *  (like mount count), not per-gun — there is one dial, not five. */
+/** A top-tier upgrade: a mount fires this many barrels per volley instead of
+ *  one, all sharing that mount's own heat and cooldown.
+ *
+ *  **Per emplacement**, reversing the 2026-08-02 call that made it
+ *  battery-wide. The reasoning then was that one dial matched how mount *count*
+ *  works and avoided introducing the repo's first per-gun-instance upgrade —
+ *  and v27 then moved the entire four-branch tree onto the gun, which made
+ *  per-gun-instance upgrades the norm and left the barrel count the one thing
+ *  that was not. Reversing it is what makes the shop consistent: everything on
+ *  a mount's tab now belongs to that mount.
+ *
+ *  Nothing about the balancing had to change: heat is already per-gun and
+ *  already scales with barrel count, so three barrels still costs three times
+ *  the heat of one. */
 export const MAX_BARRELS = 3;
-export const BARREL_COST = [260, 460];   // cost of the 2nd and 3rd barrel
+/** Cost of a mount's 2nd and 3rd barrel.
+ *
+ *  Cut from [260, 460]: that was priced as a single battery-wide purchase, and
+ *  the same numbers bought five times over would have been a bill no run could
+ *  reach. At these, kitting all five mounts out costs roughly double what the
+ *  one battery-wide purchase used to — expensive, but a real ambition. */
+export const BARREL_COST = [140, 250];
 
-export function barrelCost(w) {
-  return w.barrels >= MAX_BARRELS ? null : BARREL_COST[w.barrels - 1];
+/** Barrels on a mount, tolerating a gun from before they were per-mount. */
+export const barrelsOf = (gun) => clamp(Math.floor(gun?.barrels ?? 1), 1, MAX_BARRELS);
+
+export function barrelCost(w, mountIndex) {
+  const g = gunAt(w, mountIndex);
+  if (!g) return null;
+  const n = barrelsOf(g);
+  return n >= MAX_BARRELS ? null : BARREL_COST[n - 1];
 }
 
-export function buyBarrel(w) {
-  const cost = barrelCost(w);
-  if (cost === null || w.scrap < cost) return false;
+export function buyBarrel(w, mountIndex) {
+  const g = gunAt(w, mountIndex);
+  const cost = barrelCost(w, mountIndex);
+  if (!g || cost === null || w.scrap < cost) return false;
   w.scrap -= cost;
-  w.barrels++;
+  g.barrels = barrelsOf(g) + 1;
   return true;
 }
 
-/** Unlock a gun type for assignment. One-time purchase. */
-export function unlockGun(w, type) {
-  const G = GUN_TYPES[type];
-  if (!G || type === 'standard' || w.gunUnlocks[type]) return false;
-  if (w.scrap < G.unlock) return false;
-  w.scrap -= G.unlock;
-  w.gunUnlocks[type] = true;
+/* ---------- research: the progression that outlives a run ----------
+
+   Two currencies, kept strictly apart.
+
+   **Scrap** is the run's economy: earned from kills, spent on tiers, barrels,
+   mounts and retrofits, and gone when the run ends. **Research points** are
+   what a whole run was worth, awarded once at the end of it and never lost.
+
+   They are separate on purpose. Gun types used to be unlocked with scrap, which
+   meant researching the railgun, dying, and researching it again from scratch —
+   the same discovery bought over and over, out of the same pocket that was
+   supposed to be buying guns. Now knowing how to build a railgun is permanent
+   and *fitting* one still costs scrap every run, so the in-run decision survives
+   while the busywork does not.
+
+   The engine holds research on the world and touches no storage, exactly as
+   Choke Point's armoury does; the shell loads and saves it. `resetRun` leaves
+   it alone — carrying over is the entire point. */
+
+/** Research points a finished run is worth.
+ *
+ *  A function of the wave reached, so what earns progression is the thing the
+ *  player is already trying to do, and paid at the *end* of a run so it cannot
+ *  be farmed by restarting a good opening over and over. The bonus every fifth
+ *  wave is what makes pushing one wave deeper worth more than a safe retreat. */
+export function researchEarned(w) {
+  const reached = Math.max(0, (w.wave || 1) - 1);
+  return reached + Math.floor((w.wave || 1) / 5) * 2;
+}
+
+/** Branch tiers available without research. Tiers 1-3 of every branch are free
+ *  to anyone; 4 and 5 are what research buys, per branch. */
+export const FREE_TIER = 3;
+/** Research points for the 4th and then the 5th tier of a branch. */
+export const DEPTH_RP = [3, 6];
+/** Research points to learn a gun type permanently. Deliberately steeper than
+ *  the depth unlocks: a new gun changes what a run can do, where a deeper tier
+ *  only changes by how much. */
+export const GUN_RP = { auto: 4, rail: 6, mortar: 7, ion: 9 };
+
+export function newResearch() {
+  const depth = {};
+  for (const b of BRANCHES) depth[b] = 0;      // extra tiers unlocked past FREE_TIER
+  return { points: 0, depth, guns: { auto: false, rail: false, mortar: false, ion: false } };
+}
+
+/** Defensive read of a stored research object — a value past the caps would
+ *  quietly hand out tiers no shop could sell. Same guard shape as the armoury. */
+export function sanitizeResearch(raw) {
+  const r = newResearch();
+  if (!raw || typeof raw !== 'object') return r;
+  r.points = Math.max(0, Math.floor(Number(raw.points) || 0));
+  for (const b of BRANCHES) {
+    r.depth[b] = clamp(Math.floor(Number(raw.depth?.[b]) || 0), 0, MAX_TIER - FREE_TIER);
+  }
+  for (const t of Object.keys(r.guns)) r.guns[t] = !!raw.guns?.[t];
+  return r;
+}
+
+/** The deepest tier a branch may currently be bought to. */
+export function tierCap(w, branch) {
+  return FREE_TIER + (w.research?.depth?.[branch] ?? 0);
+}
+
+/** RP for the next depth unlock on a branch, or null if fully researched. */
+export function depthCost(w, branch) {
+  const have = w.research?.depth?.[branch] ?? 0;
+  return have >= DEPTH_RP.length ? null : DEPTH_RP[have];
+}
+
+export function researchDepth(w, branch) {
+  if (!BRANCHES.includes(branch)) return false;
+  const cost = depthCost(w, branch);
+  if (cost === null || w.research.points < cost) return false;
+  w.research.points -= cost;
+  w.research.depth[branch]++;
   return true;
+}
+
+/** RP to learn a gun type, or null if it is standard or already known. */
+export function gunResearchCost(w, type) {
+  if (!GUN_TYPES[type] || type === 'standard') return null;
+  return w.research?.guns?.[type] ? null : GUN_RP[type];
+}
+
+/** Learn a gun type, permanently. Unlike the old scrap unlock, this survives
+ *  the run — see the note above. */
+export function researchGun(w, type) {
+  const cost = gunResearchCost(w, type);
+  if (cost === null || w.research.points < cost) return false;
+  w.research.points -= cost;
+  w.research.guns[type] = true;
+  w.gunUnlocks[type] = true;         // the run's view of what it may fit
+  return true;
+}
+
+/** Whether this run may fit `type` at all: standard always, anything else only
+ *  once researched. `gunUnlocks` is the run-scoped mirror of `research.guns`,
+ *  kept so every existing call site reads the same field it always did. */
+export function gunAvailable(w, type) {
+  return type === 'standard' || !!w.gunUnlocks[type];
+}
+
+/** Award a finished run's research and return what it paid, so the shell can
+ *  say so on the banner. Idempotent per run: `paid` stops a second call (a
+ *  re-render, a resumed game-over screen) paying twice. */
+export function awardResearch(w) {
+  if (w.researchPaid) return 0;
+  const earned = researchEarned(w);
+  w.researchPaid = true;
+  w.research.points += earned;
+  return earned;
 }
 
 /** Distance a lobbed round travels before it can hit anything — roughly two
@@ -814,10 +983,13 @@ export function unlockGun(w, type) {
  *  ones behind it. The whole reason to own one. */
 export const MORTAR_ARM = 96;
 
-/** Refitting a mount to a different type, on top of the one-time `unlock`
- *  cost of researching that type at all. A flat fraction of the type's unlock
- *  price: the research is the expensive part, but swapping a gun should still
- *  be a decision rather than a free dial you flick every wave. */
+/** Refitting a mount to a different type, in scrap, on top of the one-time
+ *  research that made the type available at all.
+ *
+ *  A flat fraction of the type's `refitBase`: learning the gun is the expensive
+ *  part and it is now paid once, forever, in research points — but *fitting*
+ *  one still costs scrap every run, so which mounts get which gun stays a real
+ *  decision rather than a free dial you flick every wave. */
 export const RETROFIT_FRACTION = 0.45;
 
 export function retrofitCost(w, mountIndex, type) {
@@ -826,7 +998,7 @@ export function retrofitCost(w, mountIndex, type) {
   if (!g || !G) return null;
   if (g.type === type) return null;                 // already this
   if (type !== 'standard' && !w.gunUnlocks[type]) return null;   // not researched
-  return Math.round(G.unlock * RETROFIT_FRACTION);
+  return Math.round(G.refitBase * RETROFIT_FRACTION);
 }
 
 /** Assign an unlocked type to a mount, charging the retrofit.
@@ -876,7 +1048,7 @@ function fireGun(w, gun) {
   // lever for barrel count is that 3 barrels costs 3x the heat of 1, with no
   // new per-barrel state needed.
   gun.cool = T.rate * G.rate * (hasEffect(w, 'rapid') ? 0.55 : 1);
-  gun.heat = clamp(gun.heat + HEAT_PER_SHOT * S.heatPerShot * w.barrels, 0, 1);
+  gun.heat = clamp(gun.heat + HEAT_PER_SHOT * S.heatPerShot * barrelsOf(gun), 0, 1);
   if (gun.heat >= 1) {
     gun.locked = LOCK_TIME * S.lock; gun.heat = 1;
     // overheating one gun drops the shared streak, but not all the way — the
@@ -921,7 +1093,7 @@ function fireGun(w, gun) {
   });
 
   // the main barrel first, so it is the shot returned to the caller
-  const offsets = BARREL_OFFSETS[w.barrels] ?? BARREL_OFFSETS[1];
+  const offsets = BARREL_OFFSETS[barrelsOf(gun)] ?? BARREL_OFFSETS[1];
   const shot = makeShot(0, false);
   w.shots.push(shot);
   for (const off of offsets) w.shots.push(makeShot(off, true));
@@ -979,18 +1151,21 @@ export function registerMiss(w) {
 
 /* ---------- battery ---------- */
 
-/** Gun types you can assign to a mount once unlocked. `standard` is the
+/** Gun types you can assign to a mount once researched. `refitBase` is the
+ *  price scale a retrofit is derived from — it was the scrap cost of unlocking
+ *  the type until v28 moved that to research points, and it survives as the
+ *  "how serious a gun is this" number the refit fee reads. `standard` is the
  *  starting gun; the others trade fire rate for a special property, so the
  *  four upgrade branches map onto guns you can physically see. */
 export const GUN_TYPES = {
-  standard: { name: 'Cannon',     rate: 1.0,  dmg: 1.0, pierce: 0, spd: 1.0,  col: '#c9a227', unlock: 0 },
-  auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', unlock: 120 },
-  rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', unlock: 160 },
-  mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', unlock: 200, arc: true },
+  standard: { name: 'Cannon',     rate: 1.0,  dmg: 1.0, pierce: 0, spd: 1.0,  col: '#c9a227', refitBase: 0 },
+  auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', refitBase: 120 },
+  rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', refitBase: 160 },
+  mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', refitBase: 200, arc: true },
   // The one gun `shielded` can't deflect — the collision loop checks the
   // shot's `gun` field for the literal string 'ion' before ever calling
   // isDeflected, not a stat on this table.
-  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', unlock: 260 },
+  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', refitBase: 260 },
 };
 export const GUN_KEYS = Object.keys(GUN_TYPES);
 
@@ -1006,7 +1181,9 @@ export const CONVERGE_BONUS = 0.6;                  // extra damage fraction
 
 export function makeGun(x, type = 'standard') {
   // its own upgrade tiers: a new mount arrives bare, however deep the others are
-  return { x, type, heat: 0, cool: 0, locked: 0, upgrades: newUpgrades() };
+  // its own barrel count too, for the same reason: everything on a mount's
+  // shop tab should belong to that mount
+  return { x, type, heat: 0, cool: 0, locked: 0, barrels: 1, upgrades: newUpgrades() };
 }
 
 /** Build the battery for a given mount count. The shared aim, streak and
