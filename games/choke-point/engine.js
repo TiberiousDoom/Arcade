@@ -648,10 +648,19 @@ function acquire(w, tower) {
  *  shooting — the shell draws an idle tower as a bare ring, and this is what
  *  wakes it. Presentation only; nothing in the simulation reads it. */
 export const READY_MARGIN = 46;
+/** The margin again, for deciding a tower should go back to sleep. Bigger than
+ *  the waking one on purpose: with a single threshold, an enemy sitting on the
+ *  circle flipped the answer every frame and the barrel strobed in and out. Now
+ *  waking and sleeping happen at different distances, so a target has to
+ *  genuinely leave before the tower stands down. The shell pairs this with a
+ *  hold timer — see `stepTowerArt`. */
+export const READY_SLEEP_MARGIN = READY_MARGIN * 2.4;
 
-export function towerReady(w, tower) {
+/** Is anything within `margin` of this tower's range? Defaults to the waking
+ *  margin, so existing callers are unchanged. */
+export function towerReady(w, tower, margin = READY_MARGIN) {
   const c = cellCenter(w.L, tower.c, tower.r);
-  const reach = stats(w, tower).range + READY_MARGIN;
+  const reach = stats(w, tower).range + margin;
   for (const e of w.enemies) {
     if (e.hp <= 0) continue;
     const p = enemyPos(w, e);

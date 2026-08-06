@@ -46,37 +46,35 @@ docstring already says "presentation only; nothing in the simulation reads it."
 is shell state; the render test can assert a tower stays deployed for a frame or
 two after its last enemy is removed.
 
-### 2. Reduce the XP bounty by 100×
+### 2. Reduce the XP bounty by 10×
+
+**Settled:** 10×, not the 100× first written here. 100× put the full 1→10 climb at
+~60,000 damage from a single tower and took level 10 off the table inside a run;
+10× makes it a genuine late-run achievement instead of a formality. The rest of
+this section is unchanged apart from the factor.
 
 **What this means mechanically.** XP is credited in `damageEnemy`
 ([engine.js:704](../games/choke-point/engine.js)): `dealt + XP_KILL_BONUS` on a
 kill, where `dealt` is damage that actually landed. So there are two knobs — the
 per-damage credit (implicitly 1.0, never named) and `XP_KILL_BONUS` (3).
 
-**Recommendation.** Name the implicit knob and divide *both* by 100, so the whole
+**Recommendation.** Name the implicit knob and divide *both* by 10, so the whole
 XP economy moves as one number rather than only the kill bonus:
 
 ```js
-export const XP_PER_DAMAGE = 0.01;   // was implicitly 1
-export const XP_KILL_BONUS = 0.03;   // was 3
+export const XP_PER_DAMAGE = 0.1;   // was implicitly 1
+export const XP_KILL_BONUS = 0.3;   // was 3
 ```
 
 Leave `xpForNext` alone. That keeps the level curve's *shape* and the two
 tested Breaker-reach requirements intact, and puts all of the change in one place.
 
-**Consequence, stated plainly so it's a decision and not a surprise.** Level 2
-currently costs 18 XP ≈ 18 damage; after the change it costs ≈ 1,800 damage. The
-full 1→10 climb is ≈ 600 XP ≈ **60,000 damage from a single tower**. A wave-14
-board is ~4,600 total enemy HP, so a tower would need to personally deal the
-damage of roughly a dozen deep waves to max out. **Level 10 stops being reachable
-in a run**, and levelling becomes a slow background drift rather than a visible
-reward.
-
-If the intent was "towers level *too fast*" rather than "make levelling
-near-invisible", ~10× is the number that makes level 10 a genuine late-run
-achievement instead of removing it. **Flagging this rather than deciding it** —
-the literal 100× is what's written above and what will be implemented unless
-told otherwise; it is a one-constant change either way.
+**Consequence.** Level 2 currently costs 18 XP ≈ 18 damage; after the change it
+costs ≈ 180 damage. The full 1→10 climb is ≈ 600 XP ≈ **6,000 damage from a single
+tower** — a wave-14 board is ~4,600 total enemy HP, so a well-sited tower maxes out
+somewhere in the low-to-mid teens rather than within the opening waves. That is the
+intent: level 10 stays reachable, but as the reward for a tower that has done a
+run's worth of work.
 
 Knock-ons: the popup's XP readout ([choke-point.html:454](../games/choke-point/choke-point.html))
 prints `Math.floor(t.xp)`, which would sit at 0 for a long time — show one decimal,
@@ -451,8 +449,7 @@ Bump `BUILD`/`CACHE_VERSION` once, at the end.
 
 ## Open questions
 
-- **Item 2**: is 100× literal, or does it mean "levelling is too fast"? 100× makes
-  level 10 unreachable within a run. Will implement literally unless told otherwise.
+- ~~**Item 2**: is 100× literal?~~ **Settled: 10×.**
 - **Item 4**: Coil's splash track is currently inert (base splash 0). Giving Coil a
   base splash changes what the class *is* — confirm that's wanted, or take option (b)
   and make its slow area-of-effect instead.

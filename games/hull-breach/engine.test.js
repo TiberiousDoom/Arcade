@@ -42,6 +42,46 @@ test('brick score scales with armour', () => {
   assert.ok(E.brickScore(3) > E.brickScore(1));
 });
 
+test('the opening levels are single-hit plating only', () => {
+  for (let level = 1; level <= E.SOFT_LEVELS; level++) {
+    for (const b of E.buildBricks(level)) {
+      assert.equal(b.maxhp, 1, `level ${level} row ${b.row} should take one hit`);
+    }
+  }
+});
+
+test('armour arrives in a step, not a cliff', () => {
+  // level 3 caps at two hits; from ARMOUR_FROM on, the full 1-3 banding is back
+  const mid = E.buildBricks(E.ARMOUR_FROM - 1);
+  assert.ok(mid.every(b => b.maxhp <= 2), 'the level before full armour caps at two');
+  assert.ok(mid.some(b => b.maxhp === 2), 'but it is not all single-hit either');
+
+  const full = E.buildBricks(E.ARMOUR_FROM);
+  assert.ok(full.some(b => b.maxhp === 3), 'full armour is back');
+  assert.ok(full.some(b => b.maxhp === 1), 'and the front rows are still soft');
+});
+
+test('a softened level pays back the salvage its missing armour would have earned', () => {
+  // what matters is that a soft clear is worth the same as an armoured one:
+  // the shop opens on the first clear, so an easier opener must not buy less
+  for (let level = 1; level < E.ARMOUR_FROM; level++) {
+    const earned = E.buildBricks(level).reduce((a, b) => a + E.brickSalvage(b.maxhp), 0);
+    const wouldHave = E.buildBricks(level).reduce(
+      (a, b) => a + E.brickSalvage(E.brickHp(b.row, L.BRICK_ROWS, E.ARMOUR_FROM)), 0);
+    assert.equal(earned + E.softClearBonus(level), wouldHave, `level ${level} is made whole`);
+  }
+  assert.equal(E.softClearBonus(E.ARMOUR_FROM), 0, 'and nothing is owed once armour is back');
+});
+
+test('clearing a level pays its salvage bonus through the real step', () => {
+  const w = emptyWorld();
+  w.bricks = [{ x: 100, y: 100, w: 50, h: 20, row: 0, col: 0, hp: 1, maxhp: 1, alive: true, flash: 0 }];
+  w.balls = [{ x: 125, y: 118, vx: 0, vy: -200, r: L.BALL_R }];
+  E.step(w, 1 / 30);
+  assert.ok(w.levelClear);
+  assert.equal(w.salvage, E.brickSalvage(1) + E.softClearBonus(1));
+});
+
 test('later level patterns are non-trivial subsets and stay deterministic', () => {
   for (let lvl = 1; lvl <= 3; lvl++) {
     const a = E.buildBricks(lvl);
@@ -554,7 +594,12 @@ test('a new run starts with an empty tree', () => {
 
 test('destroying a brick earns salvage alongside score', () => {
   const w = emptyWorld();
-  w.bricks = [{ x: 100, y: 100, w: 50, h: 20, row: 0, col: 0, hp: 1, maxhp: 1, alive: true, flash: 0 }];
+  w.bricks = [
+    { x: 100, y: 100, w: 50, h: 20, row: 0, col: 0, hp: 1, maxhp: 1, alive: true, flash: 0 },
+    // decoy well out of the ball's way: without it the field empties, the level
+    // clears, and `softClearBonus` lands on top of the one brick's salvage
+    { x: 600, y: 40, w: 50, h: 20, row: 0, col: 8, hp: 1, maxhp: 1, alive: true, flash: 0 },
+  ];
   w.balls = [{ x: 125, y: 118, vx: 0, vy: -200, r: L.BALL_R }];
   E.step(w, 1 / 30);
   assert.equal(w.salvage, E.brickSalvage(1));

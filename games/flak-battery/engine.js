@@ -427,7 +427,7 @@ export const LOCK_TIME = 1.5;
 export const UPGRADES = {
   barrel: {
     name: 'Barrel',
-    blurb: 'Damage per shot, then projectile size',
+    blurb: 'More damage per round, and a bigger round',
     costs: [42, 91, 161, 259, 392],
     /* shotR's top end pulled in (was 3.2→6.0). The shell draws a filled arc
        at `r` plus two glowDots at `r` and `r/2`, so the on-screen bloom is
@@ -444,7 +444,7 @@ export const UPGRADES = {
   },
   chamber: {
     name: 'Chamber',
-    blurb: 'Heat capacity and cooling — holds Overdrive longer',
+    blurb: 'Less heat per shot, faster cooling, shorter overheat lockout',
     costs: [39, 84, 151, 241, 367],
     tiers: [
       { heatPerShot: 1.00, cool: 1.00, lock: 1.00 },
@@ -457,7 +457,7 @@ export const UPGRADES = {
   },
   optics: {
     name: 'Optics',
-    blurb: 'Projectile speed, then a longer intercept read',
+    blurb: 'Faster rounds, and the aim marker leads targets further ahead',
     costs: [45, 95, 168, 269, 406],
     tiers: [
       { shotSpeed: 520, predict: 1.6 },
@@ -470,7 +470,7 @@ export const UPGRADES = {
   },
   munitions: {
     name: 'Munitions',
-    blurb: 'Extra pierce and wall bounces',
+    blurb: 'Rounds punch through more craft and bounce off more walls',
     costs: [49, 104, 182, 291, 437],
     tiers: [
       { pierce: 0, bounces: 2 },
@@ -562,13 +562,17 @@ export function fullBatteryCost() {
 
 /* ---------- world ---------- */
 
+/** Breaches a run survives. Named because the header now draws one pip per
+ *  life and needs to know how many slots to show even after they are spent. */
+export const START_LIVES = 3;
+
 export function createWorld(opts = {}) {
   const L = { ...LAYOUT, ...(opts.layout || {}) };
   const { path, pathLen } = buildPath(L);
   const w = {
     L, path, pathLen,
     chains: [], shots: [], bits: [], floaters: [],
-    wave: 1, score: 0, scrap: 0, lives: 3,
+    wave: 1, score: 0, scrap: 0, lives: START_LIVES,
     gunUnlocks: { auto: false, rail: false, mortar: false, ion: false },
     barrels: 1,
     pickups: [], effects: {}, shieldCharges: 0, dropSeed: 987654321,
@@ -697,7 +701,7 @@ export function hydrate(w, snap) {
   if (snap.chains.length > MAX_CHAINS) return false;
 
   w.wave = snap.wave; w.score = snap.score ?? 0; w.scrap = snap.scrap ?? 0;
-  w.lives = snap.lives ?? 3;
+  w.lives = snap.lives ?? START_LIVES;
   w.breaches = snap.breaches ?? 0;
   w.over = !!snap.over;
   w.waveClear = !!snap.waveClear; w.clearTimer = snap.clearTimer ?? 0;
@@ -747,7 +751,7 @@ export function hydrate(w, snap) {
 }
 
 export function resetRun(w) {
-  w.wave = 1; w.score = 0; w.scrap = 0; w.lives = 3;
+  w.wave = 1; w.score = 0; w.scrap = 0; w.lives = START_LIVES;
   w.over = false; w.breaches = 0;
   // upgrades live on the guns, and makeBattery below builds fresh ones
   w.pickups = []; w.effects = {}; w.shieldCharges = 0; w.dropSeed = 987654321;
@@ -1028,7 +1032,7 @@ export const POWERUPS = {
   spread:  { name: 'Spread',  dur: 9,  col: '#5fc9a4', blurb: 'Three-shot fan' },
   rapid:   { name: 'Rapid',   dur: 8,  col: '#8dbf4a', blurb: 'Shorter cooldown' },
   pierce:  { name: 'Pierce',  dur: 10, col: '#c9a227', blurb: 'Shots punch through' },
-  freeze:  { name: 'Freeze',  dur: 2.5, col: '#6fb7e8', blurb: 'The snake halts' },
+  freeze:  { name: 'Freeze',  dur: 2.5, col: '#6fb7e8', blurb: 'The column halts' },
   bomb:    { name: 'Bomb',    dur: 0,  col: '#e0503c', blurb: 'Radial blast on pickup' },
   ricochet:{ name: 'Ricochet',dur: 9,  col: '#b98de0', blurb: 'Extra wall bounces' },
   shield:  { name: 'Shield',  dur: 0,  col: '#e6e9e2', blurb: 'Absorbs one breach' },

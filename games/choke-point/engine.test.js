@@ -438,6 +438,38 @@ test('aim clears when the last target leaves range, even mid-cooldown', () => {
   assert.equal(w.towers[0].aim, null, 'nothing to aim at');
 });
 
+test('a tower wakes and sleeps at different distances, so its art cannot strobe', () => {
+  const w = towerVsEnemy('node');
+  const t = w.towers[0];
+  const c = E.cellCenter(w.L, t.c, t.r);
+  const range = E.stats(w, t).range;
+
+  // park an enemy just outside the waking threshold but inside the sleeping
+  // one — the band that used to flip the answer every frame
+  const e = w.enemies[0];
+  const between = (E.READY_MARGIN + E.READY_SLEEP_MARGIN) / 2;
+  let placed = false;
+  for (let d = 0; d < w.pathLen; d += 1) {
+    const p = E.atS(w.path, w.pathLen, d);
+    const gap = Math.hypot(p.x - c.x, p.y - c.y) - range;
+    if (gap > E.READY_MARGIN && gap < E.READY_SLEEP_MARGIN) {
+      e.dist = d; placed = true;
+      // sanity: `between` really does sit inside the band we just found
+      assert.ok(gap > between - E.READY_MARGIN && gap < between + E.READY_SLEEP_MARGIN);
+      break;
+    }
+  }
+  assert.ok(placed, 'the route passes through the hysteresis band');
+
+  assert.equal(E.towerReady(w, t), false, 'not near enough to wake a sleeping tower');
+  assert.equal(E.towerReady(w, t, E.READY_SLEEP_MARGIN), true,
+    'but near enough that a deployed one stays deployed');
+});
+
+test('the sleeping margin is the looser of the two', () => {
+  assert.ok(E.READY_SLEEP_MARGIN > E.READY_MARGIN);
+});
+
 /* ---------- enemy abilities: making a favourite tower the wrong answer ---------- */
 
 /** Park an enemy of `type` inside a fresh tower's range and return both. */

@@ -61,11 +61,12 @@
      id alone), so it would silently lose and every button would come out the
      same width. */
   #waveRow #startWave, #waveRow #rushWave{flex:2 1 0}
-  #waveRow #ffWave, #waveRow #contWave{flex:1 1 0;font-size:16px;letter-spacing:0}
+  #waveRow #ffWave, #waveRow #contWave, #waveRow #shopBtn{flex:1 1 0;font-size:16px;letter-spacing:0}
 
-  /* Full width, below everything: it opens a modal, so it is a destination
-     rather than something you tap mid-wave. */
-  #shopBtn{flex:1 1 100%;min-height:48px}
+  /* Sits with the two mode toggles rather than on a row of its own — see the
+     comment where it is built. Tinted like them so the row reads as two verbs
+     and three glyphs. */
+  #shopBtn{background:#1b3038;color:var(--bone)}
 
   /* Phones: the palette drops its blurb and goes to one line per tower. The
      three blurbs cost ~28px of strip height to explain what the cost and the
@@ -336,14 +337,19 @@ contBtn.setAttribute('aria-label', 'Auto-start next wave');
 contBtn.addEventListener('click', () => { continuous = !continuous; syncPalette(); });
 waveRow.append(contBtn);
 
-/* The armoury, on its own full-width row: it opens a modal, so it is a place
-   you go rather than something tapped mid-wave. */
+/* The armoury. It used to have a full-width row of its own below everything,
+   which cost the strip an entire button height — and under `fillWidth` that
+   height comes straight off the board. It sits in the wave row now, as a glyph
+   at toggle width: the row is already glyph-based for its two modes, and the
+   armoury is a destination you tap between waves rather than a decision made
+   under pressure, so it does not need a verb-sized target. */
 const shopBtn = document.createElement('button');
 shopBtn.id = 'shopBtn';
 shopBtn.type = 'button';
-shopBtn.textContent = 'Purchase Upgrades';
+shopBtn.textContent = '⚒';
+shopBtn.setAttribute('aria-label', 'Purchase upgrades');
 shopBtn.addEventListener('click', () => openShop());
-controls.append(shopBtn);
+waveRow.append(shopBtn);
 
 function syncPalette() {
   /* Selection is sticky, and unaffordable is a *look* rather than a disabled
@@ -922,19 +928,39 @@ function drawCore() {
    about how long a barrel takes to slide out. */
 const barrelOut = new Map();
 const BARREL_SPEED = 5.2;          // full extension in a bit under a fifth of a second
+/* How long a tower stays deployed after the last frame that had something in
+   reach. Without it, a stream of enemies passing the edge of a tower's reach
+   pumped the barrel in and out once per gap — reported as the tower "cycling
+   between ready and unready when squares are right on its periphery".
+
+   Two mechanisms, because either alone is not enough: this timer covers gaps in
+   *time* (a target leaves, another is a second behind), and the engine's
+   separate `READY_SLEEP_MARGIN` covers jitter in *space* (one target loitering
+   exactly on the threshold). */
+const READY_HOLD = 1.2;
+const readyHold = new Map();       // cell key -> seconds of deployment left
 
 function stepTowerArt(dt) {
   const live = new Set();
   for (const t of world.towers) {
     const key = t.c + ',' + t.r;
     live.add(key);
-    const want = E.towerReady(world, t) ? 1 : 0;
+
+    /* Wake on the tight margin, sleep on the loose one: while already deployed
+       we ask the easier question, so a target has to leave properly rather than
+       merely wobble across one circle. */
+    const held = readyHold.get(key) ?? 0;
+    const near = E.towerReady(world, t, held > 0 ? E.READY_SLEEP_MARGIN : E.READY_MARGIN);
+    const hold = near ? READY_HOLD : Math.max(0, held - dt);
+    readyHold.set(key, hold);
+
+    const want = hold > 0 ? 1 : 0;
     const now = barrelOut.get(key) ?? want;      // a tower built mid-fight starts settled
     const d = Math.sign(want - now) * BARREL_SPEED * dt;
     barrelOut.set(key, Math.abs(want - now) <= Math.abs(d) ? want : now + d);
   }
   // a sold tower must not leave its barrel behind for the next one built there
-  for (const k of [...barrelOut.keys()]) if (!live.has(k)) barrelOut.delete(k);
+  for (const k of [...barrelOut.keys()]) if (!live.has(k)) { barrelOut.delete(k); readyHold.delete(k); }
 }
 
 function drawTower(t) {
@@ -958,10 +984,14 @@ function drawTower(t) {
      about to be doing the work, and a quiet stretch of route looks quiet
      instead of looking identical to a busy one. */
   if (out > 0.01) {
-    // the hub: solid, and it grows into place rather than popping in
-    ctx.fillStyle = col;
+    /* The hub, emissive like everything else that is meant to read as powered.
+       It used to be a flat `ctx.fill()` while the ring went through extrudeDisc
+       and the barrel through glowStroke, so a deployed tower had a dead spot at
+       its centre. `glowDot` plus a small hot core is the same pairing `drawCore`
+       uses — the established "this thing is lit" idiom in this file. */
     ctx.globalAlpha = out;
-    ctx.beginPath(); ctx.arc(cx, cy, rr * .34 * out, 0, TAU); ctx.fill();
+    glowDot(ctx, cx, cy, rr * .34 * out, col);
+    if (!reduce) glowDot(ctx, cx, cy, rr * .15 * out, '#ffffff');
     ctx.globalAlpha = 1;
 
     // the barrel, aimed at whatever it is tracking — or straight down the

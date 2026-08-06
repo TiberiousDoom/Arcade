@@ -18,6 +18,19 @@
     --board-max:880px;
   }
 
+  /* Lives as pips. `.pips` here is the header readout, not the shop's tier pips
+     (those are `.branch .pips`, scoped below) — same idea, bigger marks, since
+     this one is read mid-wave at arm's length. */
+  #uiLives{display:inline-flex;gap:3px;align-items:center}
+  #uiLives i{width:8px;height:8px;border-radius:50%;display:inline-block;
+    background:var(--brass);box-shadow:0 0 5px var(--brass)}
+  #uiLives i.spent{background:#1b3038;box-shadow:none}
+  /* A breach is the one HUD event worth interrupting for: the strip flashes red
+     rather than quietly decrementing a number nobody was looking at. */
+  #uiLives.hit i{background:#e0503c;box-shadow:0 0 7px #e0503c;animation:lifeflash .5s steps(2) 3}
+  @keyframes lifeflash{50%{opacity:.15}}
+  @media (prefers-reduced-motion:reduce){#uiLives.hit i{animation:none}}
+
   #uiBuild{display:flex;gap:6px;align-items:center}
   #uiBuild span{display:flex;gap:1px;align-items:center}
   #uiBuild i{width:3px;height:8px;background:#1b3038;display:inline-block}
@@ -112,9 +125,14 @@
     </div>
     <div class="meta">
       <div>Wave <b id="uiWave">1</b></div>
+      <!-- Lives leads the row, ahead of everything you only check between
+           waves. It used to be labelled "Cells" and sat fourth of six, which on
+           a narrow phone put it on the wrapped second line — so the one number
+           you need mid-wave was both misnamed and the hardest to find. Pips
+           rather than a digit for the same reason: countable at a glance. -->
+      <div>Lives <b id="uiLives" class="pips"></b></div>
       <div>Score <b id="uiScore">0</b></div>
       <div>Scrap <b id="uiScrap">0</b></div>
-      <div>Cells <b id="uiLives">3</b></div>
       <div>Best <b id="uiBest">—</b></div>
       <div id="uiBuild" title="Barrel / Chamber / Optics / Munitions"></div>
     </div>
@@ -409,7 +427,10 @@ function frame(now) {
     E.step(world, dt, firing);
     // a breach costs a life; the last one ends the run. Sound it either way,
     // read from state since the engine has no breach fx hook.
-    if (world.lives < livesBefore) audio[world.over ? 'lose' : 'breach']();
+    if (world.lives < livesBefore) {
+      audio[world.over ? 'lose' : 'breach']();
+      flashLives();
+    }
 
     if (world.over) {
       clearRun(GAME_ID);          // a finished run is not one to come back to
@@ -433,10 +454,19 @@ let tapPulse = 0;
    advancing the chains at the same time. Cheap, and exact enough to trust. */
 function predictHit() {
   const c = world.cannon;
-  // the intercept marker follows mount 1's optics: with per-emplacement
-  // upgrades there is no single battery-wide shot speed to predict from, and
-  // the centre gun is the one the aim line is drawn through
-  const S = E.stats(world, world.battery.guns[0]);
+  /* The marker reads the *best* optics on the battery, not mount 1's.
+
+     It used to take guns[0] on the grounds that the aim line is drawn through
+     the centre gun — but since v27 made upgrades per-emplacement that meant
+     buying Optics on mounts 2-5 changed nothing you could see, while the shop
+     blurb promised a longer read. Taking the maximum makes the purchase honest
+     wherever it is made: the marker shows the furthest-ahead solution any of
+     your guns can actually reach, and shot speed comes from the same gun so the
+     two halves of the prediction stay consistent. */
+  const S = world.battery.guns.reduce((best, g) => {
+    const s = E.stats(world, g);
+    return !best || s.predict > best.predict ? s : best;
+  }, null) || E.stats(world, null);
   const step = 1 / 90, maxT = S.predict;
   let x = c.x + Math.cos(c.ang) * c.len;
   let y = c.y + Math.sin(c.ang) * c.len;
@@ -810,12 +840,18 @@ function drawCannonPortrait(g, type, barrels = 1) {
   glowDot(g, px, py, 3, col);
 }
 
+/* Say what the gun does to the board, and name the enemy it answers. The ion
+   and railgun lines were both describing the v24 design: ion used to resist
+   hardened hulls and no longer does (it bypasses shielded plating instead —
+   v25), and the railgun is what actually beats a hardened hull now, via
+   `railBonus`. Two guns were sold on behaviour they had not had for two
+   builds. */
 function gunBlurb(type) {
   const G = E.GUN_TYPES[type];
   if (type === 'auto') return 'Fires fast, hits light. Good against soft, crowded rows.';
-  if (type === 'rail') return 'Slow, punches through several segments at once.';
-  if (type === 'mortar') return 'Lobs a heavy round; reaches over the front rank.';
-  if (type === 'ion') return 'The only thing that cuts through a hardened hull.';
+  if (type === 'rail') return 'Slow and heavy. Punches through several craft, and hits hardened hulls hardest.';
+  if (type === 'mortar') return 'Lobs a round that arms late, so it reaches over the front rank.';
+  if (type === 'ion') return 'Ignores shield plating — hits a shielded craft from any angle.';
   return G.name;
 }
 
@@ -1424,11 +1460,27 @@ function syncBest() {
   $('uiBest').textContent = b ? b.score : '—';
 }
 
+/* The lives strip flashes on a breach. Retriggering needs the class off for a
+   frame, or a second breach inside the animation's window does nothing. */
+let livesFlash = 0;
+function flashLives() {
+  const el = $('uiLives');
+  el.classList.remove('hit');
+  void el.offsetWidth;                        // force a reflow so the class re-applies
+  el.classList.add('hit');
+  clearTimeout(livesFlash);
+  livesFlash = setTimeout(() => el.classList.remove('hit'), 1600);
+}
+
 function sync() {
   $('uiWave').textContent = world.wave;
   $('uiScore').textContent = world.score;
   $('uiScrap').textContent = world.scrap;
-  $('uiLives').textContent = world.lives;
+  // Spent lives stay on the strip as dark pips rather than disappearing, so the
+  // readout is "1 of 3 left" at a glance instead of "1 of something".
+  const slots = Math.max(E.START_LIVES, world.lives);
+  $('uiLives').innerHTML = Array.from({ length: slots }, (_, i) =>
+    `<i class="${i < world.lives ? '' : 'spent'}"></i>`).join('');
   // how far this run got, for the cabinet's unlock gate. Recorded live rather
   // than at game over: reaching the wave is the achievement, and a player who
   // closes the tab mid-run has still reached it.
