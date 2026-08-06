@@ -20,6 +20,23 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 **414 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 218, Hull Breach 78, Choke Point 72, Feedline 44, shared 2 — plus **41 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
+## Next round: v28 is planned but not started
+
+Round 6 feedback (written against v27) is worked up item by item in
+**[docs/v28-plan.md](docs/v28-plan.md)** — thirteen items across Choke Point,
+Flak Battery and Hull Breach, with a suggested build order and four open
+questions. Nothing in it is implemented yet. Three findings from writing it are
+worth knowing before touching the code:
+
+- Flak Battery's lives are **already** in the header, labelled "Cells" — the ask
+  is legibility, not a missing feature.
+- Choke Point's **splash track does nothing on a Coil**: base splash is 0 and
+  `stats` grows it multiplicatively, so "make Coil's cheap upgrade splash"
+  requires giving Coil a base splash first.
+- Optics' `predict` only feeds the aim marker, and the marker reads **mount 1
+  only** — so buying Optics on mounts 2–5 has no visible effect since v27 made
+  upgrades per-emplacement.
+
 ## In progress / just decided
 
 - Built Feedline under `games/feedline/` (originally `games/drift-net/`) — first grid/tick game, and the one that showed the engine/shell *seam* is legitimately per-game (Feedline's engine owns its tick clock; Hull Breach's takes no input at all). The pure-logic principle is what's shared, not the `step` signature.
