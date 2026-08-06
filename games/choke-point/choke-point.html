@@ -84,12 +84,19 @@
   #tsel.on{display:flex}
   #tsel h3{font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-hot)}
   #tsel button{padding:12px 14px;font-size:12px}
-  #tsel .xp{font-size:10px;color:var(--dim);letter-spacing:.06em}
+  #tsel .xp{font-size:10px;color:var(--dim);letter-spacing:.06em;
+    display:flex;align-items:center;gap:6px}
+  #tsel .xpbar{flex:1 1 auto;height:5px;background:#16303a;border-radius:1px;overflow:hidden}
+  #tsel .xpbar i{display:block;height:100%;background:var(--accent)}
+  #tsel .xp em{font-style:normal;flex:0 0 auto}
   #tsel .prio{display:flex;gap:4px}
   #tsel .prio button{flex:1 1 0;padding:10px 4px;font-size:10px;letter-spacing:.04em}
   #tsel .prio button.on{background:var(--accent);color:var(--accent-ink)}
   #tsel .sell{background:#2a1a17;color:#e0a89c}
   #tsel .sell:hover{background:#3a241f}
+  #tsel .move{background:#16303a;color:var(--bone)}
+  #tsel .move:hover{background:#1d3d49}
+  #tsel .move:disabled{opacity:.45}
 
   /* The armoury. Covers the stage like Flak Battery's shop, and for the same
      reason: it is a place you stop and think, not an overlay you peek past. */
@@ -457,12 +464,20 @@ function renderPopup() {
   const next = E.xpForNext(lvl);
   tsel.innerHTML =
     `<h3>${E.TOWER_TYPES[t.type].name} · L${lvl}</h3>` +
-    `<div class="xp">${lvl >= E.MAX_LEVEL ? 'Fully trained' : `${Math.floor(t.xp)} / ${next} xp`}</div>` +
+    /* A bar, not a number. Since v28 cut the XP rate tenfold a tower earns
+       fractions per shot, and `Math.floor` sat on 0 through the first dozen
+       kills — which read as levelling being broken. A filling bar shows the
+       same progress without asking anyone to notice a decimal place. */
+    `<div class="xp">${lvl >= E.MAX_LEVEL ? 'Fully trained'
+      : `<span class="xpbar"><i style="width:${Math.round(Math.min(1, t.xp / next) * 100)}%"></i></span>` +
+        `<em>L${lvl + 1}</em>`}</div>` +
     `<div class="prio">` +
     E.PRIORITIES.map(p =>
       `<button data-p="${p}" class="${(t.priority || 'first') === p ? 'on' : ''}">${PRIORITY_LABEL[p]}</button>`
     ).join('') +
     `</div>` +
+    `<button class="move" id="tMove"${world.components < E.moveCost(t) ? ' disabled' : ''}>` +
+      `Move · ${E.moveCost(t)}</button>` +
     `<button class="sell" id="tSell">Sell · +${E.sellValue(t)}</button>`;
   for (const b of tsel.querySelectorAll('.prio button')) {
     b.addEventListener('click', () => {
@@ -470,9 +485,31 @@ function renderPopup() {
       renderPopup();
     });
   }
+  $('tMove').addEventListener('click', () => { beginMove(popupIndex); });
   $('tSell').addEventListener('click', () => { E.sellTower(world, popupIndex); closePopup(); sync(); });
 }
 function closePopup() { tsel.classList.remove('on'); popupIndex = -1; }
+
+/* ---------- moving a tower ----------
+
+   A two-tap gesture rather than a modal: tap Move, then tap where it should go.
+   While the move is pending the board shows the destinations it will accept, so
+   the answer to "why won't it go there" is on screen before the tap, not after.
+   Dragging an already-built tower does the same thing in one gesture — see the
+   pointer handlers below. */
+let moveIndex = -1;             // which tower is looking for a new cell, or -1
+
+function beginMove(i) {
+  moveIndex = i;
+  closePopup();
+  sync();
+}
+function cancelMove() { moveIndex = -1; sync(); }
+
+/** True if the pending move could legally land on this cell. */
+function moveTargetOk(c, r) {
+  return moveIndex >= 0 && E.canMove(world, moveIndex, c, r);
+}
 
 /* ---------- input ---------- */
 function stagePt(e) {
@@ -489,10 +526,32 @@ cv.addEventListener('pointerdown', e => {
 
   const p = stagePt(e);
   const cell = E.cellAt(world.L, p.x, p.y);
+
+  /* A pending move owns the next tap on the board. Anywhere illegal — off the
+     grid, on the path, on another tower — cancels rather than silently doing
+     nothing, so there is always a way out of the state without a Cancel button.
+     Deliberately checked before the build branch: while a move is pending, a
+     tap on an empty cell must move the tower there, not build a second one. */
+  if (moveIndex >= 0) {
+    // moveTower fires the engine's `build` fx hook, which is what makes the
+    // sound — nothing extra to play here
+    if (cell && moveTargetOk(cell.c, cell.r)) E.moveTower(world, moveIndex, cell.c, cell.r);
+    cancelMove();
+    return;
+  }
+
   if (!cell) return;
 
+  /* A press on an existing tower is ambiguous until it either moves or lets
+     go: a tap opens the popup, a drag relocates the tower. So the popup waits
+     for pointerup — opening it here and closing it again on the first drag
+     frame made it flash open on every relocation. */
   const existing = world.towers.findIndex(t => t.c === cell.c && t.r === cell.r);
-  if (existing >= 0) { openTowerPopup(existing, p.lx, p.ly); return; }
+  if (existing >= 0) {
+    dragMove = existing;
+    dragFrom = { x: e.clientX, y: e.clientY, lx: p.lx, ly: p.ly };
+    return;
+  }
 
   if (E.buildTower(world, cell.c, cell.r, selected)) sync();
 });
@@ -526,12 +585,44 @@ for (const key of E.TOWER_KEYS) {
     e.preventDefault();
   });
 }
+/* Dragging a tower that is already on the board relocates it — the same gesture
+   as dragging one out of the palette, so there is nothing new to learn. It arms
+   on a travel threshold: below that the press was a tap, and opens the popup. */
+let dragMove = -1;              // tower under a press that might become a drag
+let dragFrom = null;
+const DRAG_ARM = 8;             // px of travel before a press counts as a drag
+
 addEventListener('pointermove', e => {
+  if (dragMove >= 0) {
+    if (moveIndex < 0) {
+      if (Math.hypot(e.clientX - dragFrom.x, e.clientY - dragFrom.y) < DRAG_ARM) return;
+      moveIndex = dragMove;     // armed: this is a relocation, not a tap
+    }
+    const p = dragPoint(e);
+    hoverCell = p ? E.cellAt(world.L, p.x, p.y) : null;
+    return;
+  }
   if (!dragType) return;
   const p = dragPoint(e);
   hoverCell = p ? E.cellAt(world.L, p.x, p.y) : null;
 });
+
 addEventListener('pointerup', e => {
+  if (dragMove >= 0) {
+    const armed = moveIndex === dragMove;
+    const i = dragMove, from = dragFrom;
+    dragMove = -1; dragFrom = null;
+    if (armed) {
+      const p = dragPoint(e);
+      const cell = p && E.cellAt(world.L, p.x, p.y);
+      if (cell && moveTargetOk(cell.c, cell.r)) E.moveTower(world, moveIndex, cell.c, cell.r);
+      cancelMove();
+      hoverCell = null;
+    } else {
+      openTowerPopup(i, from.lx, from.ly);   // it was a tap after all
+    }
+    return;
+  }
   if (!dragType) return;
   const p = dragPoint(e);
   const cell = p && E.cellAt(world.L, p.x, p.y);
@@ -657,11 +748,11 @@ const pause = makeMenu({
     ['Build', 'Pick a tower below, then tap an empty cell. Towers fire on their own.'],
     ['Wave', 'Tap Start Wave when you\'re ready — you can start the next one early, mid-wave. Kills earn components to build more.'],
     ['Pace', 'Rush pulls this wave in sooner; × speeds the whole board up; ↻ starts each wave as soon as the last clears.'],
-    ['Adjust', 'Tap one of your towers to set what it shoots first, or to sell it.'],
-    ['Upgrade', 'Purchase Upgrades buys improvements for a whole tower class — and they keep between runs.'],
+    ['Adjust', 'Tap one of your towers to set what it shoots first, to move it, or to sell it. Dragging a tower moves it too.'],
+    ['Upgrade', 'The ⚒ button buys improvements for a whole tower class — and they keep between runs.'],
   ],
   notes: [
-    'Node is cheap and fast; Breaker hits hard and splashes; Coil slows — and anything slowed takes extra damage from everything else, so Coil sets targets up.',
+    'Node is cheap and fast; Breaker hits hard and splashes; Coil chills a small cluster at once — and anything slowed takes extra damage from everything else, so Coil sets targets up for the rest of your line.',
     'Towers level themselves by fighting, up to ten. The ring of pips around each one is how far along it is.',
     'In the armoury each class buys its speciality cheap and its opposite dear, so a Node stays a Node however much you spend.',
     'Later surges fight back: Shell shrugs off small hits, Phase shrugs off splash and can\'t be slowed, and Patch repairs everything near it — watch colour and size to tell them apart.',
@@ -829,8 +920,22 @@ function syncPopup() {
   const lvl = Math.min(E.MAX_LEVEL, t.level || 1);
   const h = tsel.querySelector('h3'), xp = tsel.querySelector('.xp');
   if (h) h.textContent = `${E.TOWER_TYPES[t.type].name} · L${lvl}`;
-  if (xp) xp.textContent = lvl >= E.MAX_LEVEL
-    ? 'Fully trained' : `${Math.floor(t.xp)} / ${E.xpForNext(lvl)} xp`;
+  /* Patch the bar's width, not the container's text: writing textContent here
+     would delete the bar markup renderPopup just built and leave the panel
+     showing a bare number. */
+  if (xp) {
+    const fill = xp.querySelector('.xpbar i');
+    if (lvl >= E.MAX_LEVEL) { if (fill) xp.textContent = 'Fully trained'; }
+    else if (fill) {
+      fill.style.width = Math.round(Math.min(1, t.xp / E.xpForNext(lvl)) * 100) + '%';
+      const nxt = xp.querySelector('em');
+      if (nxt) nxt.textContent = 'L' + (lvl + 1);
+    }
+  }
+  // affordability of the move tracks live, the way the old upgrade button did:
+  // a kill landing while the popup is open should light the button up
+  const mv = tsel.querySelector('.move');
+  if (mv) mv.disabled = world.components < E.moveCost(t);
 }
 
 /* ---------- draw ---------- */
@@ -848,6 +953,9 @@ function draw() {
   drawGrid();
   drawPath();
   drawCore();
+  // where a pending move may land, drawn under the towers so the marks read as
+  // being on the board rather than floating over it
+  if (moveIndex >= 0) drawMoveTargets();
   for (let i = 0; i < world.towers.length; i++) drawTower(world.towers[i]);
   for (const e of world.enemies) drawEnemy(e);
   drawBeams();
@@ -858,6 +966,37 @@ function draw() {
   // range ring for whichever tower the popup is currently open on — the tap
   // flow (mobile) has no hover, so this is the only way to see it there
   if (popupIndex >= 0 && world.towers[popupIndex]) drawTowerRange(world.towers[popupIndex]);
+  // and for a tower being relocated, so its reach can be judged against the
+  // cell it is about to land on rather than after the fact
+  if (moveIndex >= 0 && world.towers[moveIndex]) drawTowerRange(world.towers[moveIndex]);
+}
+
+/* Every cell a pending move would accept. Shown outright rather than left to be
+   discovered by tapping: the rules (not the path, not occupied, and you can
+   afford the fee) are cheap to satisfy but not obvious, and a tap that silently
+   does nothing reads as the feature being broken. */
+function drawMoveTargets() {
+  const cell = C();
+  const t = world.towers[moveIndex];
+  if (!t) return;
+  for (let r = 0; r < world.L.ROWS; r++) {
+    for (let c = 0; c < world.L.COLS; c++) {
+      if (!E.canMove(world, moveIndex, c, r)) continue;
+      const x = c * cell, y = r * cell;
+      const hot = hoverCell && hoverCell.c === c && hoverCell.r === r;
+      ctx.fillStyle = hot ? 'rgba(95,201,164,.22)' : 'rgba(95,201,164,.08)';
+      ctx.fillRect(x + 2, y + 2, cell - 4, cell - 4);
+      ctx.strokeStyle = hot ? 'rgba(95,201,164,.85)' : 'rgba(95,201,164,.3)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 2.5, y + 2.5, cell - 5, cell - 5);
+    }
+  }
+  // the tower being moved reads as lifted off the board
+  const cx = (t.c + .5) * cell, cy = (t.r + .5) * cell;
+  ctx.strokeStyle = 'rgba(224,168,156,.8)';
+  ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.arc(cx, cy, cell * .40, 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawTowerRange(t) {

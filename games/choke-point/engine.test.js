@@ -249,8 +249,21 @@ test('XP is credited for damage that lands, not damage attempted', () => {
   w.enemies[0].maxhp = 500;
   E.step(w, 1 / 60);
   assert.equal(w.enemies.length, 0, 'the hit killed it');
-  assert.ok(t.xp <= 1 + E.XP_KILL_BONUS, `overkill was banked as XP (${t.xp})`);
+  // written against the rate rather than a literal, so cutting XP again cannot
+  // quietly turn this into an assertion that passes for the wrong reason
+  assert.ok(t.xp <= 1 * E.XP_PER_DAMAGE + E.XP_KILL_BONUS + 1e-9,
+    `overkill was banked as XP (${t.xp})`);
   assert.ok(t.xp > 0, 'but the kill did pay something');
+});
+
+test('levelling is paced in thousands of damage, not tens', () => {
+  /* The v28 cut, pinned as a claim about the game rather than about a
+     constant: a tower should not reach the cap on a couple of Loads. */
+  const total = Array.from({ length: E.MAX_LEVEL - 1 }, (_, i) => E.xpForNext(i + 1))
+    .reduce((a, b) => a + b, 0);
+  const damageToMax = total / E.XP_PER_DAMAGE;
+  assert.ok(damageToMax > 4000, `1-10 should cost real work, got ${Math.round(damageToMax)} damage`);
+  assert.ok(damageToMax < 12000, `but must stay reachable in a run, got ${Math.round(damageToMax)}`);
 });
 
 /* ---------- the armoury ---------- */
@@ -276,6 +289,39 @@ test('class upgrades are bought with components and cap out', () => {
   while (E.buyClassUpgrade(w, 'node', 'rate')) { /* to the cap */ }
   assert.equal(w.classUpgrades.node.rate, E.CLASS_MAX);
   assert.equal(E.classCost('node', 'rate', E.CLASS_MAX), null, 'maxed');
+});
+
+test('each level of a track costs meaningfully more than the last', () => {
+  // The armoury never resets, so a flat curve means it fills up and stays full.
+  for (const type of E.TOWER_KEYS) {
+    for (const track of E.CLASS_TRACKS) {
+      for (let l = 1; l < E.CLASS_MAX; l++) {
+        assert.ok(E.classCost(type, track, l) > E.classCost(type, track, l - 1),
+          `${type}/${track} level ${l} should cost more than ${l - 1}`);
+      }
+      assert.ok(E.classCost(type, track, E.CLASS_MAX - 1) > E.classCost(type, track, 0) * 8,
+        `${type}/${track}'s last level should be the real commitment`);
+    }
+  }
+});
+
+test('every track does something on every class, however it is priced', () => {
+  /* Coil's splash track was inert for two builds: base splash was 0 and `stats`
+     grows splash multiplicatively, so buying it changed nothing at any price.
+     A discount on a track that does nothing is worse than no discount. */
+  const w = E.createWorld({});
+  for (const type of E.TOWER_KEYS) {
+    const t = { type, level: 1, xp: 0 };
+    const before = E.stats(w, t);
+    for (const track of E.CLASS_TRACKS) {
+      const bumped = E.createWorld({});
+      bumped.classUpgrades[type][track] = E.CLASS_MAX;
+      const after = E.stats(bumped, t);
+      // rate is a cooldown, so "better" means smaller
+      const moved = track === 'rate' ? after.rate < before.rate : after[track] > before[track];
+      assert.ok(moved, `${type}'s ${track} track buys nothing`);
+    }
+  }
 });
 
 test('a class upgrade lifts every tower of that class and no others', () => {
@@ -324,6 +370,150 @@ test('selling refunds part of what was sunk in and frees the cell', () => {
   assert.equal(w.components, before + refund);
   assert.equal(E.towerAt(w, cell.c, cell.r), null);
   assert.ok(refund > 0 && refund < E.TOWER_TYPES.breaker.cost, 'partial refund');
+});
+
+/* ---------- moving a tower ---------- */
+
+/** A rich world with one tower built on the first buildable cell. */
+function withTower(type = 'node') {
+  const w = richWorld();
+  const cell = firstBuildable(w);
+  E.buildTower(w, cell.c, cell.r, type);
+  return w;
+}
+
+/** The first empty, non-path cell that is not where tower `i` already stands. */
+function otherFreeCell(w, i) {
+  const t = w.towers[i];
+  for (let r = 0; r < w.L.ROWS; r++) {
+    for (let c = 0; c < w.L.COLS; c++) {
+      if (w.blocked.has(E.cellKey(c, r))) continue;
+      if (E.towerAt(w, c, r)) continue;
+      if (t.c === c && t.r === r) continue;
+      return { c, r };
+    }
+  }
+  throw new Error('no free cell to move to');
+}
+
+test('a moved tower keeps everything it earned', () => {
+  const w = withTower('breaker');
+  const t = w.towers[0];
+  E.addXp(t, E.xpForNext(1) + E.xpForNext(2));
+  E.setPriority(w, 0, 'strongest');
+  const level = t.level, xp = t.xp;
+  assert.ok(level > 1, 'it levelled up first');
+
+  const to = otherFreeCell(w, 0);
+  assert.equal(E.moveTower(w, 0, to.c, to.r), true);
+  assert.equal(t.c, to.c);
+  assert.equal(t.r, to.r);
+  assert.equal(t.level, level, 'levels are earned by fighting, not by standing still');
+  assert.equal(t.xp, xp);
+  assert.equal(t.priority, 'strongest');
+  assert.equal(t.type, 'breaker');
+});
+
+test('moving charges the fee a sell-and-rebuild would have burned', () => {
+  const w = withTower('breaker');
+  const before = w.components;
+  const to = otherFreeCell(w, 0);
+  E.moveTower(w, 0, to.c, to.r);
+  assert.equal(w.components, before - E.sellValue(w.towers[0]));
+});
+
+test('a move is refused where a build would be, and changes nothing', () => {
+  const w = withTower();
+  const t = w.towers[0];
+  const at = { c: t.c, r: t.r };
+  const purse = w.components;
+
+  const onPath = [...w.blocked][0].split(',').map(Number);
+  assert.equal(E.moveTower(w, 0, onPath[0], onPath[1]), false, 'not onto the route');
+  assert.equal(E.moveTower(w, 0, -1, 0), false, 'not off the grid');
+  assert.equal(E.moveTower(w, 0, t.c, t.r), false, 'staying put is not a move');
+
+  // and not onto another tower
+  const other = otherFreeCell(w, 0);
+  E.buildTower(w, other.c, other.r, 'node');
+  const purse2 = w.components;
+  assert.equal(E.moveTower(w, 0, other.c, other.r), false, 'not onto an occupied cell');
+
+  assert.equal(w.towers[0].c, at.c);
+  assert.equal(w.towers[0].r, at.r);
+  assert.equal(w.components, purse2, 'a refused move is free');
+  assert.ok(purse >= purse2);
+});
+
+test('a move you cannot afford is refused', () => {
+  const w = withTower('breaker');
+  const to = otherFreeCell(w, 0);
+  w.components = E.moveCost(w.towers[0]) - 1;
+  assert.equal(E.canMove(w, 0, to.c, to.r), false);
+  assert.equal(E.moveTower(w, 0, to.c, to.r), false);
+  // and it goes through the moment the money is there
+  w.components = E.moveCost(w.towers[0]);
+  assert.equal(E.moveTower(w, 0, to.c, to.r), true);
+  assert.equal(w.components, 0);
+});
+
+test('a moved tower reloads rather than arriving ready to fire', () => {
+  const w = towerVsEnemy('breaker');
+  E.step(w, 1 / 60);                       // fires, then starts cooling
+  w.towers[0].cool = 0;                    // ready again
+  const to = otherFreeCell(w, 0);
+  E.moveTower(w, 0, to.c, to.r);
+  assert.equal(w.towers[0].cool, E.stats(w, w.towers[0]).rate,
+    'a move must not double as a free reload');
+  assert.equal(w.towers[0].aim, null, 'and it re-acquires from the new cell');
+});
+
+/** A buildable cell that overlooks *no* part of the route within `type`'s
+ *  range — the opposite of `overlook`, for testing a bad placement. */
+function blindCell(w, type) {
+  const range = stats0(type).range;
+  for (let r = 0; r < w.L.ROWS; r++) {
+    for (let c = 0; c < w.L.COLS; c++) {
+      if (w.blocked.has(E.cellKey(c, r)) || E.towerAt(w, c, r)) continue;
+      const tc = E.cellCenter(w.L, c, r);
+      let sees = false;
+      for (let d = 0; d <= w.pathLen && !sees; d += 4) {
+        const p = E.atS(w.path, w.pathLen, d);
+        if (Math.hypot(p.x - tc.x, p.y - tc.y) <= range) sees = true;
+      }
+      if (!sees) return { c, r };
+    }
+  }
+  throw new Error(`every buildable cell overlooks the route for ${type}`);
+}
+
+test('a moved tower fights from where it landed', () => {
+  const w = richWorld();
+  // build somewhere useless, then move it onto a cell that overlooks the route
+  const idle = blindCell(w, 'breaker');
+  E.buildTower(w, idle.c, idle.r, 'breaker');
+  const { c, r, d } = overlook(w, 'breaker');
+  w.enemies.push({ type: 'load', dist: d, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
+
+  E.step(w, 1 / 60);
+  const untouched = w.enemies[0].hp;
+
+  assert.equal(E.moveTower(w, 0, c, r), true);
+  // it arrives reloading, so give it its cooldown before expecting a shot
+  const reload = E.stats(w, w.towers[0]).rate;
+  E.step(w, reload + 1 / 60);
+  assert.ok(w.enemies[0].hp < untouched, 'it shoots from its new cell');
+});
+
+test('rotating the board carries a moved tower with it', () => {
+  const w = withTower();
+  const to = otherFreeCell(w, 0);
+  E.moveTower(w, 0, to.c, to.r);
+  E.relayout(w, E.LAYOUT_TALL);
+  assert.equal(w.towers[0].c, to.r, 'transposed like any other tower');
+  assert.equal(w.towers[0].r, to.c);
+  assert.ok(!w.blocked.has(E.cellKey(w.towers[0].c, w.towers[0].r)),
+    'and it did not land on the route');
 });
 
 /* ---------- towers firing ---------- */

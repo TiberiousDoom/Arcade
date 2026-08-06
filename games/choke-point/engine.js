@@ -148,9 +148,16 @@ export function pathCells(L, routeIndex = 0) {
    the same build — you can push a Node's fire rate cheaply and its splash only
    at a painful price, so a Node stays a Node however much you spend on it. */
 export const TOWER_TYPES = {
+  /* The splash here is deliberately tiny — a fifth of a cell, and even maxed it
+     stays well under half of one, so a Node never becomes a cut-price Breaker.
+     It is not zero because zero made the whole splash track inert: `stats`
+     grows splash multiplicatively, so a base of 0 stayed 0 however much was
+     spent, and splash is Node's `weak` track — meaning the armoury charged a
+     surcharge for an upgrade that did nothing whatsoever. A dear option is a
+     judgement call; a dear option that does nothing is a trap. */
   node: {
     name: 'Node', cost: 12, col: '#6fb7e8', blurb: 'Cheap, quick, single target',
-    base: { range: 92, rate: 0.5, dmg: 4, splash: 0, slow: 0, slowDur: 0 },
+    base: { range: 92, rate: 0.5, dmg: 4, splash: 12, slow: 0, slowDur: 0 },
     spec: 'rate', weak: 'splash',
   },
   // Costs more up front than Node/Coil, deliberately: its raw power made it
@@ -162,10 +169,19 @@ export const TOWER_TYPES = {
     base: { range: 120, rate: 1.4, dmg: 24, splash: 44, slow: 0, slowDur: 0 },
     spec: 'splash', weak: 'rate',
   },
+  /* Coil chills a small cluster rather than a single enemy, and buys splash
+     cheap. Its splash used to be 0 with `spec: 'range'` — and because `stats`
+     grows splash multiplicatively, a base of zero meant the splash track did
+     *nothing* on a Coil at any price. Giving it a real base (about a third of a
+     cell) is what makes the discount mean something, and it fits what Coil is
+     for: SLOW_BRITTLE pays out on everything that shoots the target afterwards,
+     so setting up three enemies is worth three times setting up one.
+     `weak` moves to range in exchange, so the class is short-reach area
+     support rather than a long-reach single-target debuff. */
   coil: {
-    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Slows what it touches',
-    base: { range: 84, rate: 0.8, dmg: 2, splash: 0, slow: 0.4, slowDur: 1.2 },
-    spec: 'range', weak: 'dmg',
+    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Chills a cluster, and what it slows takes more',
+    base: { range: 84, rate: 0.8, dmg: 2, splash: 24, slow: 0.4, slowDur: 1.2 },
+    spec: 'splash', weak: 'range',
   },
 };
 export const TOWER_KEYS = Object.keys(TOWER_TYPES);
@@ -181,10 +197,24 @@ export const TOWER_KEYS = Object.keys(TOWER_TYPES);
    armoury, and that carries between runs. So the two currencies of progress
    are separated — placement earns, purchase compounds. */
 export const MAX_LEVEL = 10;
+
+/* Both XP knobs were cut tenfold for v28: towers were reaching level 10 inside
+   the opening waves, which made the whole climb a formality rather than a
+   reward, and a maxed tower stops having anything to earn. At a tenth, the
+   1→10 climb is around 6,000 damage from one tower — a wave-14 board is about
+   4,600 hp all told, so a well-sited tower maxes out somewhere in the low-to-mid
+   teens. Reachable, but as the pay-off for a tower that has done a run's work.
+
+   The rate lives here rather than in `xpForNext` on purpose: the curve's shape
+   (and the two tested Breaker-reach requirements that hang off levels) is
+   unchanged, and there is exactly one number to turn if this wants tuning again. */
+
+/** XP credited per point of damage that actually lands. */
+export const XP_PER_DAMAGE = 0.1;
 /** Flat XP for landing a kill, on top of the damage credited. Small on
  *  purpose: the bulk of a tower's XP should come from steady work, not from
  *  whoever happens to land the last hit on a Load. */
-export const XP_KILL_BONUS = 3;
+export const XP_KILL_BONUS = 0.3;
 
 /** XP to get from `level` to the next one. */
 export function xpForNext(level) {
@@ -225,6 +255,16 @@ const CLASS_BASE_COST = { dmg: 60, rate: 55, range: 50, splash: 55 };
 /** A class buys its speciality at a discount and its opposite at a surcharge. */
 export const SPEC_DISCOUNT = 0.6;
 export const WEAK_PENALTY = 1.8;
+/** Each level of a track costs this much more than the one before.
+ *
+ *  The curve used to be linear (`base * (1 + level * 0.8)`), so the fifth level
+ *  cost only four times the first and a full track was cheap enough that the
+ *  armoury filled up quickly — which matters more here than anywhere else,
+ *  because the armoury never resets. Geometric now, matching every other cost
+ *  curve in the repo (Flak Battery's branches run about 1.75x a tier, its
+ *  mounts about 1.6x a step): the last level costs twelve times the first, and
+ *  a full track runs roughly double what it did. */
+export const CLASS_COST_STEP = 1.85;
 
 export function newClassUpgrades() {
   const out = {};
@@ -240,7 +280,7 @@ export function classCost(type, track, level) {
   if (!TOWER_TYPES[type] || !CLASS_TRACKS.includes(track)) return null;
   if (level >= CLASS_MAX) return null;
   const T = TOWER_TYPES[type];
-  let c = CLASS_BASE_COST[track] * (1 + level * 0.8);
+  let c = CLASS_BASE_COST[track] * Math.pow(CLASS_COST_STEP, level);
   if (T.spec === track) c *= SPEC_DISCOUNT;
   if (T.weak === track) c *= WEAK_PENALTY;
   return Math.round(c);
@@ -536,6 +576,49 @@ export function sellTower(w, i) {
   return true;
 }
 
+/* ---------- moving a tower ---------- */
+
+/** What it costs to pick a tower up and put it down somewhere else.
+ *
+ *  Exactly `sellValue` — the money a sell-and-rebuild would have burned. So
+ *  moving is never a worse deal than the workaround it replaces, and it is
+ *  never free either: without a fee the right play would be to drag the whole
+ *  defence along behind every wave, which is busywork rather than a decision.
+ *
+ *  The tower keeps its level and XP. Those were earned by fighting, not bought,
+ *  and making a move cost them would mean a well-sited veteran can never be
+ *  re-sited — which is the exact situation a player wants this verb for. */
+export function moveCost(tower) {
+  return sellValue(tower);
+}
+
+/** Can this tower go to (c, r)? Same cell rules as building, plus the fee.
+ *  Staying put is not a move, so it fails rather than quietly charging. */
+export function canMove(w, i, c, r) {
+  const t = w.towers[i];
+  if (!t || w.over) return false;
+  if (t.c === c && t.r === r) return false;
+  if (!inGrid(w.L, c, r)) return false;
+  if (w.blocked.has(cellKey(c, r))) return false;
+  if (towerAt(w, c, r)) return false;
+  return w.components >= moveCost(t);
+}
+
+/** Relocate a tower, charging the fee. Allowed mid-wave: the fee is the brake,
+ *  and forbidding it during a wave would make it a chore rather than a tool —
+ *  the moment you learn a placement is wrong is the moment it is being tested.
+ *  The cooldown resets on arrival, so a move cannot be used to skip a reload. */
+export function moveTower(w, i, c, r) {
+  if (!canMove(w, i, c, r)) return false;
+  const t = w.towers[i];
+  w.components -= moveCost(t);
+  t.c = c; t.r = r;
+  t.cool = stats(w, t).rate;
+  t.aim = null;                 // re-acquired next frame from the new cell
+  w.fx.build(c, r);
+  return true;
+}
+
 /* ---------- waves ---------- */
 
 /** Begin the next wave. Queues its spawns onto a timeline; `step` releases them
@@ -712,7 +795,7 @@ function damageEnemy(w, e, dmg, s, isSplash = false, src = null) {
      spawn would level on wasted splash. */
   if (src) {
     const dealt = Math.max(0, before - Math.max(0, e.hp));
-    if (addXp(src, dealt + (e.hp <= 0 ? XP_KILL_BONUS : 0))) {
+    if (addXp(src, dealt * XP_PER_DAMAGE + (e.hp <= 0 ? XP_KILL_BONUS : 0))) {
       const c = cellCenter(w.L, src.c, src.r);
       w.fx.level?.(c.x, c.y, src);
     }
