@@ -24,6 +24,21 @@ function chain(count, speed, s, wave = ALL_KINDS, spacing = 30) {
  *  tests only ever have one. */
 const gun0 = (w) => w.battery.guns[0];
 
+/** Research a gun type outright, for tests that only want it *fitted*. Gun
+ *  types cost research points rather than scrap since v28. */
+function learn(w, type) {
+  w.research.points += E.GUN_RP[type];
+  E.researchGun(w, type);
+}
+
+/** Open every branch to its last tier, for tests about the tiers themselves
+ *  rather than about the research gate. Tiers 4 and 5 need research now. */
+function openTree(w) {
+  w.research.points += 1e6;
+  for (const b of E.BRANCHES) while (E.researchDepth(w, b)) { /* to the cap */ }
+  return w;
+}
+
 const { path, pathLen } = E.buildPath();
 
 /* ---------- path geometry ---------- */
@@ -160,7 +175,7 @@ test('the hp cap does not make late waves unwinnable', () => {
   // The risk of scaling hp is a wall: a wave whose total health cannot be
   // chewed through before it crosses, no matter how upgraded you are. A fully
   // maxed battery with perfect aim must still clear deep waves untouched.
-  const w = E.createWorld();
+  const w = openTree(E.createWorld());
   w.lives = 999; w.scrap = 1e9;
   // Mounts first, *then* max every branch on every one of them. Upgrades are
   // per-emplacement since v27, so buying the tree before the mounts leaves the
@@ -424,9 +439,8 @@ test('a snapshot round-trips a run exactly', () => {
   w.wave = 4; E.spawnWave(w);
   w.score = 7700; w.scrap = 55; w.lives = 2; w.breaches = 1;
   E.buyUpgrade(w, 0, 'barrel');
-  E.buyMount(w);
-  w.gunUnlocks.rail = true;
-  E.setGunType(w, 1, 'rail');
+  learn(w, 'rail');
+  E.setGunType(w, 0, 'rail', true);      // free: this is about the save, not the economy
   w.cannon.streak = 6;
   E.spawnPickup(w, 300, 400, 'spread');
   for (let i = 0; i < 90; i++) E.step(w, 1 / 60, true);
@@ -443,7 +457,12 @@ test('a snapshot round-trips a run exactly', () => {
   assert.deepEqual(fresh.battery.guns.map(g => g.upgrades),
                    w.battery.guns.map(g => g.upgrades),
                    'each emplacement brought its own tiers back');
-  assert.deepEqual(fresh.gunUnlocks, w.gunUnlocks, 'gun unlocks came back');
+  /* Gun unlocks deliberately do *not* round-trip: they are a projection of
+     permanent research, which the shell holds, not part of the run. What must
+     come back is the gun actually fitted to the mount, and it does. */
+  assert.equal(fresh.battery.guns[0].type, 'rail', 'the fitted gun came back');
+  assert.equal(fresh.gunUnlocks.rail, false,
+    'but the save did not smuggle research in with it');
   assert.equal(fresh.battery.guns.length, w.battery.guns.length, 'mounts came back');
   assert.deepEqual(fresh.battery.guns.map(g => g.type), w.battery.guns.map(g => g.type));
   assert.equal(fresh.chains.length, w.chains.length);
@@ -895,9 +914,9 @@ test('damage with no shot at all (a bomb) gets no railgun bonus', () => {
 
 test('the ion cannon unlocks through the same economy as the other gun types', () => {
   const w = E.createWorld();
-  w.scrap = E.GUN_TYPES.ion.unlock;
+  w.research.points = E.GUN_RP.ion;
   assert.equal(w.gunUnlocks.ion, false);
-  assert.equal(E.unlockGun(w, 'ion'), true);
+  assert.equal(E.researchGun(w, 'ion'), true);
   assert.equal(w.gunUnlocks.ion, true);
   assert.equal(w.scrap, 0);
 });
@@ -1157,13 +1176,139 @@ test('you cannot buy what you cannot afford', () => {
 });
 
 test('a branch cannot be pushed past its last tier', () => {
-  const w = E.createWorld();
+  const w = openTree(E.createWorld());
   w.scrap = 1e6;
   for (let i = 0; i < E.MAX_TIER; i++) assert.equal(E.buyUpgrade(w, 0, 'chamber'), true);
   assert.equal(gun0(w).upgrades.chamber, E.MAX_TIER);
   assert.equal(E.upgradeCost(gun0(w).upgrades, 'chamber'), null, 'no cost once maxed');
   assert.equal(E.buyUpgrade(w, 0, 'chamber'), false);
   assert.equal(gun0(w).upgrades.chamber, E.MAX_TIER, 'tier unchanged');
+});
+
+/* ---------- research: the progression that outlives a run ---------- */
+
+test('the last two tiers of a branch are locked until researched', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  for (let i = 0; i < E.FREE_TIER; i++) {
+    assert.equal(E.buyUpgrade(w, 0, 'barrel'), true, `tier ${i + 1} is free to all`);
+  }
+  assert.equal(gun0(w).upgrades.barrel, E.FREE_TIER);
+  assert.equal(E.buyUpgrade(w, 0, 'barrel'), false, 'tier 4 needs research');
+  assert.equal(E.canAfford(w, 0, 'barrel'), false, 'and money is not the problem');
+  assert.equal(E.upgradeCost(gun0(w).upgrades, 'barrel', E.tierCap(w, 'barrel')), null);
+
+  w.research.points = E.DEPTH_RP[0];
+  assert.equal(E.researchDepth(w, 'barrel'), true);
+  assert.equal(E.buyUpgrade(w, 0, 'barrel'), true, 'and now it goes through');
+  assert.equal(gun0(w).upgrades.barrel, E.FREE_TIER + 1);
+  assert.equal(E.buyUpgrade(w, 0, 'barrel'), false, 'but only the one tier was opened');
+});
+
+test('research is bought per branch, not for the whole tree', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  w.research.points = 1e6;
+  E.researchDepth(w, 'optics');
+  assert.equal(E.tierCap(w, 'optics'), E.FREE_TIER + 1);
+  assert.equal(E.tierCap(w, 'barrel'), E.FREE_TIER, 'the others stay shallow');
+});
+
+test('depth research costs more the second time, and runs out', () => {
+  const w = E.createWorld();
+  w.research.points = 1e6;
+  const first = E.depthCost(w, 'chamber');
+  E.researchDepth(w, 'chamber');
+  const second = E.depthCost(w, 'chamber');
+  assert.ok(second > first, 'the fifth tier is dearer to open than the fourth');
+  E.researchDepth(w, 'chamber');
+  assert.equal(E.depthCost(w, 'chamber'), null, 'nothing left to open');
+  assert.equal(E.researchDepth(w, 'chamber'), false);
+  assert.equal(E.tierCap(w, 'chamber'), E.MAX_TIER);
+});
+
+test('research you cannot afford changes nothing', () => {
+  const w = E.createWorld();
+  w.research.points = E.DEPTH_RP[0] - 1;
+  assert.equal(E.researchDepth(w, 'barrel'), false);
+  assert.equal(E.tierCap(w, 'barrel'), E.FREE_TIER);
+  assert.equal(w.research.points, E.DEPTH_RP[0] - 1, 'and cost nothing');
+});
+
+test('a run pays research for how far it got, once', () => {
+  const w = E.createWorld();
+  w.wave = 10;
+  const owed = E.researchEarned(w);
+  assert.ok(owed > 0);
+  assert.equal(E.awardResearch(w), owed);
+  assert.equal(w.research.points, owed);
+  // a re-render of the game-over screen must not pay a second time
+  assert.equal(E.awardResearch(w), 0);
+  assert.equal(w.research.points, owed);
+});
+
+test('getting further is worth more research', () => {
+  const at = (wave) => E.researchEarned({ wave });
+  assert.equal(at(1), 0, 'dying on wave 1 teaches nothing');
+  for (let wv = 2; wv <= 30; wv++) {
+    assert.ok(at(wv) > at(wv - 1), `wave ${wv} should out-earn ${wv - 1}`);
+  }
+});
+
+test('research survives a reset, and its guns come straight back', () => {
+  const w = E.createWorld();
+  w.research.points = 1e6;
+  E.researchGun(w, 'mortar');
+  E.researchDepth(w, 'optics');
+  const points = w.research.points;
+
+  w.wave = 12;
+  E.resetRun(w);
+  assert.equal(w.research.points, points, 'points carried over');
+  assert.equal(w.research.guns.mortar, true);
+  assert.equal(w.gunUnlocks.mortar, true, 'and the new run can fit it from wave 1');
+  assert.equal(E.tierCap(w, 'optics'), E.FREE_TIER + 1, 'depth carried over too');
+  assert.equal(w.researchPaid, false, 'and the new run can earn its own');
+});
+
+test('research is not run state, so a snapshot leaves it alone', () => {
+  const w = E.createWorld();
+  w.research.points = 1e6;
+  E.researchGun(w, 'rail');
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  assert.equal(snap.research, undefined, 'not stored — the shell owns it');
+
+  // and a run restored into a world with *different* research picks that up
+  const fresh = E.createWorld();
+  fresh.research.points = 1e6;
+  E.researchGun(fresh, 'ion');
+  assert.equal(E.hydrate(fresh, snap), true);
+  assert.equal(fresh.gunUnlocks.ion, true, 'the research of the build resuming it applies');
+  assert.equal(fresh.gunUnlocks.rail, false, 'not the research of the build that saved it');
+});
+
+test('a stored research object is clamped rather than trusted', () => {
+  const junk = E.sanitizeResearch({
+    points: -50,
+    depth: { barrel: 99, chamber: 'nonsense', optics: -3 },
+    guns: { rail: 1, nonsense: true },
+  });
+  assert.equal(junk.points, 0, 'never negative');
+  assert.equal(junk.depth.barrel, E.MAX_TIER - E.FREE_TIER, 'clamped to what the shop can sell');
+  assert.equal(junk.depth.chamber, 0);
+  assert.equal(junk.depth.optics, 0);
+  assert.equal(junk.guns.rail, true);
+  assert.equal(junk.guns.nonsense, undefined, 'unknown types dropped');
+  assert.equal(E.sanitizeResearch(null).points, 0, 'and nothing at all is fine');
+});
+
+test('a world can be built with research already in hand', () => {
+  const saved = E.newResearch();
+  saved.points = 12;
+  saved.guns.rail = true;
+  const w = E.createWorld({ research: saved });
+  assert.equal(w.research.points, 12);
+  assert.equal(w.gunUnlocks.rail, true, 'a researched gun is fittable from the first wave');
 });
 
 test('unknown branches are rejected', () => {
@@ -1220,8 +1365,10 @@ test('a long run cannot afford everything', () => {
   }
   const treeCost = E.fullTreeCost();
   const mountCost = E.MOUNT_COST.slice(1).reduce((a, b) => a + b, 0);
-  const gunCost = E.GUN_KEYS.slice(1).reduce((a, k) => a + E.GUN_TYPES[k].unlock, 0);
-  const everything = treeCost + mountCost + gunCost;
+  // gun types are bought with research points now, not scrap — what a run's
+  // scrap can be spent on is the tree, the mounts, and the refits
+  const refitCost = E.GUN_KEYS.slice(1).reduce((a, k) => a + E.retrofitCost(E.createWorld(), 0, k) || 0, 0);
+  const everything = treeCost + mountCost + refitCost;
 
   assert.ok(income < everything, `12 waves earns ${income}, everything costs ${everything}`);
   assert.ok(income > treeCost * 0.5, 'but a good run still makes real progress');
@@ -1261,7 +1408,7 @@ test('chamber tiers make overheating harder', () => {
 });
 
 test('munitions grants extra pierce on top of overdrive', () => {
-  const w = E.createWorld();
+  const w = openTree(E.createWorld());
   w.scrap = 1e6;
   for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'munitions');
   E.fire(w);
@@ -1339,7 +1486,7 @@ test('a lobbed round comes down on anything past its arming distance', () => {
 test('a mortar really does fire lobbed rounds', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  E.unlockGun(w, 'mortar');
+  learn(w, 'mortar');
   E.setGunType(w, 0, 'mortar');
   E.fire(w);
   assert.ok(w.shots.length > 0, 'it fired');
@@ -1355,8 +1502,8 @@ test('a mortar really does fire lobbed rounds', () => {
 test('extra barrels fire parallel, not in a fan', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  E.buyBarrel(w); E.buyBarrel(w);
-  assert.equal(w.barrels, 3);
+  E.buyBarrel(w, 0); E.buyBarrel(w, 0);
+  assert.equal(w.battery.guns[0].barrels, 3);
   w.battery.ang = -Math.PI / 2 + 0.3;         // off-axis, so a fan would show
   E.fire(w);
   assert.equal(w.shots.length, 3, 'three barrels, three rounds');
@@ -1374,7 +1521,7 @@ test('extra barrels fire parallel, not in a fan', () => {
 test('flanking rounds are smaller and weaker than the main one', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  E.buyBarrel(w); E.buyBarrel(w);
+  E.buyBarrel(w, 0); E.buyBarrel(w, 0);
   E.fire(w);
   const main = w.shots.find(s => !s.sub);
   const subs = w.shots.filter(s => s.sub);
@@ -1397,7 +1544,7 @@ test('the barrel count matches the offsets, so nobody fires a phantom round', ()
 test('changing a mount to another type costs scrap; building one does not', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  E.unlockGun(w, 'rail');
+  learn(w, 'rail');
   const before = w.scrap;
   const cost = E.retrofitCost(w, 0, 'rail');
   assert.ok(cost > 0, 'a retrofit has a price');
@@ -1429,7 +1576,7 @@ test('an unresearched type cannot be fitted at any price', () => {
 test('a retrofit you cannot afford leaves the mount alone', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  E.unlockGun(w, 'mortar');
+  learn(w, 'mortar');
   w.scrap = 1;
   assert.equal(E.setGunType(w, 0, 'mortar'), false);
   assert.equal(gun0(w).type, 'standard');
@@ -1482,7 +1629,7 @@ test('the last life ends the run rather than opening the shop', () => {
 /* ---------- upgrades are per emplacement ---------- */
 
 test('buying on one mount leaves the others untouched', () => {
-  const w = E.createWorld();
+  const w = openTree(E.createWorld());
   w.scrap = 1e6;
   E.buyMount(w); E.buyMount(w);
   assert.equal(w.battery.guns.length, 3);
@@ -2019,52 +2166,100 @@ test('a mount you cannot afford is refused', () => {
 
 /* ---------- multi-barrel upgrade ---------- */
 
-test('a new run starts with one barrel', () => {
-  assert.equal(E.createWorld().barrels, 1);
+test('a new mount starts with one barrel', () => {
+  const w = E.createWorld();
+  assert.equal(w.battery.guns[0].barrels, 1);
+  w.scrap = 1e6;
+  E.buyBarrel(w, 0); E.buyBarrel(w, 0);
+  E.buyMount(w);
+  assert.equal(w.battery.guns[1].barrels, 1, 'a new mount arrives bare, barrels included');
 });
 
-test('barrels cost escalating scrap and cap at three', () => {
+test('barrels cost escalating scrap and cap at three, per mount', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  const c1 = E.barrelCost(w);
-  assert.equal(E.buyBarrel(w), true);
-  assert.equal(w.barrels, 2);
-  const c2 = E.barrelCost(w);
+  const c1 = E.barrelCost(w, 0);
+  assert.equal(E.buyBarrel(w, 0), true);
+  assert.equal(w.battery.guns[0].barrels, 2);
+  const c2 = E.barrelCost(w, 0);
   assert.ok(c2 > c1, 'the third barrel costs more than the second');
-  assert.equal(E.buyBarrel(w), true);
-  assert.equal(w.barrels, E.MAX_BARRELS);
-  assert.equal(E.barrelCost(w), null, 'no cost once maxed');
-  assert.equal(E.buyBarrel(w), false, 'cannot buy past the cap');
+  assert.equal(E.buyBarrel(w, 0), true);
+  assert.equal(w.battery.guns[0].barrels, E.MAX_BARRELS);
+  assert.equal(E.barrelCost(w, 0), null, 'no cost once maxed');
+  assert.equal(E.buyBarrel(w, 0), false, 'cannot buy past the cap');
+});
+
+test('barrels are bought per emplacement, not for the battery', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.buyMount(w);
+  assert.equal(w.battery.guns.length, 2);
+  E.buyBarrel(w, 0); E.buyBarrel(w, 0);
+  assert.equal(w.battery.guns[0].barrels, 3, 'mount 1 is kitted out');
+  assert.equal(w.battery.guns[1].barrels, 1, 'mount 2 paid for none of it');
+
+  // and each fires its own number of rounds
+  w.battery.guns[0].cool = 0; w.battery.guns[1].cool = 0;
+  E.fire(w);
+  assert.equal(w.shots.length, 4, 'three from the first mount, one from the second');
+});
+
+test('a barrel on a mount that does not exist is refused', () => {
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  assert.equal(E.buyBarrel(w, 3), false);
+  assert.equal(E.barrelCost(w, 3), null);
+  assert.equal(w.scrap, 1e6, 'and it cost nothing');
 });
 
 test('a barrel you cannot afford is refused', () => {
   const w = E.createWorld();
   w.scrap = 0;
-  assert.equal(E.buyBarrel(w), false);
-  assert.equal(w.barrels, 1);
+  assert.equal(E.buyBarrel(w, 0), false);
+  assert.equal(w.battery.guns[0].barrels, 1);
 });
 
 test('more barrels means more shots per volley, from the same gun', () => {
   const w = E.createWorld();
-  w.barrels = 3;
+  w.battery.guns[0].barrels = 3;
   E.fire(w);
   assert.equal(w.shots.length, 3, 'one gun, three barrels, three shots');
 });
 
 test('resetRun puts barrels back to one', () => {
   const w = E.createWorld();
-  w.barrels = 3;
+  w.battery.guns[0].barrels = 3;
   E.resetRun(w);
-  assert.equal(w.barrels, 1);
+  assert.equal(w.battery.guns[0].barrels, 1);
 });
 
-test('a snapshot round-trips the barrel count', () => {
+test('a snapshot round-trips each mount\'s barrel count', () => {
   const w = E.createWorld();
-  w.barrels = 2;
+  w.scrap = 1e6;
+  E.buyMount(w);
+  w.battery.guns[0].barrels = 3;
+  w.battery.guns[1].barrels = 2;
   const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
   const fresh = E.createWorld();
   assert.equal(E.hydrate(fresh, snap), true);
-  assert.equal(fresh.barrels, 2);
+  assert.equal(fresh.battery.guns[0].barrels, 3);
+  assert.equal(fresh.battery.guns[1].barrels, 2);
+});
+
+test('a pre-v28 save resumes with its barrels on every mount', () => {
+  /* Barrels were battery-wide until v28, stored as one top-level count. The
+     fair reading of an old save is that every mount had it — which is what the
+     old build actually did — so dropping it would silently delete the most
+     expensive thing the player had bought. */
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.buyMount(w);
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  snap.barrels = 3;                                   // the old shape
+  for (const g of snap.battery.guns) delete g.barrels;
+  const fresh = E.createWorld();
+  assert.equal(E.hydrate(fresh, snap), true);
+  for (const g of fresh.battery.guns) assert.equal(g.barrels, 3);
 });
 
 test('a shot keeps the colour it was fired at, even if the streak changes after', () => {
@@ -2079,30 +2274,34 @@ test('a shot keeps the colour it was fired at, even if the streak changes after'
   assert.equal(w.shots[0].col, firedCool, 'baked in at fire time, not read live off the battery');
 });
 
-test('gun types unlock once and only when affordable', () => {
+test('gun types are learned once, with research points, and only when affordable', () => {
   const w = E.createWorld();
   assert.equal(w.gunUnlocks.rail, false);
-  w.scrap = 0;
-  assert.equal(E.unlockGun(w, 'rail'), false, 'no scrap, no unlock');
+  w.scrap = 1e6;
+  assert.equal(E.researchGun(w, 'rail'), false, 'scrap does not buy research');
 
-  w.scrap = E.GUN_TYPES.rail.unlock;
-  assert.equal(E.unlockGun(w, 'rail'), true);
-  assert.equal(w.gunUnlocks.rail, true);
-  assert.equal(w.scrap, 0, 'scrap spent');
-  assert.equal(E.unlockGun(w, 'rail'), false, 'cannot unlock twice');
+  w.research.points = E.GUN_RP.rail;
+  assert.equal(E.researchGun(w, 'rail'), true);
+  assert.equal(w.gunUnlocks.rail, true, 'and this run can fit it now');
+  assert.equal(w.research.points, 0, 'points spent');
+  assert.equal(w.scrap, 1e6, 'and no scrap was touched');
+  assert.equal(E.researchGun(w, 'rail'), false, 'cannot learn it twice');
+  assert.equal(E.gunResearchCost(w, 'rail'), null, 'and it has no price any more');
 });
 
-test('standard is never an unlockable type', () => {
+test('standard is never something to research', () => {
   const w = E.createWorld();
-  w.scrap = 1e6;
-  assert.equal(E.unlockGun(w, 'standard'), false);
+  w.research.points = 1e6;
+  assert.equal(E.researchGun(w, 'standard'), false);
+  assert.equal(E.gunResearchCost(w, 'standard'), null);
+  assert.ok(E.gunAvailable(w, 'standard'), 'it is always available');
 });
 
-test('a gun type can only be assigned once unlocked', () => {
+test('a gun type can only be assigned once researched', () => {
   const w = E.createWorld();
-  assert.equal(E.setGunType(w, 0, 'rail'), false, 'locked type refused');
+  assert.equal(E.setGunType(w, 0, 'rail'), false, 'unresearched type refused');
   w.scrap = 1e6;
-  E.unlockGun(w, 'rail');
+  learn(w, 'rail');
   assert.equal(E.setGunType(w, 0, 'rail'), true);
   assert.equal(w.battery.guns[0].type, 'rail');
 });
@@ -2110,7 +2309,7 @@ test('a gun type can only be assigned once unlocked', () => {
 test('gun types change shot character', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  E.unlockGun(w, 'rail');
+  learn(w, 'rail');
   E.setGunType(w, 0, 'rail');
   E.fire(w);
   const railShot = w.shots[w.shots.length - 1];
@@ -2180,12 +2379,14 @@ test('resetting a run restores a single standard gun', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
   E.buyMount(w); E.buyMount(w);
-  E.unlockGun(w, 'rail');
+  learn(w, 'rail');
   E.setGunType(w, 0, 'rail');
   E.resetRun(w);
   assert.equal(w.battery.guns.length, 1);
   assert.equal(w.battery.guns[0].type, 'standard');
-  assert.equal(w.gunUnlocks.rail, false);
+  // the *fitting* is gone, but the research that made it fittable is not —
+  // that is the whole point of research being permanent
+  assert.equal(w.gunUnlocks.rail, true, 'a learned gun stays learned');
 });
 
 /* ---------- overdrive ---------- */

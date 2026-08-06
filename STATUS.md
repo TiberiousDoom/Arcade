@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-05 (v27 — two economies rebuilt: per-emplacement guns, self-levelling towers)
+Last updated: 2026-08-06 (v28 — round 6 feedback: a research tree, a movable tower, a gentler opener)
 
 ## Read this first
 
@@ -13,12 +13,79 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 - **The cabinet** ([index.html](index.html)) — the front door, listing all four games. Each game links back to it.
 
-- **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
-- **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, armoured back rows, four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
+- **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). Per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run, buying gun types and the deepest two tiers of each branch). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
+- **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, armoured back rows (from level 4 — the opening levels are single-hit plating), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
-- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armoury, easy/medium/hard, escalating endless waves, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap to build.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
+- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armoury, easy/medium/hard, escalating endless waves, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**414 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 218, Hull Breach 78, Choke Point 72, Feedline 44, shared 2 — plus **41 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**443 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 231, Choke Point 84, Hull Breach 82, Feedline 44, shared 2 — plus **46 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 6 feedback — research, relocation, and a gentler opener (v28, 2026-08-06)
+
+All thirteen items are done. The plan they came from, with the reasoning and the
+build order, is [docs/v28-plan.md](docs/v28-plan.md); the notable calls are in
+[docs/DECISIONS.md](docs/DECISIONS.md).
+
+**Three of the items were not what they looked like**, and that's the part worth
+carrying forward:
+
+- **"Show lives in the header" — they were already there**, labelled "Cells",
+  fourth of six items and so on the wrapped second line on a narrow phone. The
+  ask was legibility. Now labelled Lives, first in the row, drawn as pips (spent
+  ones stay as dark slots), and flashed on a breach.
+- **"Coil's cheap upgrade is splash" — the splash track was inert on a Coil.**
+  Base splash was 0 and `stats` grows it multiplicatively, so it did nothing at
+  any price. **Node had the same bug and worse**: splash is its *weak* track, so
+  the armoury charged a surcharge for an upgrade that did nothing. Both have a
+  real base now, and a test asserts every track moves a stat on every class.
+- **Optics' "longer intercept read" is `predict`**, the aim marker's lookahead —
+  and the marker read **mount 1 only**, so since v27 made upgrades
+  per-emplacement, Optics bought on mounts 2–5 changed nothing visible. It takes
+  the best optics on the battery now. Two gun blurbs were also describing the v24
+  design: ion resisted hardened hulls (it bypasses shield plating since v25) and
+  the railgun is what actually beats a hardened hull.
+
+**Flak Battery gained a research tree** — the largest item. A second currency
+(RP) earned at the end of a run from the wave reached, buying gun types
+permanently and the last two tiers of each branch. Scrap stays the run economy;
+fitting a gun still costs scrap, so only the repetition went. Shaped exactly like
+Choke Point's armoury: engine holds it on the world, shell owns the storage.
+**The counterweight is deliberately not built** — see the open item below.
+
+**Choke Point**: XP cut tenfold (10×, not the 100× first asked — at 100× level 10
+stops being reachable in a run at all); class costs went geometric, since an
+armoury that never resets must not fill up; towers can be **moved** for exactly
+what a sell-and-rebuild would burn, keeping level and XP; the ready animation no
+longer strobes; the centre hub glows like the rest of the tower; and Purchase
+Upgrades moved into the wave row as a glyph, which gives the board a row of
+height back under `fillWidth`.
+
+**Hull Breach**: levels 1–2 are single-hit plating and level 3 caps at two. That
+also halved what an opener pays, and the shop opens on the first clear, so
+`softClearBonus` pays back the difference — computed from the same functions that
+build the field so it cannot drift.
+
+**Barrels are per-emplacement**, reversing the 2026-08-02 battery-wide call —
+whose stated reason (avoiding the repo's first per-gun-instance upgrade) v27
+had already made obsolete. Adding an emplacement is now a dashed **`+` tab** in
+the shop's tab strip rather than a card buried on another tab.
+
+### Still open after this round
+
+- **Flak Battery has no difficulty dial, and now has permanent progression.**
+  Choke Point answered exactly this with `DIFFICULTIES`. Not built here on
+  purpose: the current curve was explicitly praised, and how far research
+  actually softens it is unmeasured. Play it first. `researchEarned`'s constants
+  (`(wave-1) + floor(wave/5)*2`), `DEPTH_RP`, `GUN_RP` and `FREE_TIER` are all
+  first drafts.
+- **Nothing in this round has had device play.** The move gesture in particular
+  wants a real thumb: `DRAG_ARM` is 8px, and the tap-versus-drag split on a tower
+  is the kind of thing that feels different on glass.
+- Choke Point's `CLASS_COST_STEP` (1.85) roughly doubles a full track's bill.
+  Untuned against the new XP rate, and the two interact.
+- Coil is a different class now — short-reach area support rather than long-reach
+  single-target. Existing saves carry Coil range levels bought at the old
+  discount; harmless, but they will read oddly.
 
 ## In progress / just decided
 

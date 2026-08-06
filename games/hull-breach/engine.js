@@ -205,10 +205,24 @@ export function stats(w) {
 
 /* ---------- bricks ---------- */
 
+/** The opening levels are all single-hit plating, and only then does armour
+ *  appear. Reported as the start being too hard: level 1 shipped three-hit
+ *  bricks in its back rows, so a new player's first board asked for accurate
+ *  repeat hits on the same cell before they had the paddle-angle control to
+ *  aim one. A single-hit field breaks apart wherever the ball goes, which is
+ *  what an opener should do.
+ *
+ *  Level 3 caps at two so the step up to full armour is a step and not a wall. */
+export const SOFT_LEVELS = 2;      // levels that are entirely single-hit
+export const ARMOUR_FROM = 4;      // full 1-3 banding from here on
+
 /** Rows are tougher toward the top: the back rows take three hits, the front
  *  row one. Uniform within a horizontal band so the colouring reads as strata. */
-export function brickHp(row, rows = LAYOUT.BRICK_ROWS) {
-  return clamp(Math.ceil((rows - row) / 2), 1, 3);
+export function brickHp(row, rows = LAYOUT.BRICK_ROWS, level = ARMOUR_FROM) {
+  const full = clamp(Math.ceil((rows - row) / 2), 1, 3);
+  if (level <= SOFT_LEVELS) return 1;
+  if (level < ARMOUR_FROM) return Math.min(2, full);
+  return full;
 }
 
 /** Points for clearing a brick, scaled by how much armour it had. */
@@ -256,7 +270,7 @@ export function buildBricks(level = 1, L = LAYOUT) {
       // pass the layout's own dimensions — relying on brickPresent's defaults
       // silently used the landscape grid whatever board was being built
       if (!brickPresent(level, r, c, L.BRICK_ROWS, L.BRICK_COLS)) continue;
-      const hp = brickHp(r, L.BRICK_ROWS);
+      const hp = brickHp(r, L.BRICK_ROWS, level);
       bricks.push({
         x: L.MARGIN + c * (bw + L.BRICK_GAP),
         y: L.BRICK_TOP + r * (L.BRICK_H + L.BRICK_GAP),
@@ -270,6 +284,33 @@ export function buildBricks(level = 1, L = LAYOUT) {
 }
 
 export const aliveBricks = (w) => w.bricks.filter(b => b.alive).length;
+
+/** Salvage a softened level pays on clear, to make up for the armour it does
+ *  not have.
+ *
+ *  Salvage is `brickSalvage(maxhp)` per brick, so making levels 1-3 lighter
+ *  also cut what they pay — by more than half on level 1 — and the shop opens
+ *  on the *first* clear, so an easier opening would have bought a slower one.
+ *  Paying the difference on the clear keeps `brickSalvage` tied to armour
+ *  everywhere, which is the property that makes a back row worth digging out;
+ *  inflating it instead would have decoupled pay from armour on every level to
+ *  fix three.
+ *
+ *  Computed from the same two functions that build the field, so it cannot
+ *  drift from them if the banding or the layouts change. Zero from
+ *  `ARMOUR_FROM` on, where nothing was taken away. */
+export function softClearBonus(level, L = LAYOUT) {
+  if (level >= ARMOUR_FROM) return 0;
+  let owed = 0;
+  for (let r = 0; r < L.BRICK_ROWS; r++) {
+    for (let c = 0; c < L.BRICK_COLS; c++) {
+      if (!brickPresent(level, r, c, L.BRICK_ROWS, L.BRICK_COLS)) continue;
+      owed += brickSalvage(brickHp(r, L.BRICK_ROWS, ARMOUR_FROM))
+            - brickSalvage(brickHp(r, L.BRICK_ROWS, level));
+    }
+  }
+  return owed;
+}
 
 /* ---------- powerups ---------- */
 
@@ -744,6 +785,9 @@ export function step(w, dt) {
     w.levelClear = true;
     // clearing a board pays a bonus that grows with the level
     w.score += 100 + w.level * 50;
+    // and, on the softened opening levels only, the salvage their missing
+    // armour would have paid — see `softClearBonus`
+    w.salvage += softClearBonus(w.level, w.L);
   }
 }
 

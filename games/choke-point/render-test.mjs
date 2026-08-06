@@ -158,12 +158,57 @@ test('the tower popup opens and renders on a real DOM', async () => {
   const cv = w.document.getElementById('cv');
   const t = world.towers[0];
   const centre = E.cellCenter(world.L, t.c, t.r);
+  // press *and release*: a press on a tower is ambiguous until it either moves
+  // (relocate) or lets go without moving (open the popup)
   cv.dispatchEvent(new w.PointerEvent('pointerdown', {
+    clientX: centre.x, clientY: centre.y, bubbles: true,
+  }));
+  cv.dispatchEvent(new w.PointerEvent('pointerup', {
     clientX: centre.x, clientY: centre.y, bubbles: true,
   }));
   await wait(30);
   assert.ok(w.document.getElementById('tsel').classList.contains('on'), 'popup opened');
   assert.deepEqual(g.errors, [], 'opening the popup threw');
+});
+
+test('a tower can be dragged to a new cell, and the board draws the pending move', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  world.components = 9999;
+
+  // build one, and find somewhere legal for it to go
+  let from = null;
+  for (let r = 0; r < world.L.ROWS && !from; r++)
+    for (let c = 0; c < world.L.COLS && !from; c++)
+      if (E.buildTower(world, c, r, 'breaker')) from = { c, r };
+  assert.ok(from, 'built one to move');
+
+  let to = null;
+  for (let r = 0; r < world.L.ROWS && !to; r++)
+    for (let c = 0; c < world.L.COLS && !to; c++)
+      if (E.canMove(world, 0, c, r)) to = { c, r };
+  assert.ok(to, 'somewhere to move it');
+
+  const cv = w.document.getElementById('cv');
+  const a = E.cellCenter(world.L, from.c, from.r);
+  const b = E.cellCenter(world.L, to.c, to.r);
+  const purse = world.components;
+
+  cv.dispatchEvent(new w.PointerEvent('pointerdown', { clientX: a.x, clientY: a.y, bubbles: true }));
+  // past DRAG_ARM, so the press arms as a relocation
+  w.dispatchEvent(new w.PointerEvent('pointermove', { clientX: b.x, clientY: b.y, bubbles: true }));
+  g.frame(1000);                       // draws the move-target overlay
+  assert.deepEqual(g.errors, [], 'drawing the pending move threw');
+
+  w.dispatchEvent(new w.PointerEvent('pointerup', { clientX: b.x, clientY: b.y, bubbles: true }));
+  await wait(30);
+
+  assert.equal(world.towers[0].c, to.c, 'it landed on the drop cell');
+  assert.equal(world.towers[0].r, to.r);
+  assert.equal(world.components, purse - E.moveCost(world.towers[0]), 'and paid the fee');
+  assert.ok(!w.document.getElementById('tsel').classList.contains('on'),
+    'a drag must not leave the popup open behind it');
+  assert.deepEqual(g.errors, [], 'the move threw');
 });
 
 test('a run through several waves never throws while drawing', async () => {
