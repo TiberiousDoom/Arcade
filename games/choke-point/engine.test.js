@@ -113,15 +113,25 @@ test('the routes run longest to shortest, which is the difficulty order', () => 
   assert.ok(lens[0] > lens[lens.length - 1] * 2, 'and the spread is wide enough to feel');
 });
 
-test('playing again moves to the next circuit', () => {
+test('losing keeps you on the same circuit', () => {
+  /* It used to advance on every reset, so *failing* route 1 promoted you to
+     the harder route 2 — the exact opposite of what ordering them by difficulty
+     is for. The caller picks the circuit now. */
   const w = E.createWorld({ routeIndex: 0 });
   E.resetGame(w);
-  assert.equal(w.routeIndex, 1, 'a replay is a different board');
-  assert.deepEqual([...w.blocked].sort(), [...E.pathCells(w.L, 1)].sort(), 'and blocked cells followed');
-  // and it wraps rather than running off the end
-  const last = E.createWorld({ routeIndex: E.ROUTE_COUNT - 1 });
-  E.resetGame(last);
-  assert.equal(last.routeIndex, 0);
+  assert.equal(w.routeIndex, 0, 'a replay is the board you did not beat');
+  assert.deepEqual([...w.blocked].sort(), [...E.pathCells(w.L, 0)].sort());
+});
+
+test('a reset goes to the circuit it is told to, and wraps rather than running off', () => {
+  const w = E.createWorld({ routeIndex: 0 });
+  E.resetGame(w, { routeIndex: 1 });
+  assert.equal(w.routeIndex, 1);
+  assert.deepEqual([...w.blocked].sort(), [...E.pathCells(w.L, 1)].sort(), 'blocked cells followed');
+  E.resetGame(w, { routeIndex: E.ROUTE_COUNT });
+  assert.equal(w.routeIndex, 0);
+  E.resetGame(w, { routeIndex: -1 });
+  assert.equal(w.routeIndex, E.ROUTE_COUNT - 1, 'negative wraps too');
 });
 
 test('rotating mid-run keeps the run on its own circuit', () => {
@@ -342,6 +352,163 @@ test('the armoury survives a reset, because that is the point of it', () => {
   E.resetGame(w);
   assert.equal(w.classUpgrades.breaker.splash, kept);
   assert.equal(w.wave, 0, 'but the run itself did reset');
+});
+
+/* ---------- winning, and what a win unlocks ---------- */
+
+/** Drive a world to just past its win wave without playing it: the point of
+ *  these tests is the flag and the unlock, not the fighting. */
+function clearTo(w, wave) {
+  w.wave = wave;
+  w.waveActive = true;
+  w.spawnQueue = [];
+  w.enemies = [];
+  E.step(w, 1 / 60);
+  return w;
+}
+
+test('clearing the win wave takes the circuit', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  assert.equal(w.won, false, 'a run does not start won');
+
+  clearTo(w, E.winWave('easy') - 1);
+  assert.equal(w.won, false, 'one short is not a win');
+
+  clearTo(w, E.winWave('easy'));
+  assert.equal(w.won, true);
+  assert.equal(w.justWon, true, 'and the shell gets an edge to catch');
+});
+
+test('each difficulty asks for a longer run than the one below', () => {
+  const waves = E.DIFFICULTY_KEYS.map(k => E.winWave(k));
+  for (let i = 1; i < waves.length; i++) {
+    assert.ok(waves[i] > waves[i - 1], `${E.DIFFICULTY_KEYS[i]} should run longer`);
+  }
+});
+
+test('winning is congratulated once, not on every wave after it', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  clearTo(w, E.winWave('easy'));
+  w.justWon = false;                       // the shell consumes the edge
+  clearTo(w, E.winWave('easy') + 1);
+  assert.equal(w.won, true, 'still won');
+  assert.equal(w.justWon, false, 'but not announced again');
+});
+
+test('a won run can keep going, and losing afterwards is still a loss', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  clearTo(w, E.winWave('easy'));
+  w.integrity = 1;
+  w.enemies = [{ type: 'surge', dist: w.pathLen + 1, hp: 5, maxhp: 5, speed: 0, r: 12, slow: 0 }];
+  E.step(w, 1 / 60);
+  assert.equal(w.over, true, 'the core can still break after a win');
+  assert.equal(w.won, true, 'and the win is not taken back');
+});
+
+test('a fresh run clears the win flags', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  clearTo(w, E.winWave('easy'));
+  E.resetGame(w);
+  assert.equal(w.won, false);
+  assert.equal(w.justWon, false);
+});
+
+/* ---------- progression ---------- */
+
+test('only the first circuit is open to start with', () => {
+  const p = E.newProgress();
+  assert.equal(E.routeUnlocked(p, 'easy', 0), true);
+  for (let i = 1; i < E.ROUTE_COUNT; i++) {
+    assert.equal(E.routeUnlocked(p, 'easy', i), false, `circuit ${i + 1} is earned`);
+  }
+  assert.equal(E.unlockedRoutes(p, 'easy'), 1);
+});
+
+test('winning a circuit opens the next one, on that difficulty only', () => {
+  const p = E.newProgress();
+  E.recordWin(p, 'easy', 0);
+  assert.equal(E.routeUnlocked(p, 'easy', 1), true);
+  assert.equal(E.unlockedRoutes(p, 'easy'), 2);
+  assert.equal(E.routeUnlocked(p, 'medium', 1), false, 'medium starts its own campaign');
+});
+
+test('circuits open one at a time, in order', () => {
+  const p = E.newProgress();
+  // winning the *last* circuit out of order must not open the middle one
+  E.recordWin(p, 'easy', E.ROUTE_COUNT - 1);
+  assert.equal(E.unlockedRoutes(p, 'easy'), 1, 'still only the first is reachable');
+  E.recordWin(p, 'easy', 0);
+  assert.equal(E.unlockedRoutes(p, 'easy'), 2);
+});
+
+test('only easy is open until something is won', () => {
+  const p = E.newProgress();
+  assert.equal(E.difficultyUnlocked(p, 'easy'), true);
+  assert.equal(E.difficultyUnlocked(p, 'medium'), false);
+  assert.equal(E.difficultyUnlocked(p, 'hard'), false);
+
+  E.recordWin(p, 'easy', 0);
+  assert.equal(E.difficultyUnlocked(p, 'medium'), true, 'one easy win opens medium');
+  assert.equal(E.difficultyUnlocked(p, 'hard'), false, 'but not hard');
+
+  E.recordWin(p, 'medium', 0);
+  assert.equal(E.difficultyUnlocked(p, 'hard'), true);
+});
+
+test('the default difficulty is one a new player actually has', () => {
+  assert.equal(E.difficultyUnlocked(E.newProgress(), E.DEFAULT_DIFFICULTY), true);
+});
+
+test('recordWin reports what it opened, and only the first time', () => {
+  const p = E.newProgress();
+  const first = E.recordWin(p, 'easy', 0);
+  assert.equal(first.route, 1, 'circuit 2 opened');
+  assert.equal(first.difficulty, 'medium', 'and medium with it');
+
+  const again = E.recordWin(p, 'easy', 0);
+  assert.equal(again.route, null, 'winning the same circuit twice opens nothing new');
+  assert.equal(again.difficulty, null);
+});
+
+test('the last circuit has nothing after it to open', () => {
+  const p = E.newProgress();
+  for (let i = 0; i < E.ROUTE_COUNT - 1; i++) E.recordWin(p, 'easy', i);
+  assert.equal(E.unlockedRoutes(p, 'easy'), E.ROUTE_COUNT);
+  const last = E.recordWin(p, 'easy', E.ROUTE_COUNT - 1);
+  assert.equal(last.route, null, 'no circuit beyond the last');
+  assert.equal(E.routeUnlocked(p, 'easy', E.ROUTE_COUNT), false, 'and none off the end');
+});
+
+test('stored progress is clamped rather than trusted', () => {
+  const junk = E.sanitizeProgress({
+    wins: { easy: [0, 0, 99, -1, 'nonsense', 1.7], medium: 'not an array', bogus: [0] },
+  });
+  assert.deepEqual(junk.wins.easy, [0, 1], 'deduped, floored, and dropped if off the end');
+  assert.deepEqual(junk.wins.medium, []);
+  assert.equal(junk.wins.bogus, undefined, 'unknown difficulties dropped');
+  assert.deepEqual(E.sanitizeProgress(null), E.newProgress(), 'and nothing at all is fine');
+});
+
+test('progress is not run state, so a snapshot leaves it alone', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  assert.equal(snap.wins, undefined);
+  assert.equal(snap.progress, undefined);
+});
+
+test('a resumed run remembers it was won, but is not congratulated again', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  clearTo(w, E.winWave('easy'));
+  assert.equal(w.justWon, true);
+
+  const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
+  const fresh = E.createWorld({ difficulty: 'easy' });
+  assert.equal(E.hydrate(fresh, snap), true);
+  assert.equal(fresh.won, true, 'the circuit stays taken');
+  assert.equal(fresh.justWon, false, 'but the banner does not fire on the first frame back');
+
+  clearTo(fresh, E.winWave('easy') + 1);
+  assert.equal(fresh.justWon, false, 'nor on the next wave');
 });
 
 /* ---------- difficulty ---------- */

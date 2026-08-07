@@ -36,6 +36,26 @@
   #uiBuild i{width:3px;height:8px;background:#1b3038;display:inline-block}
   #uiBuild i.on{background:var(--scale)}
 
+  /* Active power-ups. This had *no CSS at all*: a bare div inside #stage, so it
+     sat in normal flow below the canvas, added unmeasured height to the stage,
+     and collided with the heat gauge (which is anchored to the stage's bottom,
+     and so moved down with it). Its entries ran together too — several bare
+     spans with no separation reading as one string.
+
+     Anchored bottom-right now, out of flow entirely, opposite the heat gauge
+     and stacked upward so a second effect grows away from the board's edge
+     rather than into the first. */
+  #fxbar{
+    position:absolute;right:10px;bottom:12px;z-index:3;pointer-events:none;
+    display:flex;flex-direction:column-reverse;align-items:flex-end;gap:4px;
+    max-width:42%;
+  }
+  #fxbar span{
+    font:700 10px/1 'Chivo Mono',monospace;letter-spacing:.08em;text-transform:uppercase;
+    background:rgba(11,20,24,.82);border:1px solid currentColor;border-radius:3px;
+    padding:4px 6px;white-space:nowrap;
+  }
+
   #heat{position:absolute;left:12px;bottom:12px;width:min(150px,38vw)}
   #heatLabel{
     font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
@@ -422,7 +442,7 @@ settingsEl.className = 'menuSettings';
 settingsEl.innerHTML = `
   <h3>Settings</h3>
   <label><input type="checkbox" id="dropsToggle"${world.drops ? ' checked' : ''}> Power-up drops</label>
-  <p class="settingNote">Off by default. Applies from the next carrier you destroy.</p>
+  <p class="settingNote">Applies from the next carrier destroyed.</p>
   <p class="settingNote" id="rpNote"></p>
   <button type="button" id="wipeResearch">Reset research</button>
 `;
@@ -441,7 +461,7 @@ const wipeResearch = settingsEl.querySelector('#wipeResearch');
 function syncResearchNote() {
   const known = Object.values(world.research.guns).filter(Boolean).length;
   const depth = E.BRANCHES.reduce((a, b) => a + world.research.depth[b], 0);
-  rpNote.textContent = `${world.research.points} research points · ${known} gun types · ${depth} deeper tiers.`;
+  rpNote.textContent = `${world.research.points} RP · ${known} guns · ${depth} tiers.`;
 }
 syncResearchNote();
 
@@ -473,17 +493,15 @@ const pause = makeMenu({
   title: 'Flak Battery',
   lore: 'They came down in one unbroken column. This is the last emplacement still firing.',
   rows: [
-    ['Aim', 'Press and drag anywhere. Flick to swing across.'],
-    ['Fire', 'Hold to keep firing. Too much and the barrel overheats.'],
-    ['Overdrive', 'Consecutive hits make you stronger. A miss cools it.'],
+    ['Aim', 'Press and drag. Flick to swing across.'],
+    ['Fire', 'Hold. Too much overheats.'],
+    ['Overdrive', 'Consecutive hits build it. A miss cools it.'],
   ],
   notes: [
-    'Cutting mid-column shoves the formation backwards.',
-    'Plated craft glance shots off the front — hit the flank, or fire the ion cannon, which cuts through from any angle.',
-    'The command ship leads the column and is shielded by everything behind it: the brackets around it close as you clear its escort. Drop it and the whole column goes with it.',
-    'Hardened hulls are just tough — a railgun is the efficient tool against them.',
-    'Each emplacement is upgraded on its own tab in the shop. A new one arrives bare, so a fifth gun competes against deepening the four you have.',
-    'Scrap is spent inside a run and lost with it. Research points are what a run was worth — earned for the wave you reach, kept forever, and spent on the Research tab to learn new gun types and open the last two tiers of a branch.',
+    'Cutting mid-column shoves the formation back.',
+    'Plated craft glance shots off the front — hit the flank, or fire ion.',
+    'The command ship is shielded by its escort. Drop it and the column goes.',
+    'Scrap is spent this run. Research points are kept, and buy guns and deep tiers.',
     'Keyboard: arrows and Space.',
   ],
 });
@@ -688,7 +706,7 @@ function renderBarrels(gun) {
   el.innerHTML =
     `<h3>Barrels</h3>` +
     `<div class="pips">${dots}</div>` +
-    `<p>Rounds this emplacement looses per volley, off its own heat. Flanking rounds are smaller and weaker.</p>`;
+    `<p>Rounds per volley, off this mount's heat.</p>`;
   const btn = document.createElement('button');
   btn.className = 'buy' + (cost !== null && !afford ? ' poor' : '');
   btn.textContent = cost === null ? 'Maxed'
@@ -750,7 +768,7 @@ function renderTabs() {
 function renderRetrofit(gun) {
   const el = document.createElement('div');
   el.className = 'branch retro';
-  el.innerHTML = `<h3>Refit</h3><p>Change what this emplacement is. Research a type on the Research tab first.</p>`;
+  el.innerHTML = `<h3>Refit</h3><p>Researched types only.</p>`;
   const row = document.createElement('div');
   row.className = 'assign';
   for (const type of E.GUN_KEYS) {
@@ -790,8 +808,7 @@ function renderBattery() {
   head.className = 'rpHead';
   head.innerHTML =
     `<b>${world.research.points} RP</b>` +
-    `<span>Research points, earned for the wave a run reaches — and kept forever. ` +
-    `Scrap buys guns for this run; research decides what a run may buy at all.</span>`;
+    `<span>Earned for the wave a run reaches, and kept.</span>`;
   host.appendChild(head);
 
   // gun types: learned once, permanently
@@ -842,7 +859,7 @@ function renderBattery() {
     el.innerHTML =
       `<h3>${U.name} depth</h3>` +
       `<div class="pips">${pips}</div>` +
-      `<p>How deep this branch may be bought on any emplacement. The first ${E.FREE_TIER} tiers are always open.</p>`;
+      `<p>Tiers past ${E.FREE_TIER}, on every emplacement.</p>`;
 
     const btn = document.createElement('button');
     btn.className = 'buy rp';
@@ -1021,10 +1038,10 @@ function drawCannonPortrait(g, type, barrels = 1) {
    builds. */
 function gunBlurb(type) {
   const G = E.GUN_TYPES[type];
-  if (type === 'auto') return 'Fires fast, hits light. Good against soft, crowded rows.';
-  if (type === 'rail') return 'Slow and heavy. Punches through several craft, and hits hardened hulls hardest.';
-  if (type === 'mortar') return 'Lobs a round that arms late, so it reaches over the front rank.';
-  if (type === 'ion') return 'Ignores shield plating — hits a shielded craft from any angle.';
+  if (type === 'auto') return 'Fast and light. For crowded rows.';
+  if (type === 'rail') return 'Slow, pierces, best against hardened hulls.';
+  if (type === 'mortar') return 'Arms late, so it reaches over the front rank.';
+  if (type === 'ion') return 'Ignores shield plating.';
   return G.name;
 }
 
@@ -1668,7 +1685,9 @@ function sync() {
   const fx = [];
   for (const k of Object.keys(world.effects)) {
     const P = E.POWERUPS[k];
-    if (P) fx.push(`<span style="color:${P.col}">${P.name} ${world.effects[k].toFixed(1)}s</span>`);
+    // whole seconds: a tenths readout on a 9-second timer changes 60 times a
+    // second and is unreadable at the size this sits at
+    if (P) fx.push(`<span style="color:${P.col}">${P.name} ${Math.ceil(world.effects[k])}s</span>`);
   }
   if (world.shieldCharges > 0) {
     fx.push(`<span style="color:#e6e9e2">Shield ×${world.shieldCharges}</span>`);

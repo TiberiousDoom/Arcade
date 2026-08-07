@@ -113,7 +113,7 @@ export const UPGRADES = {
   },
   steer: {
     name: 'Steer',
-    blurb: 'A wider steering cone off the same paddle',
+    blurb: 'A wider steering cone',
     costs: [35, 80, 145],
     tiers: [
       { angleMult: 1.0 },
@@ -124,7 +124,7 @@ export const UPGRADES = {
   },
   catch: {
     name: 'Catch',
-    blurb: 'More forgiving capsule catches',
+    blurb: 'Easier capsule catches',
     costs: [25, 60, 110],
     tiers: [
       { dropRMult: 1.0 },
@@ -141,7 +141,7 @@ export const UPGRADES = {
      carries through a destroyed brick or it doesn't. */
   pierce: {
     name: 'Pierce',
-    blurb: 'The ball carries on through a brick it destroys',
+    blurb: 'Carries through a brick it destroys',
     costs: [420],
     tiers: [
       { pierce: 0 },

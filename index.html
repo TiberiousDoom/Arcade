@@ -52,12 +52,15 @@
     font-family:'Archivo Black',system-ui,sans-serif;
     font-size:15px;text-transform:uppercase;letter-spacing:-.01em;
   }
+  /* The cards carried a lore line *and* a rules paragraph. The paragraph
+     restated what the game obviously is, above a `.how` line that already
+     names the control — so it went, and the lore now stands alone. */
   .card p{font-size:11px;line-height:1.6;color:var(--dim)}
   /* The cards are ordered as the story runs, not by when the games were built:
      you play the invasion first, then defend against it twice, then answer it.
      The lore line says which part of that this is; the step marker says where
-     you are in it. Both are skippable — the mechanical description below is
-     still what tells you how the game works. */
+     you are in it. Both are skippable — the `.how` line is what tells you how
+     to play. */
   .card .lore{
     font-size:11px;line-height:1.6;color:var(--bone);font-style:italic;
     border-left:2px solid var(--pip);padding-left:10px;
@@ -107,7 +110,6 @@
           </svg>
           <h2>Feedline</h2>
           <p class="lore">Every world it touched became a part of it, and it does not stop.</p>
-          <p>Longer every meal, faster every meal. You may cross where your tail is leaving — the gold bonus won't wait.</p>
           <span class="how"><span class="step">1 / 4</span>Swipe or arrows</span>
         </a>
       </li>
@@ -122,7 +124,6 @@
           </svg>
           <h2>Flak Battery</h2>
           <p class="lore">They came down in one unbroken column. This is the last emplacement still firing.</p>
-          <p>Cut the chain before it reaches the floor. Bank hits into Overdrive, then spend scrap on the battery.</p>
           <span class="how"><span class="step">2 / 4</span>Aim &amp; fire</span>
         </a>
       </li>
@@ -136,7 +137,6 @@
           </svg>
           <h2>Choke Point</h2>
           <p class="lore">They are on the ground now, and they only advance one way. Make that one way expensive.</p>
-          <p>Surges flow toward your core. Build towers on the grid to break them before they land — endless, escalating.</p>
           <span class="how"><span class="step">3 / 4</span>Tap to build</span>
         </a>
       </li>
@@ -152,7 +152,6 @@
           </svg>
           <h2>Hull Breach</h2>
           <p class="lore">You have held them long enough to answer. Their hull is layered, and it does not grow back.</p>
-          <p>The paddle is your aim — where the ball lands decides the angle it leaves. Back rows take three hits.</p>
           <span class="how"><span class="step">4 / 4</span>Slide to steer</span>
         </a>
       </li>

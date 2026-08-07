@@ -101,8 +101,22 @@ test('the armoury opens and renders every class and track', async () => {
   world.components = 99999;
   doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   assert.ok(doc.getElementById('shop').classList.contains('on'), 'the armoury opened');
-  const buys = doc.querySelectorAll('#shopClasses button[data-t]');
-  assert.ok(buys.length >= 9, `expected a buy button per class per track, got ${buys.length}`);
+  const buys = doc.querySelectorAll('#shopClasses .armTable button[data-t]');
+  assert.equal(buys.length, g.E.TOWER_KEYS.length * g.E.CLASS_TRACKS.length,
+    'one cell per class per track');
+  /* The grid really is classes across and tracks down. Compared as joined
+     strings, not with deepEqual: `g.E`'s arrays are built inside the jsdom VM,
+     so they carry *that* realm's Array.prototype and strict deepEqual rejects
+     them against an array from this one however identical the contents. */
+  assert.equal([...doc.querySelectorAll('#shopClasses .armTable .ch')].map(e => e.textContent).join('|'),
+    g.E.TOWER_KEYS.map(k => g.E.TOWER_TYPES[k].name).join('|'), 'tower types are the columns');
+  assert.equal(doc.querySelectorAll('#shopClasses .armTable .rh').length,
+    g.E.CLASS_TRACKS.length, 'tracks are the rows');
+  // every cell carries its price and its five pips
+  for (const b of buys) {
+    assert.ok(b.querySelector('.px'), 'a cell shows what the next level costs');
+    assert.equal(b.querySelectorAll('.pips i').length, g.E.CLASS_MAX, 'and five pips');
+  }
   // buying through the real DOM, which is what the shell will actually do
   buys[0].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   const total = Object.values(world.classUpgrades)

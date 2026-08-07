@@ -427,7 +427,7 @@ export const LOCK_TIME = 1.5;
 export const UPGRADES = {
   barrel: {
     name: 'Barrel',
-    blurb: 'More damage per round, and a bigger round',
+    blurb: 'Damage, then round size',
     costs: [42, 91, 161, 259, 392],
     /* shotR's top end pulled in (was 3.2→6.0). The shell draws a filled arc
        at `r` plus two glowDots at `r` and `r/2`, so the on-screen bloom is
@@ -444,7 +444,7 @@ export const UPGRADES = {
   },
   chamber: {
     name: 'Chamber',
-    blurb: 'Less heat per shot, faster cooling, shorter overheat lockout',
+    blurb: 'Less heat, faster cooling, shorter lockout',
     costs: [39, 84, 151, 241, 367],
     tiers: [
       { heatPerShot: 1.00, cool: 1.00, lock: 1.00 },
@@ -457,7 +457,7 @@ export const UPGRADES = {
   },
   optics: {
     name: 'Optics',
-    blurb: 'Faster rounds, and the aim marker leads targets further ahead',
+    blurb: 'Round speed, and marker lead',
     costs: [45, 95, 168, 269, 406],
     tiers: [
       { shotSpeed: 520, predict: 1.6 },
@@ -470,7 +470,7 @@ export const UPGRADES = {
   },
   munitions: {
     name: 'Munitions',
-    blurb: 'Rounds punch through more craft and bounce off more walls',
+    blurb: 'Pierce and wall bounces',
     costs: [49, 104, 182, 291, 437],
     tiers: [
       { pierce: 0, bounces: 2 },
@@ -1230,10 +1230,25 @@ export const BOMB_DMG = 4;
 /** Band above the cannon where a falling pickup is caught automatically. */
 export const CATCH_BAND = 46;
 
+/** How often a destroyed Carrier actually yields something.
+ *
+ *  It used to be *every* carrier, and `kindForIndex` makes one segment in six a
+ *  carrier — so a wave-10 column of 54 craft rained about nine power-ups. At
+ *  that rate an effect was almost always running, which makes the effects
+ *  wallpaper rather than events: nothing about picking one up is a decision if
+ *  the next is ten seconds away. Roughly one carrier in four now, so a deep
+ *  wave yields two or three. */
+export const DROP_CHANCE = 0.26;
+
 /** Deterministic drop choice, seeded off the world's drop counter so runs are
- *  reproducible in tests but varied in play. */
+ *  reproducible in tests but varied in play. Returns null when this carrier
+ *  yields nothing — the same LCG decides both, so one call is one advance and
+ *  a seeded run stays exactly reproducible. */
 export function rollDrop(w) {
   const n = (w.dropSeed = (w.dropSeed * 1103515245 + 12345) & 0x7fffffff);
+  // top bits for the yes/no, low bits for the kind: an LCG's low bits are the
+  // least random part of it, so the coarser decision gets the better ones
+  if ((n >>> 8) % 1000 >= DROP_CHANCE * 1000) return null;
   return DROP_TABLE[n % DROP_TABLE.length];
 }
 
@@ -1444,7 +1459,11 @@ export function damageSeg(w, ci, i, dmg, shot) {
   // `drops` off is an experiment — see createWorld. Everything downstream
   // (stepPickups, the catch band, the pickup rendering) is already gated on
   // `pickups.length`, so this one line is the whole switch.
-  if (K.carries && w.drops) spawnPickup(w, pos.x, pos.y, rollDrop(w));
+  if (K.carries && w.drops) {
+    // most carriers come up empty now — see DROP_CHANCE
+    const kind = rollDrop(w);
+    if (kind) spawnPickup(w, pos.x, pos.y, kind);
+  }
 
   ch.segs.splice(i, 1);
   ch._pos = null;   // stale after the splice — stepShots rebuilds it lazily
