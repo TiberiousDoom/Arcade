@@ -156,7 +156,7 @@ export const TOWER_TYPES = {
      surcharge for an upgrade that did nothing whatsoever. A dear option is a
      judgement call; a dear option that does nothing is a trap. */
   node: {
-    name: 'Node', cost: 12, col: '#6fb7e8', blurb: 'Cheap, quick, single target',
+    name: 'Node', cost: 12, col: '#6fb7e8', blurb: 'Quick, single target',
     base: { range: 92, rate: 0.5, dmg: 4, splash: 12, slow: 0, slowDur: 0 },
     spec: 'rate', weak: 'splash',
   },
@@ -179,7 +179,7 @@ export const TOWER_TYPES = {
      `weak` moves to range in exchange, so the class is short-reach area
      support rather than a long-reach single-target debuff. */
   coil: {
-    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Chills a cluster, and what it slows takes more',
+    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Chills a cluster; slowed takes more',
     base: { range: 84, rate: 0.8, dmg: 2, splash: 24, slow: 0.4, slowDur: 1.2 },
     spec: 'splash', weak: 'range',
   },
@@ -391,17 +391,103 @@ export const SLOW_BRITTLE = 1.4;
    Difficulty is that counterweight, and it is the player's dial rather than an
    automatic scaling: pick the level that makes your current armoury interesting.
    Recorded alongside the score, so an easy run is never compared to a hard one. */
+/* `winWave` is the wave that ends a run in victory rather than in a breach. A
+   tower defense with no finish line is a game you can only ever lose, and the
+   run that goes best is the one that ends most anticlimactically — so each
+   difficulty now has a line to cross. Higher difficulties ask for longer runs
+   as well as harder ones, so the three are not interchangeable. */
 export const DIFFICULTIES = {
-  easy:   { name: 'Easy',   hp: 0.8, components: 80, integrity: 25 },
-  medium: { name: 'Medium', hp: 1.0, components: 55, integrity: 20 },
-  hard:   { name: 'Hard',   hp: 1.35, components: 40, integrity: 14 },
+  easy:   { name: 'Easy',   hp: 0.8, components: 80, integrity: 25, winWave: 50 },
+  medium: { name: 'Medium', hp: 1.0, components: 55, integrity: 20, winWave: 100 },
+  hard:   { name: 'Hard',   hp: 1.35, components: 40, integrity: 14, winWave: 150 },
 };
 export const DIFFICULTY_KEYS = Object.keys(DIFFICULTIES);
-export const DEFAULT_DIFFICULTY = 'medium';
+/* Easy is the default now, not medium: it is the only difficulty a new player
+   has, since the other two are earned. */
+export const DEFAULT_DIFFICULTY = 'easy';
 export const diffOf = (k) => DIFFICULTIES[k] || DIFFICULTIES[DEFAULT_DIFFICULTY];
 
-export const START_COMPONENTS = DIFFICULTIES.medium.components;
-export const START_INTEGRITY = DIFFICULTIES.medium.integrity;
+/** The wave that wins a run at this difficulty. */
+export const winWave = (difficulty) => diffOf(difficulty).winWave;
+
+/* ---------- progression: what a player has earned ----------
+
+   Losing used to advance you to the next circuit, which had it exactly
+   backwards — failing on route 1 moved you to the harder route 2, so a player
+   who could not beat the easiest board was handed a worse one. Routes are
+   earned now: you keep replaying the one you are on until you win it.
+
+   Same division of labour as the armoury: these are pure functions over a
+   plain object, and the *shell* is what loads and saves it. */
+
+export function newProgress() {
+  const wins = {};
+  for (const k of DIFFICULTY_KEYS) wins[k] = [];
+  return { wins };
+}
+
+/** Defensive read of stored progress — junk degrades to "nothing unlocked"
+ *  rather than to a crash or to everything unlocked. */
+export function sanitizeProgress(raw) {
+  const p = newProgress();
+  if (!raw || typeof raw !== 'object') return p;
+  for (const k of DIFFICULTY_KEYS) {
+    const list = Array.isArray(raw.wins?.[k]) ? raw.wins[k] : [];
+    p.wins[k] = [...new Set(list
+      .map(n => Math.floor(Number(n)))
+      .filter(n => Number.isInteger(n) && n >= 0 && n < ROUTE_COUNT))].sort((a, b) => a - b);
+  }
+  return p;
+}
+
+export const hasWon = (progress, difficulty, routeIndex) =>
+  !!progress?.wins?.[difficulty]?.includes(routeIndex);
+
+/** Route 1 is always open; every later one waits on the win before it. */
+export function routeUnlocked(progress, difficulty, routeIndex) {
+  if (routeIndex <= 0) return true;
+  if (routeIndex >= ROUTE_COUNT) return false;
+  return hasWon(progress, difficulty, routeIndex - 1);
+}
+
+export function unlockedRoutes(progress, difficulty) {
+  let n = 1;
+  while (n < ROUTE_COUNT && routeUnlocked(progress, difficulty, n)) n++;
+  return n;
+}
+
+/** Easy is always open; each harder difficulty waits on a win below it. One
+ *  win is enough — clearing every route on Easy before Medium appears would be
+ *  three full runs of gate rather than a step up. */
+export function difficultyUnlocked(progress, difficulty) {
+  const i = DIFFICULTY_KEYS.indexOf(difficulty);
+  if (i <= 0) return i === 0;
+  return (progress?.wins?.[DIFFICULTY_KEYS[i - 1]] || []).length > 0;
+}
+
+/** Bank a win. Returns what it opened up, so the shell can say so. */
+export function recordWin(progress, difficulty, routeIndex) {
+  const before = {
+    routes: unlockedRoutes(progress, difficulty),
+    diffs: DIFFICULTY_KEYS.filter(k => difficultyUnlocked(progress, k)).length,
+  };
+  if (!hasWon(progress, difficulty, routeIndex)) {
+    progress.wins[difficulty] = [...progress.wins[difficulty], routeIndex].sort((a, b) => a - b);
+  }
+  const i = DIFFICULTY_KEYS.indexOf(difficulty);
+  return {
+    route: unlockedRoutes(progress, difficulty) > before.routes ? routeIndex + 1 : null,
+    difficulty: DIFFICULTY_KEYS.filter(k => difficultyUnlocked(progress, k)).length > before.diffs
+      ? DIFFICULTY_KEYS[i + 1] : null,
+  };
+}
+
+/* Derived from the default rather than hardcoded to medium — the default moved
+   to easy when the harder two became things you earn, and a constant naming one
+   difficulty while `createWorld` used another is a trap for every test that
+   reaches for it. */
+export const START_COMPONENTS = diffOf(DEFAULT_DIFFICULTY).components;
+export const START_INTEGRITY = diffOf(DEFAULT_DIFFICULTY).integrity;
 
 /** Deterministic composition of a wave: a list of spawn groups, each a type,
  *  a count, and the gap in seconds between spawns. Escalates forever, and
@@ -504,18 +590,22 @@ export function createWorld(opts = {}) {
     classUpgrades: opts.classUpgrades || newClassUpgrades(),
     score: 0,
     over: false,
+    won: false, justWon: false,
     seed,
     fx: opts.fx || { kill() {}, leak() {}, shot() {}, build() {}, level() {} },
   };
   return w;
 }
 
+/** Start a fresh run. `routeIndex` and `difficulty` are the caller's choice —
+ *  this used to advance the route by itself on every reset, which meant
+ *  **losing promoted you to a harder board**. Failing route 1 and being handed
+ *  route 2 is the opposite of what a difficulty ordering is for. Routes are
+ *  earned now (see `recordWin`), and the shell decides which one to start. */
 export function resetGame(w, opts = {}) {
-  // Play again gets the *next* route, not the same one. Cycling rather than
-  // rolling keeps it deterministic while making a replay a different board,
-  // which is the whole point of having more than one — and since they are
-  // ordered by difficulty, a replay is also a step up.
-  w.routeIndex = (w.routeIndex + 1) % ROUTE_COUNT;
+  if (Number.isInteger(opts.routeIndex)) {
+    w.routeIndex = ((opts.routeIndex % ROUTE_COUNT) + ROUTE_COUNT) % ROUTE_COUNT;
+  }
   const { path, pathLen } = buildPath(w.L, w.routeIndex);
   w.path = path; w.pathLen = pathLen;
   w.blocked = pathCells(w.L, w.routeIndex);
@@ -525,6 +615,7 @@ export function resetGame(w, opts = {}) {
   const D = diffOf(w.difficulty);
   w.components = D.components; w.integrity = D.integrity;
   w.score = 0; w.over = false;
+  w.won = false; w.justWon = false;
   w.seed = 20260722;
   // classUpgrades deliberately survives: the armoury is the thing that carries
   // between runs. Clearing it is a separate, explicit action in the menu.
@@ -918,6 +1009,11 @@ export function step(w, dt) {
     w.betweenWaves = true;
     // surviving a wave pays a bonus that grows with the wave
     w.score += 20 + w.wave * 10;
+    /* Clearing the difficulty's win wave takes the circuit. `justWon` is an
+       edge for the shell to catch (it shows a banner and banks the unlock);
+       `won` stays set for the rest of the run, so a player who chooses to keep
+       going is not congratulated again on every subsequent wave. */
+    if (!w.won && w.wave >= winWave(w.difficulty)) { w.won = true; w.justWon = true; }
   }
 }
 
@@ -937,6 +1033,11 @@ export function snapshot(w) {
     components: w.components, integrity: w.integrity, score: w.score,
     difficulty: w.difficulty,
     over: w.over,
+    /* `won` is run state — it says this run has already taken its circuit, so
+       a resumed one is not congratulated a second time. `justWon` is not: it is
+       a one-frame edge for the shell, and restoring it would fire the victory
+       banner again on the first frame back. */
+    won: w.won,
     towers: w.towers.map(t => ({
       c: t.c, r: t.r, type: t.type, level: t.level, xp: t.xp,
       priority: t.priority, cool: t.cool,
@@ -978,6 +1079,7 @@ export function hydrate(w, snap) {
   w.integrity = snap.integrity ?? D.integrity;
   w.score = snap.score ?? 0;
   w.over = !!snap.over;
+  w.won = !!snap.won; w.justWon = false;
 
   /* `aim` is rebuilt: it points at a live enemy object, and object identity
      cannot survive JSON. Safe to drop because `step` re-acquires every frame.

@@ -51,8 +51,21 @@
      showed up as dead space either side of the board). */
   #waveRow{flex:1 1 100%;display:flex;gap:8px}
   #waveRow button{flex:1 1 0;min-width:0;min-height:52px;padding:12px 6px}
-  #ffWave, #contWave{background:#1b3038;color:var(--bone)}
-  #ffWave.on, #contWave.on{background:var(--accent);color:var(--accent-ink)}
+  #ffWave, #contWave{background:#1b3038;color:var(--bone);border:1px solid transparent}
+  /* An "on" toggle has to be unmistakable at a glance mid-wave. The old state
+     was `--accent` on `--accent-ink`, a muted blue that read as "slightly
+     different button" rather than "this is switched on" — reported as hard to
+     tell. Now it takes the *hot* accent, a matching border and a glow, so the
+     lit one is the brightest thing in the row. Same treatment for the tower
+     popup's targeting buttons, which had the identical problem. */
+  #ffWave.on, #contWave.on{
+    background:var(--accent-hot);color:var(--accent-ink);
+    border-color:var(--accent-hot);box-shadow:0 0 8px rgba(111,183,232,.55);font-weight:700;
+  }
+  /* Rush is a verb, not a toggle — what matters there is whether it can be
+     pressed at all, so an unavailable one is plainly dead rather than dimly
+     similar to a live one. */
+  #waveRow button:disabled{opacity:.35;box-shadow:none}
   /* Start and Rush are the decisions; FF and Auto are modes you set once and
      forget. So the two verbs keep full-size targets and the two toggles share
      the footprint one button used to have.
@@ -90,8 +103,12 @@
   #tsel .xpbar i{display:block;height:100%;background:var(--accent)}
   #tsel .xp em{font-style:normal;flex:0 0 auto}
   #tsel .prio{display:flex;gap:4px}
-  #tsel .prio button{flex:1 1 0;padding:10px 4px;font-size:10px;letter-spacing:.04em}
-  #tsel .prio button.on{background:var(--accent);color:var(--accent-ink)}
+  #tsel .prio button{flex:1 1 0;padding:10px 4px;font-size:10px;letter-spacing:.04em;
+    border:1px solid transparent}
+  #tsel .prio button.on{
+    background:var(--accent-hot);color:var(--accent-ink);
+    border-color:var(--accent-hot);box-shadow:0 0 8px rgba(111,183,232,.55);font-weight:700;
+  }
   #tsel .sell{background:#2a1a17;color:#e0a89c}
   #tsel .sell:hover{background:#3a241f}
   #tsel .move{background:#16303a;color:var(--bone)}
@@ -107,21 +124,49 @@
   #shopHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,19px);text-transform:uppercase;letter-spacing:-.02em}
   #shopComps{font-size:12px;color:var(--accent-hot);font-weight:700;letter-spacing:.08em}
   #shop .note{font-size:10px;color:var(--dim);line-height:1.5}
-  .cls{border:1px solid var(--line);border-radius:5px;padding:10px;display:flex;flex-direction:column;gap:8px}
-  .cls h3{font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
-  .trk{display:flex;align-items:center;gap:8px}
-  .trk .nm{flex:0 0 62px;font-size:11px;letter-spacing:.06em}
+  /* The armoury grid: a track-label column plus one column per class. The
+     buttons are the cells, so a row is "what this track costs on each class" —
+     which is the comparison the spec/weak pricing is asking you to make. */
+  .armTable{display:grid;grid-template-columns:auto repeat(var(--cols),1fr);gap:5px;align-items:stretch}
+  .armTable .ch{
+    font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.08em;text-transform:uppercase;
+    display:flex;align-items:flex-end;justify-content:center;text-align:center;
+    padding:0 2px 6px;border-bottom:2px solid;
+  }
+  .armTable .rh{
+    font-size:10px;letter-spacing:.06em;color:var(--bone);
+    display:flex;align-items:center;padding-right:6px;
+  }
+  .armTable .cell{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+    min-height:52px;padding:7px 4px;border:1px solid var(--line);border-radius:4px;
+    background:#16303a;color:var(--bone);cursor:pointer;
+  }
+  .armTable .cell:hover:not(:disabled){background:#1d3d49;border-color:var(--accent-hot)}
+  /* the class's speciality and its opposite, marked on the cell rather than
+     explained in a legend */
+  .armTable .cell.spec{border-color:var(--accent)}
+  .armTable .cell.weak{border-color:#5c3a33}
+  .armTable .cell.broke{opacity:.5;cursor:default}
+  .armTable .cell:disabled{cursor:default}
+  .armTable .px{font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.04em;color:var(--accent-hot)}
+  .armTable .cell.broke .px{color:var(--dim)}
+  .armTable .cell:disabled .px{color:var(--dim)}
   /* the five bought levels, so "how far along is this" is a glance not a sum */
-  .trk .bar{flex:1 1 auto;display:flex;gap:3px}
-  .trk .bar i{flex:1 1 0;height:6px;background:#16303a;border-radius:1px}
-  .trk .bar i.on{background:var(--accent)}
-  .trk button{flex:0 0 auto;min-width:60px;min-height:38px;padding:8px 10px;font-size:11px}
-  /* what the class is good and bad at buying, said outright rather than left
-     to be inferred from two prices */
-  .trk .tag{flex:0 0 auto;font-size:9px;letter-spacing:.1em;text-transform:uppercase}
-  .trk .tag.spec{color:var(--accent)}
-  .trk .tag.weak{color:#e0a89c}
+  .armTable .pips{display:flex;gap:2px;width:100%;max-width:52px}
+  .armTable .pips i{flex:1 1 0;height:4px;background:#0d1c22;border-radius:1px}
+  .armTable .pips i.on{background:var(--accent-hot)}
+  @media (max-width:400px){
+    .armTable{gap:4px}
+    .armTable .rh{font-size:9px;padding-right:4px}
+    .armTable .cell{min-height:46px;padding:5px 2px}
+  }
   #shopClose{align-self:center;margin-top:2px;min-height:48px;padding:12px 28px}
+
+  /* a difficulty not yet earned: visible, so you know what is up there, but
+     plainly out of reach */
+  .menuSettings label.locked{opacity:.4}
+  .menuSettings label em{font-style:normal;font-size:9px;color:var(--dim);letter-spacing:.1em}
 </style>
 
 <div id="shell">
@@ -148,15 +193,13 @@
         <h2>Armoury</h2>
         <div id="shopComps">Components 0</div>
       </div>
-      <p class="note">Upgrades apply to every tower of that class, now and in
-        every run after this one. Each class buys its speciality cheap and its
-        opposite dear.</p>
+      <p class="note">Per class, kept between runs.</p>
       <div id="shopClasses"></div>
       <button id="shopClose">Back to the board</button>
     </div>
     <div id="banner">
       <h2>Choke Point</h2>
-      <p id="hint">Pick a tower, tap an empty cell to build it, then start the wave.</p>
+      <p id="hint">Pick a tower, tap a cell.</p>
       <button id="go">Begin</button>
     </div>
   </div>
@@ -219,12 +262,36 @@ function writeArmoury(a) {
 function readDifficulty() {
   try {
     const v = localStorage.getItem(DIFF_KEY);
-    if (E.DIFFICULTIES[v]) return v;
+    // a difficulty stored before it was earned (or before this build gated
+    // them) must not be honoured, or the gate is one localStorage edit deep
+    if (E.DIFFICULTIES[v] && E.difficultyUnlocked(progress, v)) return v;
   } catch { /* fall through */ }
   return E.DEFAULT_DIFFICULTY;
 }
 function writeDifficulty(d) {
   try { localStorage.setItem(DIFF_KEY, d); } catch { /* private mode */ }
+}
+
+/* What the player has beaten: which circuits, on which difficulty. Kept beside
+   the armoury and read the same defensive way — the engine holds the rules
+   (`routeUnlocked`, `difficultyUnlocked`, `recordWin`), this holds the bytes. */
+const PROGRESS_KEY = 'arcade:choke-point:progress';
+
+function readProgress() {
+  try { return E.sanitizeProgress(JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null')); }
+  catch { return E.newProgress(); }
+}
+function writeProgress(p) {
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch { /* private mode */ }
+}
+
+const progress = readProgress();
+
+/** The circuit a new run should start on: the furthest one unlocked at this
+ *  difficulty, so "play again" continues the campaign rather than replaying a
+ *  board already beaten. */
+function nextRoute(difficulty) {
+  return E.unlockedRoutes(progress, difficulty) - 1;
 }
 
 /* short-lived hit beams, drawn by the shell. Purely cosmetic. */
@@ -259,9 +326,12 @@ const PORTRAIT_ONLY = true;
 const pickLayout = () =>
   (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
 
+const startDifficulty = readDifficulty();
 const world = E.createWorld({
   fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff,
-  classUpgrades: readArmoury(), difficulty: readDifficulty(),
+  classUpgrades: readArmoury(), difficulty: startDifficulty,
+  // start on the furthest circuit earned at this difficulty, not on route 1
+  routeIndex: nextRoute(startDifficulty),
 });
 
 let W = world.L.W, H = world.L.H;
@@ -386,7 +456,9 @@ function syncPalette() {
   shopBtn.disabled = world.over;
   // Symbols, not words: these two are modes rather than verbs, and the glyphs
   // are what let them share the space one worded button used to need.
-  ffBtn.textContent = SPEEDS[speedIdx] === 1 ? '▶' : SPEEDS[speedIdx] + '×';
+  // Always "N×", including at 1×. The triangle it used to show at rest said
+  // "play" — which reads as a thing to press to start, not as the current speed.
+  ffBtn.textContent = SPEEDS[speedIdx] + '×';
   ffBtn.setAttribute('aria-label', `Fast forward ${SPEEDS[speedIdx]}x`);
   ffBtn.classList.toggle('on', speedIdx > 0);
   contBtn.textContent = '↻';
@@ -397,30 +469,55 @@ function syncPalette() {
 
 const TRACK_LABEL = { dmg: 'Damage', rate: 'Fire rate', range: 'Range', splash: 'Splash' };
 
+/* A grid: one column per class, one row per track, and the buy button is the
+   cell. It was three stacked per-class cards, which meant comparing what a
+   track costs across the classes — the one comparison the whole spec/weak
+   pricing exists to make you think about — needed scrolling between boxes.
+   Side by side, "cheap here, dear there" is just the row you are looking at.
+
+   Each cell carries its price on top and its five pips underneath, so a cell
+   answers both questions a player has about a track (what does the next one
+   cost, how far along am I) without a legend. */
 function renderShop() {
   $('shopComps').textContent = 'Components ' + Math.floor(world.components);
   const host = $('shopClasses');
   host.innerHTML = '';
+
+  const table = document.createElement('div');
+  table.className = 'armTable';
+  table.style.setProperty('--cols', E.TOWER_KEYS.length);
+
+  // header row: a blank corner, then one heading per class
+  table.insertAdjacentHTML('beforeend', '<div class="corner"></div>');
   for (const type of E.TOWER_KEYS) {
     const T = E.TOWER_TYPES[type];
-    const box = document.createElement('div');
-    box.className = 'cls';
-    box.style.borderColor = T.col;
-    const rows = E.CLASS_TRACKS.map(track => {
+    table.insertAdjacentHTML('beforeend',
+      `<div class="ch" style="color:${T.col};border-color:${T.col}">${T.name}</div>`);
+  }
+
+  for (const track of E.CLASS_TRACKS) {
+    table.insertAdjacentHTML('beforeend', `<div class="rh">${TRACK_LABEL[track]}</div>`);
+    for (const type of E.TOWER_KEYS) {
+      const T = E.TOWER_TYPES[type];
       const have = world.classUpgrades[type][track];
       const cost = E.classCost(type, track, have);
-      const tag = T.spec === track ? '<span class="tag spec">cheap</span>'
-                : T.weak === track ? '<span class="tag weak">dear</span>' : '';
+      const maxed = cost === null;
+      const afford = !maxed && world.components >= cost;
+      // the class's speciality and its opposite, marked on the cell itself
+      const rel = T.spec === track ? ' spec' : T.weak === track ? ' weak' : '';
       const pips = Array.from({ length: E.CLASS_MAX },
         (_, i) => `<i class="${i < have ? 'on' : ''}"></i>`).join('');
-      const btn = cost === null
-        ? '<button disabled>Max</button>'
-        : `<button data-t="${type}" data-k="${track}"${world.components < cost ? ' disabled' : ''}>${cost}</button>`;
-      return `<div class="trk"><span class="nm">${TRACK_LABEL[track]}</span>${tag}<span class="bar">${pips}</span>${btn}</div>`;
-    }).join('');
-    box.innerHTML = `<h3 style="color:${T.col}">${T.name}</h3>${rows}`;
-    host.append(box);
+      table.insertAdjacentHTML('beforeend',
+        `<button class="cell${rel}${afford ? '' : ' broke'}"` +
+        ` data-t="${type}" data-k="${track}"${maxed || !afford ? ' disabled' : ''}` +
+        ` aria-label="${T.name} ${TRACK_LABEL[track]}, ${maxed ? 'maxed' : cost + ' components'}">` +
+        `<span class="px">${maxed ? 'MAX' : cost}</span>` +
+        `<span class="pips">${pips}</span>` +
+        `</button>`);
+    }
   }
+  host.append(table);
+
   for (const b of host.querySelectorAll('button[data-t]')) {
     b.addEventListener('click', () => {
       if (E.buyClassUpgrade(world, b.dataset.t, b.dataset.k)) {
@@ -671,7 +768,7 @@ function applyLayout() {
   sync();
   if (wasRunning) {
     world.running = false;
-    showBanner('Turned', 'The board turned. Your towers came with it.', 'Resume');
+    showBanner('Turned', 'Your towers came with it.', 'Resume');
   }
 }
 addEventListener('resize', applyLayout);
@@ -686,7 +783,7 @@ settingsEl.innerHTML =
   `<label>Difficulty</label>` +
   `<div class="choice" id="diffChoice">` +
   E.DIFFICULTY_KEYS.map(k =>
-    `<label><input type="radio" name="difficulty" value="${k}"> ${E.DIFFICULTIES[k].name}</label>`
+    `<label><input type="radio" name="difficulty" value="${k}"> ${E.DIFFICULTIES[k].name} <em>${E.DIFFICULTIES[k].winWave}</em></label>`
   ).join('') +
   `</div>` +
   `<p class="hintline" id="diffNote"></p>` +
@@ -701,22 +798,28 @@ const wipeBtn = settingsEl.querySelector('#wipeArmoury');
 function syncDifficultyUI() {
   for (const r of settingsEl.querySelectorAll('input[name=difficulty]')) {
     r.checked = r.value === world.difficulty;
+    // a difficulty you have not earned is disabled rather than hidden: knowing
+    // what is up there is half the reason to go and win the one below
+    const open = E.difficultyUnlocked(progress, r.value);
+    r.disabled = !open;
+    r.closest('label').classList.toggle('locked', !open);
   }
-  // Say plainly that it takes effect next run — changing the hp scale under a
-  // wave already on the board would rewrite the difficulty of a fight in
-  // progress, which is worse than waiting.
   diffNote.textContent = world.wave > 0
     ? 'Applies to your next run.'
-    : 'Applies when you begin.';
+    : `Win wave ${E.winWave(world.difficulty)} to take the circuit.`;
 }
 for (const r of settingsEl.querySelectorAll('input[name=difficulty]')) {
   r.addEventListener('change', () => {
+    if (!E.difficultyUnlocked(progress, r.value)) { syncDifficultyUI(); return; }
     writeDifficulty(r.value);
     // safe to apply immediately only before the first wave has started
     if (world.wave === 0 && !world.waveActive) {
       world.difficulty = r.value;
       const D = E.DIFFICULTIES[r.value];
       world.components = D.components; world.integrity = D.integrity;
+      // the circuit follows the difficulty: each is unlocked separately, so
+      // switching to Medium must drop you back to the routes earned there
+      E.resetGame(world, { difficulty: r.value, routeIndex: nextRoute(r.value) });
       sync();
     }
     syncDifficultyUI();
@@ -745,21 +848,15 @@ const pause = makeMenu({
   lore: 'They are on the ground now, and they only advance one way. Make that one way expensive.',
   extra: settingsEl,
   rows: [
-    ['Build', 'Pick a tower below, then tap an empty cell. Towers fire on their own.'],
-    ['Wave', 'Tap Start Wave when you\'re ready — you can start the next one early, mid-wave. Kills earn components to build more.'],
-    ['Pace', 'Rush pulls this wave in sooner; × speeds the whole board up; ↻ starts each wave as soon as the last clears.'],
-    ['Adjust', 'Tap one of your towers to set what it shoots first, to move it, or to sell it. Dragging a tower moves it too.'],
-    ['Upgrade', 'The ⚒ button buys improvements for a whole tower class — and they keep between runs.'],
+    ['Build', 'Pick a tower, tap a cell.'],
+    ['Wave', 'Start Wave. Kills pay components.'],
+    ['Adjust', 'Tap a tower to retarget, move or sell. Drag to move.'],
   ],
   notes: [
-    'Node is cheap and fast; Breaker hits hard and splashes; Coil chills a small cluster at once — and anything slowed takes extra damage from everything else, so Coil sets targets up for the rest of your line.',
-    'Towers level themselves by fighting, up to ten. The ring of pips around each one is how far along it is.',
-    'In the armoury each class buys its speciality cheap and its opposite dear, so a Node stays a Node however much you spend.',
-    'Later surges fight back: Shell shrugs off small hits, Phase shrugs off splash and can\'t be slowed, and Patch repairs everything near it — watch colour and size to tell them apart.',
-    'Tanks halt to unload Swarm, and spill more when destroyed — pick where you break one.',
-    'Every surge that reaches the core costs an integrity point — lose them all and it\'s over.',
-    'Routes run easiest to hardest: route 1 is the longest, route 3 barely half of it. Playing again moves you along.',
-    'Keyboard: 1/2/3 pick a tower, Enter starts a wave.',
+    'Anything a Coil slows takes more damage from everything else.',
+    'Towers level by fighting. ⚒ upgrades a whole class, and keeps between runs.',
+    'Reach the wave in the menu to take the circuit and open the next.',
+    'Keyboard: 1/2/3 pick, Enter starts.',
   ],
 });
 syncDifficultyUI();
@@ -776,12 +873,59 @@ function hideBanner() { $('banner').classList.add('hide'); }
 $('go').addEventListener('click', () => {
   // a new run picks up whatever difficulty is currently selected; the armoury
   // carries over untouched, which is the whole point of it
-  if (world.over) { E.resetGame(world, { difficulty: readDifficulty() }); barrelOut.clear(); }
+  contBtnEl.remove();
+  // `won` covers the victory banner, where the run is finished but the core
+  // never broke — the button there starts the next circuit, not a resume
+  if (world.over || world.won) startFreshRun();
   world.running = true;
   gfx.clear();
   hideBanner();
   sync();
 });
+
+function startFreshRun() {
+  const d = readDifficulty();
+  E.resetGame(world, { difficulty: d, routeIndex: nextRoute(d) });
+  barrelOut.clear(); readyHold.clear();
+  clearRun(GAME_ID);
+}
+
+/* ---------- winning ----------
+
+   Taking a circuit is the one moment this game had no way to express: it was
+   endless, so the best possible run ended the same way as the worst, with the
+   core breached. Now clearing the difficulty's win wave takes the board, banks
+   the unlock, and offers both doors — because a player who has just built
+   something that survives 50 waves may well want to see how far it goes, and
+   there is no reason to make them choose between that and the reward. */
+const contBtnEl = document.createElement('button');
+contBtnEl.type = 'button';
+contBtnEl.id = 'keepGoing';
+contBtnEl.textContent = 'Keep going';
+contBtnEl.style.cssText = 'margin-left:8px;background:#1b3038;color:var(--bone)';
+contBtnEl.addEventListener('click', () => {
+  contBtnEl.remove();
+  world.running = true;
+  hideBanner();
+  sync();
+});
+
+function onVictory() {
+  world.justWon = false;
+  world.running = false;
+  const opened = E.recordWin(progress, world.difficulty, world.routeIndex);
+  writeProgress(progress);
+  clearRun(GAME_ID);                 // a won run is not one to come back to
+  submit(GAME_ID, world.score, `Won · ${E.DIFFICULTIES[world.difficulty].name}`);
+  syncBest();
+
+  const bits = [`Circuit ${world.routeIndex + 1} held at wave ${world.wave}.`];
+  if (opened.route) bits.push(`Circuit ${opened.route + 1} open.`);
+  if (opened.difficulty) bits.push(`${E.DIFFICULTIES[opened.difficulty].name} open.`);
+  showBanner('Circuit Held', bits.join(' '), opened.route ? 'Next circuit' : 'New run');
+  $('go').after(contBtnEl);
+  syncDifficultyUI();
+}
 
 /* ---------- resuming an interrupted run ----------
 
@@ -807,9 +951,7 @@ function offerResume() {
   const stored = loadRun(GAME_ID);
   if (!stored) return false;
   resumeOffered = true;
-  showBanner('Resume run?',
-    `You left off at <b style="color:var(--accent-hot)">${stored.label}</b>.`,
-    'Continue');
+  showBanner('Resume run?', `<b style="color:var(--accent-hot)">${stored.label}</b>`, 'Continue');
   // a second button, so "start fresh" is one tap rather than a hidden gesture
   const fresh = document.createElement('button');
   fresh.type = 'button';
@@ -820,7 +962,7 @@ function offerResume() {
     clearRun(GAME_ID);
     fresh.remove();
     resumeOffered = false;
-    showBanner('Choke Point', 'Pick a tower, tap an empty cell to build it, then start the wave.', 'Begin');
+    showBanner('Choke Point', 'Pick a tower, tap a cell.', 'Begin');
   });
   $('go').after(fresh);
 
@@ -857,11 +999,22 @@ function frame(now) {
        jump rather than move. Repeating a normal-sized step keeps every
        interval the engine sees identical to 1x — only more of them. */
     for (let i = 0; i < SPEEDS[speedIdx] && !world.over; i++) E.step(world, dt);
+    const stillSpawning = world.spawnQueue.length > 0;
     // a wave just finished: the board is quiet and the run is worth keeping
     if (wasActive && !world.waveActive && !world.over) {
       saveNow();
-      if (continuous) E.startWave(world);
+      if (continuous && !world.justWon) E.startWave(world);
     }
+    /* Continuous means continuous: the next wave opens as soon as this one has
+       finished *spawning*, not once the last straggler is dead. Waiting for the
+       board to empty left a lull at the end of every wave — which is exactly
+       the tap this toggle exists to remove. `startWave` already overlaps, so
+       this is just letting it. */
+    if (continuous && !stillSpawning && world.waveActive && !world.over && !world.justWon) {
+      E.startWave(world);
+    }
+    // taking the circuit interrupts everything, continuous mode included
+    if (world.justWon) onVictory();
     if (world.over) {
       clearRun(GAME_ID);            // a finished run is not one to come back to
       // the difficulty rides along with the score: with an armoury that grows
@@ -1097,9 +1250,57 @@ function stepTowerArt(dt) {
     const now = barrelOut.get(key) ?? want;      // a tower built mid-fight starts settled
     const d = Math.sign(want - now) * BARREL_SPEED * dt;
     barrelOut.set(key, Math.abs(want - now) <= Math.abs(d) ? want : now + d);
+
+    stepAim(t, key, dt);
   }
   // a sold tower must not leave its barrel behind for the next one built there
-  for (const k of [...barrelOut.keys()]) if (!live.has(k)) { barrelOut.delete(k); readyHold.delete(k); }
+  for (const k of [...barrelOut.keys()]) if (!live.has(k)) {
+    barrelOut.delete(k); readyHold.delete(k); aimAngle.delete(k);
+  }
+}
+
+/* Where each tower's barrel is actually pointing. Presentation state, like the
+   barrel extension — the engine has an opinion about what a tower *shoots*
+   (`t.aim`), not about which way a drawing faces between shots. */
+const aimAngle = new Map();
+const TRAVERSE = 9;                // radians/sec the barrel can swing
+
+/** The angle a tower should be facing, or null if there is nothing to face.
+ *
+ *  `t.aim` is only set for an enemy inside *firing* range, but the barrel is
+ *  deployed on the looser ready reach plus a hold timer — so there is a real
+ *  window where a tower is out and tracking nothing. It used to point straight
+ *  up in that window, which is what "the turret doesn't point at the target"
+ *  was: the nearest surge is right there and the gun is facing the ceiling.
+ *  Now it tracks the closest enemy within the reach that woke it, and if even
+ *  that is gone it simply holds its last bearing rather than snapping. */
+function desiredAim(t, cx, cy) {
+  if (t.aim && world.enemies.includes(t.aim)) {
+    const p = E.enemyPos(world, t.aim);
+    return Math.atan2(p.y - cy, p.x - cx);
+  }
+  const reach = E.stats(world, t).range + E.READY_SLEEP_MARGIN;
+  let best = null, bd = Infinity;
+  for (const e of world.enemies) {
+    if (e.hp <= 0) continue;
+    const p = E.enemyPos(world, e);
+    const d = Math.hypot(p.x - cx, p.y - cy);
+    if (d <= reach && d < bd) { bd = d; best = p; }
+  }
+  return best ? Math.atan2(best.y - cy, best.x - cx) : null;
+}
+
+function stepAim(t, key, dt) {
+  const cell = C();
+  const cx = (t.c + .5) * cell, cy = (t.r + .5) * cell;
+  const want = desiredAim(t, cx, cy);
+  if (want === null) return;                   // nothing to face: hold station
+  const have = aimAngle.get(key);
+  if (have === undefined) { aimAngle.set(key, want); return; }
+  // swing the short way round, so crossing the -pi/pi seam doesn't spin it
+  let d = ((want - have + Math.PI) % TAU + TAU) % TAU - Math.PI;
+  const step = TRAVERSE * dt;
+  aimAngle.set(key, Math.abs(d) <= step ? want : have + Math.sign(d) * step);
 }
 
 function drawTower(t) {
@@ -1133,10 +1334,8 @@ function drawTower(t) {
     if (!reduce) glowDot(ctx, cx, cy, rr * .15 * out, '#ffffff');
     ctx.globalAlpha = 1;
 
-    // the barrel, aimed at whatever it is tracking — or straight down the
-    // route while it is only warming up
-    const target = (t.aim && world.enemies.includes(t.aim)) ? E.enemyPos(world, t.aim) : null;
-    const a = target ? Math.atan2(target.y - cy, target.x - cx) : -Math.PI / 2;
+    // the barrel, on the bearing stepTowerArt has been easing toward
+    const a = aimAngle.get(t.c + ',' + t.r) ?? -Math.PI / 2;
     // extends *from* the hub, so the movement reads as the barrel sliding out
     const from = rr * .3, to = from + (rr * 1.5 - from) * out;
     glowStroke(ctx, c => {

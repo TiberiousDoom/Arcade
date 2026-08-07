@@ -1769,16 +1769,42 @@ test('the drop table favours situational effects over strong ones', () => {
   assert.ok(count('shield') < count('rapid'), 'shield is rarer than rapid');
 });
 
-test('carriers drop a pickup when destroyed, with drops on', () => {
+test('a carrier that drops something drops exactly one valid pickup', () => {
   const w = E.createWorld({ drops: true });
-  w.chains = [chain(16, 0, 700)];
-  const idx = w.chains[0].segs.findIndex(s => s.kind === 'carrier');
-  assert.ok(idx > 0, 'fixture has a carrier');
-
-  assert.equal(w.pickups.length, 0);
-  E.damageSeg(w, 0, idx, 99);
-  assert.equal(w.pickups.length, 1, 'exactly one pickup dropped');
+  // most carriers come up empty since v29, so seed forward to one that doesn't
+  let dropped = 0;
+  for (let n = 0; n < 60 && dropped === 0; n++) {
+    w.chains = [chain(16, 0, 700)];
+    w.pickups = [];
+    const idx = w.chains[0].segs.findIndex(s => s.kind === 'carrier');
+    assert.ok(idx > 0, 'fixture has a carrier');
+    E.damageSeg(w, 0, idx, 99);
+    dropped = w.pickups.length;
+    assert.ok(dropped <= 1, 'never more than one from a carrier');
+  }
+  assert.equal(dropped, 1, 'a carrier does drop, given enough of them');
   assert.ok(E.POWERUPS[w.pickups[0].kind], 'dropped a valid kind');
+});
+
+test('most carriers come up empty, so a power-up is an event', () => {
+  /* Reported as drops being far too frequent: one segment in six is a carrier
+     and every one of them yielded, so a wave-10 column of 54 rained about nine
+     power-ups and an effect was almost always running. */
+  const w = E.createWorld({ drops: true });
+  let hits = 0;
+  const N = 4000;
+  for (let i = 0; i < N; i++) if (E.rollDrop(w)) hits++;
+  const rate = hits / N;
+  assert.ok(Math.abs(rate - E.DROP_CHANCE) < 0.05,
+    `expected about ${E.DROP_CHANCE}, got ${rate.toFixed(3)}`);
+  assert.ok(rate < 0.5, 'and well under the every-carrier rate it replaced');
+});
+
+test('a seeded run still drops identically', () => {
+  const a = E.createWorld({ drops: true });
+  const b = E.createWorld({ drops: true });
+  const seq = (w) => Array.from({ length: 40 }, () => E.rollDrop(w));
+  assert.deepEqual(seq(a), seq(b), 'same seed, same drops — including the misses');
 });
 
 test('with drops off — the default — a carrier drops nothing', () => {

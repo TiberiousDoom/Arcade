@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-06 (v28 — round 6 feedback: a research tree, a movable tower, a gentler opener)
+Last updated: 2026-08-07 (v29 — round 7 feedback: Choke Point can be won, and the text got cut back)
 
 ## Read this first
 
@@ -16,9 +16,62 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). Per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run, buying gun types and the deepest two tiers of each branch). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, armoured back rows (from level 4 — the opening levels are single-hit plating), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
-- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armoury, easy/medium/hard, escalating endless waves, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
+- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armoury, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**443 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 231, Choke Point 84, Hull Breach 82, Feedline 44, shared 2 — plus **46 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**461 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 233, Choke Point 100, Hull Breach 82, Feedline 44, shared 2 — plus **46 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 7 feedback — a campaign, and less to read (v29, 2026-08-07)
+
+**Choke Point can be won and lost properly now.** It was endless, so the best
+run ended exactly like the worst — and `resetGame` advanced the circuit on
+every reset, which meant **losing promoted you to a harder board**. Both are
+fixed together, because one is the gate the other needed:
+
+- Each difficulty has a **win wave** (Easy 50, Medium 100, Hard 150). Clearing
+  it takes the circuit and opens the next; the banner offers **Next circuit**
+  *and* **Keep going**, and banks the unlock either way.
+- **Circuits are earned**, one at a time, per difficulty. `resetGame` takes the
+  route it is given and nothing else.
+- **Easy is the only difficulty to start with.** One win opens Medium, one
+  Medium win opens Hard. `DEFAULT_DIFFICULTY` moved to easy to match, which
+  meant `START_COMPONENTS`/`START_INTEGRITY` had to stop hardcoding medium.
+- Progress lives beside the armoury in localStorage, with the rules
+  (`routeUnlocked`/`difficultyUnlocked`/`recordWin`) as pure engine functions.
+
+**Two real bugs behind the UI reports.** The turret pointing away from its
+target was v28's own hold timer widening a window where a tower is deployed but
+`t.aim` is null — and the draw path's fallback for that was "straight up". Aim
+is shell state now, tracking the nearest enemy in reach and easing rather than
+snapping. And Flak Battery's `#fxbar` had **no CSS at all**, so it sat in normal
+flow inside `#stage`, pushed the heat gauge onto itself, and ran its entries
+together — both halves of "timers overlap with the UI and each other" from one
+missing selector.
+
+**Also:** Auto now opens the next wave when the current one stops *spawning*,
+not when the board empties (the lull it existed to remove); toggled buttons take
+the hot accent with a border and a glow instead of a muted fill; the FF button
+reads `1×` rather than a play triangle; the armoury is a table with classes
+across and tracks down, each cell a buy button carrying its price and five pips;
+and carriers drop a power-up about one time in four instead of every time.
+
+**Text cut back everywhere.** The rule used was *delete anything the interface
+already says*: the cabinet's rules paragraphs (the `.how` line names the
+control), the armoury's pricing note (the table's tinting shows it), Choke
+Point's enemy-roster paragraph (colour and size carry it), Flak Battery's
+"research a type on the Research tab" (there is a Research tab on screen). The
+one-line lore per game stayed — it was a deliberate call in the naming pass.
+
+### Still open after this round
+
+- **The win waves are untested by play.** 50/100/150 are first drafts, and
+  nobody has yet played Easy to wave 50 to find out whether that is twenty
+  minutes or an hour. The armoury growing between runs cuts both ways here.
+- The campaign has three circuits × three difficulties = nine wins available,
+  but the armoury is shared across all of them, so a Hard run late in the
+  campaign starts far stronger than a Hard run early. Whether that wants a
+  counterweight is a question for after some play.
+- `DROP_CHANCE` (0.26) is a first pass at "an event, not wallpaper".
+- Still no device play, on this round or the last.
 
 ## Round 6 feedback — research, relocation, and a gentler opener (v28, 2026-08-06)
 

@@ -861,3 +861,67 @@ The catch: salvage is `brickSalvage(maxhp)` per brick, so softening the opening 
 The alternative — raising `brickSalvage` — was rejected because it would decouple pay from armour on *every* level to fix three, and pay-scales-with-armour is the property that makes digging out a back row worth doing.
 
 Worth generalising: **changing a difficulty knob that also feeds an economy changes the economy.** Nothing in "make the early levels easier" says "and halve the opening income", but that is what it did.
+
+## 2026-08-07 — Losing was a promotion
+
+`resetGame` advanced `routeIndex` on every call, so every loss moved you to the next circuit. The routes are ordered by difficulty, longest and most forgiving first — which means **failing route 1 handed you route 2**. A player who cannot beat the easiest board was given a harder one, and the only way back to the board they were actually working on was to lose twice more and wrap around.
+
+It was written as "play again is a different board", which is a good instinct badly aimed: variety on a *replay* is worth having, progression on a *failure* is not. Circuits are earned now. `resetGame` takes the route it is told and nothing else; the shell picks it, and it picks the furthest one the player has unlocked at the current difficulty.
+
+## 2026-08-07 — A tower defense with no finish line is a game you can only lose
+
+Choke Point was endless, so the best possible run ended exactly like the worst: the core breached. There was no way to express *taking* a circuit, which made every unlock condition impossible to phrase.
+
+Each difficulty now has a win wave — 50 / 100 / 150 — and higher difficulties ask for longer runs as well as harder ones, so the three are not interchangeable ways to play the same length of game. Winning banks the circuit and opens the next, and opens the difficulty above on the first win.
+
+**The banner offers both doors**, at the owner's call: "Next circuit" and "Keep going". The unlock is banked either way. Somebody who has just built a defence that survives 50 waves has a reasonable question about how far it actually goes, and there is no reason to make them trade the reward for the answer.
+
+`won` is in the snapshot and `justWon` is not, and the split matters: `won` is a fact about the run (so a resumed one is not congratulated twice), while `justWon` is a one-frame edge for the shell, and restoring it would fire the victory banner again on the first frame back.
+
+## 2026-08-07 — Only easy is open, and the gate is not one localStorage edit deep
+
+Medium unlocks on any Easy win, Hard on any Medium win. **One win, not a clean sweep** — requiring every circuit at a difficulty before the next appeared would put three full runs of gate between a player and the thing they are ready for.
+
+Two consequences worth writing down. `DEFAULT_DIFFICULTY` moved from `medium` to `easy`, because the default has to be something a new player actually has; that in turn meant `START_COMPONENTS`/`START_INTEGRITY` had to stop hardcoding `DIFFICULTIES.medium` and derive from the default instead, or a constant would name one difficulty while `createWorld` used another. And `readDifficulty` re-checks the gate on the way out: a stored difficulty from before it was earned must not be honoured, or the whole thing is one edited storage key deep.
+
+## 2026-08-07 — "Continuous" was waiting for the board to empty
+
+The Auto toggle started the next wave on the wave-*clear* edge — everything spawned and everything dead. So there was still a lull at the end of every wave while the last stragglers were chased down, which is exactly the pause the toggle exists to remove.
+
+It now opens the next wave as soon as the current one has finished *spawning*. `startWave` has overlapped since v25, so this is not new machinery — it is letting existing machinery do what it was built for. Verified in a browser: waves genuinely overlap, with enemies on the board and a queue still draining.
+
+## 2026-08-07 — The turret pointed at the ceiling, and it was the v28 hold timer's fault
+
+Reported as "sometimes the turret doesn't point at the target". `t.aim` is only set for an enemy inside *firing* range, but the barrel deploys on the looser ready reach — and v28 added a 1.2s hold on top of that to stop it strobing. That opened a real window where a tower is visibly deployed and tracking nothing, and the draw code's fallback for "no target" was `-Math.PI / 2`: straight up. The nearest surge is right there and the gun is facing the sky.
+
+Aim is presentation state now, kept in the shell beside the barrel extension — the engine has an opinion about what a tower *shoots*, not about which way a drawing faces between shots. It tracks the closest enemy within the reach that woke it, holds its last bearing if even that is gone, and eases at a traverse rate rather than snapping between targets.
+
+The general note: **a fix that extends how long a state is visible will expose whatever that state's fallback rendering is.** The hold timer was correct; it just made a pre-existing hole in the draw path last long enough to see.
+
+## 2026-08-07 — The armoury became a table because the pricing is a comparison
+
+Three stacked per-class cards meant comparing what a track costs *across* classes needed scrolling between boxes — and that comparison is the entire point of `SPEC_DISCOUNT`/`WEAK_PENALTY`. Side by side in a grid, "cheap here, dear there" is just the row you are looking at.
+
+Each cell is the buy button and carries both things a player wants to know about a track: the next price on top, five pips underneath. That also retired the `cheap`/`dear` word tags — the cell's own border tint says it, in the place the decision is made.
+
+## 2026-08-07 — Every carrier dropped, and that made power-ups wallpaper
+
+`kindForIndex` makes one segment in six a carrier and every one of them yielded a pickup, so a wave-10 column of 54 craft rained about nine. An effect was almost always running, which is the opposite of what a power-up is for: nothing about grabbing one is a decision if the next is ten seconds away.
+
+`DROP_CHANCE` is 0.26, so a deep wave yields two or three. Implemented inside `rollDrop` rather than at the call site, so **one carrier is still one LCG advance** whether or not it drops — putting the coin flip outside would have made the drop *sequence* depend on how many carriers died, and a seeded run would no longer replay. The yes/no reads the top bits and the kind reads the low ones, since an LCG's low bits are its least random part and the coarser decision deserves the better ones.
+
+## 2026-08-07 — #fxbar had no CSS at all
+
+The active-power-up strip was a bare `<div>` inside `#stage` with not one rule anywhere. So it sat in normal flow below the canvas, added unmeasured height to the stage, and pushed the absolutely-positioned heat gauge (anchored to the stage's bottom) down on top of it. Its entries were undelimited spans, so two effects read as one string. Both halves of "power-up timers overlap with the UI and each other", from a single missing selector.
+
+Anchored bottom-right now, out of flow, opposite the heat gauge and stacking upward. The countdown also went from tenths to whole seconds: a tenths readout on a 9-second timer changes 60 times a second and cannot be read at that size.
+
+Worth generalising: **an element with no CSS is not neutral, it is in flow** — and inside a container whose other children are absolutely positioned, that is a layout bug waiting for someone to add content.
+
+## 2026-08-07 — Cutting the text back
+
+The instruction was to remove descriptions wherever possible and shorten the rest, and the useful principle turned out to be: **delete anything the interface already says.**
+
+The cabinet's cards carried a lore line *and* a rules paragraph, above a `.how` line naming the control — the paragraph restated what the card obviously was, so it went and the lore stands alone. The armoury's note explained spec/weak pricing that the table's own tinting now shows. Choke Point's help lost its whole enemy-roster paragraph: colour and size carry that, and a player meets one new type at a time anyway. Flak Battery's Refit card explained where research is bought, on a screen with a Research tab in the tab strip.
+
+What stayed: the one-line lore per game (a deliberate call from the naming pass), the keyboard lines, and anything naming a rule that is genuinely invisible — a Coil making slowed targets take more damage from *other* towers cannot be inferred from watching.
