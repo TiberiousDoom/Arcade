@@ -31,10 +31,14 @@
   @keyframes lifeflash{50%{opacity:.15}}
   @media (prefers-reduced-motion:reduce){#uiLives.hit i{animation:none}}
 
-  #uiBuild{display:flex;gap:6px;align-items:center}
+  #uiBuild{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
   #uiBuild span{display:flex;gap:1px;align-items:center}
   #uiBuild i{width:3px;height:8px;background:#1b3038;display:inline-block}
   #uiBuild i.on{background:var(--scale)}
+  /* Nine branches is 45 marks. On a phone that is noise in a header that
+     already carries six readouts, so it goes — the shop is where the tree is
+     read, and this strip was only ever a glance. */
+  @media (max-width:560px){ #uiBuild{display:none} }
 
   /* Active power-ups. This had *no CSS at all*: a bare div inside #stage, so it
      sat in normal flow below the canvas, added unmeasured height to the stage,
@@ -158,6 +162,33 @@
     border:1px solid #2c4d5c;border-radius:3px;padding:8px 10px;background:#0d1e25}
   .rpHead b{font:700 15px/1 'Chivo Mono',monospace;color:#7fb6cf;letter-spacing:.1em}
   .rpHead span{font-size:10px;color:var(--dim);line-height:1.45}
+  /* The emplacement overview: one card per mount, the shop's opening view. */
+  .empCard{
+    grid-column:span 1;display:flex;flex-direction:column;gap:4px;
+    border:1px solid var(--line);border-left:3px solid var(--tab,var(--line));
+    background:#0b1a20;border-radius:3px;padding:6px;cursor:pointer;text-align:left;
+  }
+  .empCard:hover{background:#10242c;border-color:var(--tab,var(--brass))}
+  .empCard canvas{width:100%;height:auto;display:block}
+  .empMeta{display:flex;flex-direction:column;gap:2px;padding:0 2px 2px}
+  .empMeta b{font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .empMeta span{font-size:9px;color:var(--dim);letter-spacing:.04em}
+  .empMeta .heatline{height:3px;background:#1b3038;border-radius:1px;overflow:hidden;margin-top:2px}
+  .empMeta .heatline i{display:block;height:100%;background:var(--scale)}
+  .addCard{align-items:center;justify-content:center;border-style:dashed;
+    border-left-style:dashed;min-height:110px;color:var(--dim)}
+  .addCard b{font-size:22px;color:var(--brass);line-height:1}
+  .addCard .cost{color:var(--brass)}
+  .addCard:disabled{opacity:.4;cursor:default}
+
+  /* a gun type's permanent marks, on its research card */
+  .markRow{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--dim);
+    letter-spacing:.1em;text-transform:uppercase}
+  .markRow .pips{flex:1 1 auto;display:flex;gap:2px}
+  .markRow .pips i{flex:1 1 0;height:4px;background:#1b3038;border-radius:1px}
+  .markRow .pips i.on{background:#7fb6cf}
+  .fitted{font-size:9px;color:var(--dim);letter-spacing:.06em}
+
   #shopGo{align-self:center;margin-top:2px}
 </style>
 
@@ -178,7 +209,7 @@
       <div>Score <b id="uiScore">0</b></div>
       <div>Scrap <b id="uiScrap">0</b></div>
       <div>Best <b id="uiBest">—</b></div>
-      <div id="uiBuild" title="Barrel / Chamber / Optics / Munitions"></div>
+      <div id="uiBuild"></div>
     </div>
   </header>
 
@@ -615,18 +646,24 @@ function predictHit() {
    *which* gun it was spending on — and with five mounts and four branches
    there is far too much to show at once anyway. Each mount's tab carries its
    own portrait, its own four branches, and its own retrofit row. */
-let shopTab = 0;      // 0..n-1 are mounts, -1 is the battery tab
+/** Which view the shop is showing.
+ *  `OVERVIEW` — a card per emplacement, and where the shop opens.
+ *  `RESEARCH` — the between-runs screen.
+ *  0..n-1     — one mount's own tree. */
+const OVERVIEW = -2, RESEARCH = -1;
+let shopTab = OVERVIEW;
 
 function renderShop() {
   $('shopScrap').textContent = 'Scrap ' + world.scrap;
   // a mount can be sold out from under the tab by a reset
-  if (shopTab >= world.battery.guns.length) shopTab = 0;
+  if (shopTab >= world.battery.guns.length) shopTab = OVERVIEW;
 
   renderTabs();
   const host = $('branches');
   host.innerHTML = '';
 
-  if (shopTab < 0) { $('battery').style.display = ''; renderBattery(); return; }
+  if (shopTab === OVERVIEW) { $('battery').style.display = 'none'; renderOverview(host); return; }
+  if (shopTab === RESEARCH) { $('battery').style.display = ''; renderBattery(); return; }
   $('battery').style.display = 'none';
 
   const gun = world.battery.guns[shopTab];
@@ -723,6 +760,14 @@ function renderBarrels(gun) {
 function renderTabs() {
   const host = $('shopTabs');
   host.innerHTML = '';
+
+  // the overview, leftmost: the way back out of a single mount's tree
+  const ov = document.createElement('button');
+  ov.className = 'tab' + (shopTab === OVERVIEW ? ' on' : '');
+  ov.innerHTML = `<b>&#9707;</b><span>All</span>`;
+  ov.addEventListener('click', () => { shopTab = OVERVIEW; renderShop(); });
+  host.appendChild(ov);
+
   world.battery.guns.forEach((g, i) => {
     const b = document.createElement('button');
     b.className = 'tab' + (i === shopTab ? ' on' : '');
@@ -756,10 +801,56 @@ function renderTabs() {
   host.appendChild(add);
 
   const bt = document.createElement('button');
-  bt.className = 'tab' + (shopTab < 0 ? ' on' : '');
+  bt.className = 'tab' + (shopTab === RESEARCH ? ' on' : '');
   bt.innerHTML = `<b>&#9632;</b><span>Research</span>`;
-  bt.addEventListener('click', () => { shopTab = -1; renderShop(); });
+  bt.addEventListener('click', () => { shopTab = RESEARCH; renderShop(); });
   host.appendChild(bt);
+}
+
+/* One card per emplacement, all of them at once.
+
+   The tabs alone made you pick a mount before you could see it, which is the
+   wrong way round when the question is "which of these needs the money". A card
+   carries the gun, its barrels, and how deep its tree is, so the comparison is
+   on one screen; tapping one opens that mount's tree. */
+function renderOverview(host) {
+  world.battery.guns.forEach((gun, i) => {
+    const G = E.GUN_TYPES[gun.type];
+    const el = document.createElement('button');
+    el.className = 'empCard';
+    el.style.setProperty('--tab', G.col);
+
+    const pc = document.createElement('canvas');
+    pc.width = 260; pc.height = 110;
+    el.appendChild(pc);
+
+    const depth = E.BRANCHES.reduce((a, b) => a + (gun.upgrades[b] || 0), 0);
+    const most = E.BRANCHES.length * E.MAX_TIER;
+    const cap = document.createElement('div');
+    cap.className = 'empMeta';
+    cap.innerHTML =
+      `<b style="color:${G.col}">${i + 1} · ${G.name}</b>` +
+      `<span>${E.barrelsOf(gun)} barrel${E.barrelsOf(gun) > 1 ? 's' : ''} · ${depth}/${most} tiers</span>` +
+      `<span class="heatline"><i style="width:${Math.round(gun.heat * 100)}%"></i></span>`;
+    el.appendChild(cap);
+
+    el.addEventListener('click', () => { shopTab = i; renderShop(); });
+    host.appendChild(el);
+    drawCannonPortrait(pc.getContext('2d'), gun.type, E.barrelsOf(gun));
+  });
+
+  // and the way to add another, in the same grid rather than off in the tabs
+  const mCost = E.mountCost(world);
+  if (mCost !== null) {
+    const add = document.createElement('button');
+    add.className = 'empCard addCard';
+    add.innerHTML = `<b>+</b><span>Add emplacement</span><span class="cost">${mCost} scrap</span>`;
+    add.disabled = world.scrap < mCost;
+    add.addEventListener('click', () => {
+      if (E.buyMount(world)) { shopTab = world.battery.guns.length - 1; renderShop(); sync(); }
+    });
+    host.appendChild(add);
+  }
 }
 
 /** The retrofit row for one mount: swap it to any researched type, for a fee.
@@ -838,9 +929,64 @@ function renderBattery() {
          chips that used to live here were the only place the shop ever said
          which mount it meant, and with per-emplacement upgrades that job
          belongs to the tabs. */
+      /* Known types are no longer a dead end. A **mark** raises the type's base
+         line permanently, on every mount that carries it and in every run
+         after — so research past the last unlock has somewhere to go, and a
+         gun you like is a gun you can keep investing in. */
       const on = world.battery.guns.filter(g => g.type === type).length;
-      btn.textContent = on ? `Fitted on ${on}` : 'Known';
+      const mCost = E.markCost(world, type);
+      const have = world.research.marks[type] || 0;
+      const pips = Array.from({ length: E.MAX_MARK }, (_, i) =>
+        `<i class="${i < have ? 'on' : ''}"></i>`).join('');
+      el.insertAdjacentHTML('beforeend',
+        `<div class="markRow"><span>Mark ${have}</span><span class="pips">${pips}</span></div>` +
+        `<p class="fitted">${on ? `Fitted on ${on}` : 'Not fitted'}</p>`);
+      if (mCost === null) {
+        btn.textContent = 'Research Completed';
+        btn.disabled = true;
+      } else {
+        const afford = world.research.points >= mCost;
+        btn.className += afford ? '' : ' poor';
+        btn.textContent = afford ? `Mark ${have + 1} · ${mCost} RP`
+          : `${mCost} RP · need ${mCost - world.research.points} more`;
+        btn.disabled = !afford;
+        btn.addEventListener('click', () => { buyResearch(() => E.researchMark(world, type)); });
+      }
+    }
+    el.appendChild(btn);
+    host.appendChild(el);
+  }
+
+  /* The starting cannon gets a card of its own. It can never be *learned* — it
+     is what a run begins with — but it can be marked, and leaving it off this
+     screen made the one gun everybody uses the one gun nobody could improve. */
+  {
+    const type = 'standard';
+    const G = E.GUN_TYPES[type];
+    const el = document.createElement('div');
+    el.className = 'branch';
+    const have = world.research.marks[type] || 0;
+    const mCost = E.markCost(world, type);
+    const on = world.battery.guns.filter(g => g.type === type).length;
+    const pips = Array.from({ length: E.MAX_MARK }, (_, i) =>
+      `<i class="${i < have ? 'on' : ''}"></i>`).join('');
+    el.innerHTML =
+      `<h3 style="color:${G.col}">${G.name}</h3>` +
+      `<p>The gun every run starts with.</p>` +
+      `<div class="markRow"><span>Mark ${have}</span><span class="pips">${pips}</span></div>` +
+      `<p class="fitted">${on ? `Fitted on ${on}` : 'Not fitted'}</p>`;
+    const btn = document.createElement('button');
+    btn.className = 'buy rp';
+    if (mCost === null) {
+      btn.textContent = 'Research Completed';
       btn.disabled = true;
+    } else {
+      const afford = world.research.points >= mCost;
+      btn.className += afford ? '' : ' poor';
+      btn.textContent = afford ? `Mark ${have + 1} · ${mCost} RP`
+        : `${mCost} RP · need ${mCost - world.research.points} more`;
+      btn.disabled = !afford;
+      btn.addEventListener('click', () => { buyResearch(() => E.researchMark(world, type)); });
     }
     el.appendChild(btn);
     host.appendChild(el);
@@ -864,7 +1010,7 @@ function renderBattery() {
     const btn = document.createElement('button');
     btn.className = 'buy rp';
     if (cost === null) {
-      btn.textContent = 'Fully opened';
+      btn.textContent = 'Research Completed';
       btn.disabled = true;
     } else {
       const afford = world.research.points >= cost;
@@ -1053,17 +1199,74 @@ function openShop() {
      as the game having skipped the wave you just lost. */
   $('shopHead').querySelector('h2').textContent = world.retry ? 'Regroup' : 'Refit';
   $('shopGo').textContent = world.retry ? `Retry Wave ${world.wave}` : 'Next Wave';
+  /* Always opens on mount 1, never on whatever tab was left showing.
+
+     Remembering the last view sounds helpful and is not: the tab you were on
+     when you closed the shop three waves ago is rarely the one you want now,
+     and worse, it is *invisible* — you tap Refit and land somewhere without
+     having chosen it, on a screen whose whole job is telling you which gun you
+     are spending on. A fixed starting point is one you can navigate from. */
+  shopTab = OVERVIEW;
+  researchScreen = false;
   // firing must not survive into the shop, or the first frame back is a volley
+  firing = false; drag = null;
+  $('shop').classList.add('on');
+  renderShop();
+}
+
+/** The shop as the between-runs screen: research is the only thing a finished
+ *  run leaves you, so that is what a fresh start opens on. Landing on mount 1's
+ *  upgrade tabs after losing everything shows a bare gun and no money. */
+function openResearch() {
+  $('shopHead').querySelector('h2').textContent = 'Research';
+  $('shopGo').textContent = 'Begin';
+  shopTab = RESEARCH;
+  researchScreen = true;
   firing = false; drag = null;
   $('shop').classList.add('on');
   renderShop();
 }
 $('shopGo').addEventListener('click', () => {
   $('shop').classList.remove('on');
-  E.nextWave(world);
+  /* Two screens share this button. Between waves it advances the wave; on the
+     research screen a fresh run has not started one yet, and calling nextWave
+     there would skip wave 1 before it was ever played. */
+  if (!researchScreen) E.nextWave(world);
+  researchScreen = false;
+  world.running = true;
+  started = true;
   firing = false; drag = null;
   sync();
 });
+
+/* ---------- perspective ----------
+
+   The board is a column descending toward you: the top of the screen is far
+   away, the breach line is at your feet. Nothing in the art said so — a craft
+   at the top was drawn exactly like one about to breach, so the board read as
+   flat and the descent read as sliding rather than approaching.
+
+   One function does it, and everything that sits *on the ground plane* reads
+   depth from it: craft, the road, the tether. Shots and the battery do not —
+   they are near-field and yours, and scaling them would make an upgraded round
+   look weaker at range, which is a lie about a stat.
+
+   Deliberately gentle. This is a top-down game with a real collision model, and
+   `seg.r` is untouched: a craft that draws 12% smaller at the top must still be
+   hit by a round that passes through the same pixels. Anything stronger and the
+   drawing stops matching the hitbox in a way players feel as unfairness. */
+const PERSPECTIVE = 0.22;          // total size falloff from the floor to the top
+
+/** 0 at the horizon (top of board), 1 at the breach line. */
+function depthAt(y) {
+  const floor = world.L.FLOOR || world.L.H;
+  return Math.max(0, Math.min(1, y / floor));
+}
+
+/** Draw scale for something standing on the ground at screen height `y`. */
+function perspScale(y) {
+  return 1 - PERSPECTIVE * (1 - depthAt(y));
+}
 
 /* ---------- segment rendering ---------- */
 
@@ -1111,7 +1314,10 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
      craft were invisible — bigger squares only read as bigger if there is a
      gap between them, which is why the engine's spacing went up alongside.
      Draw-size only: `seg.r` is the collision radius and is untouched. */
-  const long = seg.r * 2.7, wide = seg.r * 2.7;
+  /* Scaled by depth: a craft at the top of the board is further away. Draw-size
+     only — `seg.r` is the collision radius and is deliberately untouched. */
+  const persp = perspScale(sp.y);
+  const long = seg.r * 2.7 * persp, wide = seg.r * 2.7 * persp;
   const corner = 0;
 
   ctx.save();
@@ -1386,12 +1592,45 @@ function draw() {
     ctx.translate((Math.random() - .5) * m, (Math.random() - .5) * m);
   }
 
-  // road, widened from 26 alongside the bigger column and battery
-  ctx.strokeStyle = 'rgba(63,174,143,.09)';
-  ctx.lineWidth = 34; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.beginPath();
-  path.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
-  ctx.stroke();
+  /* The road, drawn leg by leg so it can *taper*: a constant-width band is the
+     single loudest thing telling you the board is flat. Each leg is stroked at
+     the width its own depth calls for, which is why this is a loop rather than
+     one path. */
+  /* The road as one filled ribbon that narrows with distance.
+
+     Stroking it was the obvious approach and it failed twice. One stroke per
+     leg leaves a step at every corner where two widths meet; subdividing into
+     short overlapping strokes fixes the step and introduces a worse artefact,
+     because translucent round caps *accumulate alpha* where they overlap and
+     the road comes out beaded like a string of pearls. A single fill blends
+     once, so it does neither. */
+  {
+    const half = (y) => 17 * perspScale(y);
+    const left = [], right = [];
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1], b = path[i];
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;   // unit normal
+      const steps = Math.max(1, Math.ceil(len / 18));
+      for (let k = (i === 1 ? 0 : 1); k <= steps; k++) {
+        const t = k / steps;
+        const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+        const h = half(y);
+        left.push({ x: x + nx * h, y: y + ny * h });
+        right.push({ x: x - nx * h, y: y - ny * h });
+      }
+    }
+    // near end brighter than far: atmosphere, on top of the narrowing
+    const grad = ctx.createLinearGradient(0, 0, 0, world.L.FLOOR || H);
+    grad.addColorStop(0, 'rgba(63,174,143,.055)');
+    grad.addColorStop(1, 'rgba(63,174,143,.12)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    left.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   ctx.strokeStyle = 'rgba(224,80,60,.5)'; ctx.lineWidth = 1; ctx.setLineDash([7, 7]);
   ctx.beginPath(); ctx.moveTo(0, L.FLOOR); ctx.lineTo(W, L.FLOOR); ctx.stroke();
@@ -1405,17 +1644,21 @@ function draw() {
   // not like a band they are embedded in.
   for (const ch of world.chains) {
     if (ch.segs.length < 2) continue;
+    // segment by segment, so the tether narrows with the craft it strings
     ctx.strokeStyle = 'rgba(8,15,18,.85)';
-    ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath();
-    let started = false;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    let prev = null;
     for (let i = 0; i < ch.segs.length; i++) {
       const sp = E.segPos(path, pathLen, ch, i);
-      if (sp.off) { started = false; continue; }
-      if (!started) { ctx.moveTo(sp.x, sp.y); started = true; }
-      else ctx.lineTo(sp.x, sp.y);
+      if (sp.off) { prev = null; continue; }
+      if (prev) {
+        ctx.lineWidth = 14 * perspScale((prev.y + sp.y) / 2);
+        ctx.beginPath();
+        ctx.moveTo(prev.x, prev.y); ctx.lineTo(sp.x, sp.y);
+        ctx.stroke();
+      }
+      prev = sp;
     }
-    ctx.stroke();
   }
 
   for (const ch of world.chains) {
@@ -1699,8 +1942,12 @@ function sync() {
      and a sum or an average would say nothing useful. The high-water mark
      answers the question the strip is actually for: "how far along am I". The
      shop's tabs are where per-mount detail lives. */
+  /* One pip column per branch, deepest tier reached on any mount. With nine
+     branches this is a lot of marks for a header, so it collapses to a single
+     total on narrow screens (see the CSS) — the shop tabs are where per-branch
+     detail belongs. */
   $('uiBuild').innerHTML = E.BRANCHES.map(b => {
-    const t = world.battery.guns.reduce((m, g) => Math.max(m, g.upgrades[b]), 0);
+    const t = world.battery.guns.reduce((m, g) => Math.max(m, g.upgrades[b] || 0), 0);
     const pips = Array.from({ length: E.MAX_TIER }, (_, i) =>
       `<i class="${i < t ? 'on' : ''}"></i>`).join('');
     return `<span title="${E.UPGRADES[b].name} (best mount)">${pips}</span>`;
@@ -1716,14 +1963,35 @@ $('go').addEventListener('click', () => {
   $('shop').classList.remove('on');
   // Resuming after a rotation must NOT restart the run — the whole point is
   // that your place was kept. Only a finished or unstarted run resets.
+  const restarting = !paused && (world.over || !world.running);
+  /* Only after a *loss*, not on the first Begin of a session. The ask was to
+     land on research when starting over, and a player who has never played has
+     nothing to spend and no reason to be shown a shop first. */
+  const afterLoss = !paused && world.over;
   if (paused) paused = false;
-  else if (world.over || !world.running) E.resetRun(world);
-  world.running = true;
-  started = true;
+  else if (restarting) E.resetRun(world);
   $('banner').classList.add('hide');
   firing = false; drag = null;
+
+  /* A fresh run opens on Research before it opens on the board. Research is
+     the only thing a finished run leaves you, and the moment you are most
+     likely to want to spend it is the moment you just earned some. The Begin
+     button on that screen is what actually starts the wave. */
+  if (afterLoss) {
+    openResearch();
+    fitStage(); sync();
+    return;
+  }
+
+  world.running = true;
+  started = true;
   fitStage(); sync();
 });
+
+/* True while the shop is showing the research screen of a run that has not
+   started yet. `shopGo` means "next wave" on every other screen, and calling
+   nextWave here would advance past wave 1 before it was ever played. */
+let researchScreen = false;
 
 /* ---------- resuming an interrupted run ----------
 

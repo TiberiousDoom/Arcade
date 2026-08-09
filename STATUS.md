@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-07 (v29 — round 7 feedback: Choke Point can be won, and the text got cut back)
+Last updated: 2026-08-08 (v30 — round 8 feedback: the win that could not be reached, and a tree cut into nine)
 
 ## Read this first
 
@@ -15,10 +15,63 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). Per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run, buying gun types and the deepest two tiers of each branch). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, armoured back rows (from level 4 — the opening levels are single-hit plating), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
-- **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
+- **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and quarter-board checkpoints a lost run can resume from. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armoury, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
 
-**461 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 233, Choke Point 100, Hull Breach 82, Feedline 44, shared 2 — plus **46 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**491 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 249, Choke Point 107, Hull Breach 82, Feedline 51, shared 2 — plus **46 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 8 feedback — the unreachable win, and a tree cut into nine (v30, 2026-08-08)
+
+**The reported "no win scenario after level 50" was my own v29 regression**, and
+it reproduced on the first try: Auto on, wave 61, past the win wave, never won.
+Waves overlap (so the wave *number* runs ahead of the fighting) and v29 made
+Auto refill the board the instant a wave stopped spawning — so the board never
+emptied, and the win hung off the wave-**clear edge**. The win is a state check
+now ("at the wave, and the board is clear"), Auto stops auto-starting at the win
+wave so a run can always resolve, and `wavesCleared` is tracked apart from
+`wave` because once waves overlap only one of those is honest.
+
+**Difficulty ladder shifted up a rung** as asked: old Medium is the new Easy,
+old Hard the new Medium, and Hard is new above both — and it cuts income as well
+as raising health, because past a point more enemy health is waiting rather than
+difficulty.
+
+**Flak Battery's tree is nine single-stat branches** instead of four bundles, and
+the split *divides* the old cost rather than adding to it (a first pass had
+quietly inflated the tree 45%). **Gun types can now be marked** — permanent base-
+stat upgrades, so research has somewhere to go once everything is unlocked, and
+the starting cannon is markable even though it can never be learned. **Spread
+belongs to the mount that shot it.** The shop opens on a new **emplacement
+overview** rather than the last tab you left, and on **Research** after a loss.
+
+**Feedline's win, calculated as asked:** 576 cells, 286 meals, ~4½ minutes of
+flawless play. The length was never the problem — 226 of those meals happen at
+the speed floor with a wire hundreds of cells long, and one mistake in minute
+four cost all of it. Quarter-board **checkpoints** now bank progress, plus a
+Quit button and a sensitivity slider that is no longer backwards.
+
+**One item did not survive contact with measurement.** The flexible focus point
+was built and made the battery *worse at every tier* — wave 20 with no breaches
+unupgraded, wave 9 with twelve breaches maxed. Three variants were tried. The
+fixed 620px focal point turns out to be load-bearing: five mounts aiming at one
+distant point throw a fan across the column, and focusing them concentrates
+damage onto fewer craft. It ships as an honest trade (+20% score, more leaks)
+with a blurb that says so, rather than as a straight upgrade that quietly makes
+you worse. See DECISIONS.
+
+### Still open after this round
+
+- **Convergence is a trade and wants a play opinion.** If focus fire is not
+  wanted as a trade, the honest options are to drop the branch or to rebuild it
+  as per-gun targeting (each mount picking its own craft), which is a bigger
+  change than this round had room for.
+- The win waves (50/100/150) are still untested by play, and the difficulty
+  rescale moved the ground under them.
+- Feedline's checkpoints are at the quarters by guess. Whether three is the
+  right number is a play question.
+- Flak Battery's nine branches have not been played as an economy — the costs
+  sum correctly to the old tree, which is not the same as being right.
+- Still no device play, on this round or the last two.
 
 ## Round 7 feedback — a campaign, and less to read (v29, 2026-08-07)
 

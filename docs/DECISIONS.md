@@ -925,3 +925,79 @@ The instruction was to remove descriptions wherever possible and shorten the res
 The cabinet's cards carried a lore line *and* a rules paragraph, above a `.how` line naming the control — the paragraph restated what the card obviously was, so it went and the lore stands alone. The armoury's note explained spec/weak pricing that the table's own tinting now shows. Choke Point's help lost its whole enemy-roster paragraph: colour and size carry that, and a player meets one new type at a time anyway. Flak Battery's Refit card explained where research is bought, on a screen with a Research tab in the tab strip.
 
 What stayed: the one-line lore per game (a deliberate call from the naming pass), the keyboard lines, and anything naming a rule that is genuinely invisible — a Coil making slowed targets take more damage from *other* towers cannot be inferred from watching.
+
+## 2026-08-08 — The Choke Point win was unreachable, and it was v29's fault
+
+Reported as "no win scenario after level 50 completion on easy". It reproduces: with Auto on, a run reached wave 61, sailed past the win wave, and never won.
+
+Two v29 changes conspired. Waves overlap — `startWave` works mid-wave and bumps `w.wave` — so the wave *number* runs ahead of the fighting. And v29 made Auto open the next wave the moment the current one stopped *spawning*, precisely so there was no lull. Together the board almost never empties, and the win hung off the wave-**clear** edge, which therefore almost never fired.
+
+The win is a **state** check now — "am I at the wave, and is the board clear?" — asked every frame. A state cannot be missed by being on the wrong frame; an edge can. It still requires the board genuinely cleared, so it cannot be had by spamming Start Wave, and Auto stops auto-starting once the win wave is reached so the run is always allowed to resolve.
+
+`wavesCleared` is now tracked separately from `wave`. Once waves overlap these are different numbers and only one of them is honest about what the player actually finished.
+
+The general lesson, and it is not the first time in this project: **an edge is a claim that you will be looking at the exact moment something changes.** Every feature that made waves flow more smoothly made that claim less true.
+
+## 2026-08-08 — Focusing the guns is a downgrade, and the fixed focal point was load-bearing
+
+The request was an upgrade making the battery's focus point flexible so the guns could focus fire as the column advances. Built, measured, and it made the battery *worse* at every tier — wave 20 with no breaches unupgraded, wave 9 with twelve breaches at maximum convergence.
+
+The reason is worth writing down because it looks like a bug and is not. Five mounts spread laterally, all aiming at one distant point, throw a **fan** across the column and hit many craft at once. Focusing them concentrates that damage onto fewer craft: more damage where you pointed, less everywhere else, and against a dense 78-craft column that is a bad trade. The flat 620px focal range was not a limitation nobody had got round to fixing. It was doing work.
+
+Three variants were measured before accepting that: tracking alone, tracking with a floor on how close the focal point may come, and tracking plus a stagger so each mount focuses a little deeper and the battery rakes a stretch of the column rather than drilling one hole. All three traded breaches for score.
+
+So it ships as what it actually is — **a trade, and the blurb says so**: "harder hits, thinner cover". Roughly +20% score and more leaks. That is a legitimate upgrade, and it is what focus fire costs in every game that has it. What it is not is a straight improvement, and selling it as one would have been the v28 lesson repeated: a dear option that quietly makes you worse is worse than no option.
+
+The test that caught it now excludes convergence from its "fully maxed" build, with a note, because that test asks whether the hp curve can be out-*damaged* and convergence redistributes damage rather than adding it.
+
+## 2026-08-08 — Splitting the upgrade tree had to divide the cost, not multiply it
+
+Four branches carrying two or three stats each became nine carrying one. Barrel was damage *and* round size; Chamber was heat *and* cooling *and* lockout. Every purchase was a bundle, and no card could honestly say what it sold.
+
+The first pass repriced each new branch on its own merits and pushed the full tree from 3,873 scrap to 5,606 — a 45% difficulty increase smuggled in under a UI change. The branches a given old branch split into now **sum to what that old branch cost**: Barrel's 945 is Damage 518 plus Calibre 427. The tree is the same investment cut into more, smaller decisions, and convergence is the only genuinely new line of spend.
+
+There is a test asserting each split sums back, and another asserting every branch moves exactly one stat — with one documented exception, Munitions, which carries `bounces` alongside `pierce` because both describe what a round does after its first contact and neither is worth its own card.
+
+## 2026-08-08 — Research had nowhere to go once everything was unlocked
+
+Learning a gun type was a one-off: pay the points, own it forever, numbers never move again. So a player who liked a gun had nothing further to spend on it, and research past the last unlock had nowhere to go at all.
+
+**Marks** are permanent upgrades to a type's base line — applied to every mount carrying it, in every future run. `gunStats(w, type)` is now the only place a gun type's numbers come from; the raw `GUN_TYPES` table is no longer read directly by anything that fires.
+
+The starting cannon can be marked even though it can never be *learned*. It is the gun every run begins with, and being the one type that could never improve would have made it strictly a thing to replace.
+
+## 2026-08-08 — Spread belonged to the battery, and a fan is a property of a gun
+
+One caught pickup gave all five mounts a three-shot fan, which turned a single catch into a wall of rounds and made aiming irrelevant for nine seconds. Rounds now carry the mount that fired them, so a pickup shot down goes to the gun that shot it. Caught in the band instead — where no gun earned it — it goes to the mount nearest where it landed, which is the one the player steered under it.
+
+## 2026-08-08 — The shop should not remember where you were
+
+Reopening on the last tab sounds helpful and is not. The tab you were on three waves ago is rarely the one you want now, and worse, it is *invisible*: you tap Refit and arrive somewhere you did not choose, on a screen whose entire job is telling you which gun you are spending on.
+
+It opens on a new **emplacement overview** — a card per mount showing its gun, barrels and how deep its tree is — because the first question between waves is "which of these needs the money", and the tabs made you pick a mount before you could see it. After losing all lives it opens on **Research** instead, since research is the only thing a finished run leaves you. Deliberately not on the first Begin of a session: a player who has never played has nothing to spend.
+
+## 2026-08-08 — Feedline's win, calculated, and why it needed checkpoints
+
+576 cells; a wire starting at 4 and growing 2 a meal; 286 meals to fill the board; about 4½ minutes of flawless play.
+
+The length was never the problem. The tick rate bottoms out by meal 60, so **226 of those 286 meals happen at 16.7 cells a second** with a wire hundreds of cells long threading through itself — and one mistake in minute four costs all of it. That is what made the win read as theoretical rather than merely hard.
+
+Checkpoints at the quarters, banked the moment they are crossed — waiting until the end of a run would only ever record runs that did not need the help. Restored as `{eaten, score}` rather than a board: the exact coils at the moment of a checkpoint are usually the shape that just killed you, and `eaten` carries both the length and the speed since both derive from it.
+
+Laying that wire out found a real bug. The serpentine ends flush against a wall whenever the length is a whole number of rows, and 144 cells on the 18-wide portrait board is exactly eight. Continuing "the way the fold was running" put the head in the corner facing off the edge, dead on the first tick. The heading is searched now, and every checkpoint on both grids is asserted survivable — the bug depended on length versus row width, so the test has to walk both.
+
+## 2026-08-08 — Feedline's sensitivity slider was backwards
+
+Labelled "Swipe sensitivity", it stored a raw pixel threshold on a 4-40 scale — so sliding right made swipes *less* sensitive, and the default sat at 10px, 17% along its own travel, with most of the range too dead to play with.
+
+It is a real 0-100 sensitivity now, higher meaning more sensitive throughout, mapped onto a 4-18px range. Taking "80% on the old scale" as the target gives 11px, which is exactly the midpoint of the new range — so the default sits at 50% with equal usable room either side, as asked. A new storage key, because the old and new values are indistinguishable by inspection and misreading one as the other would silently recalibrate a player's swipe.
+
+## 2026-08-08 — Perspective: what reads depth, and what must not
+
+The board is a column descending toward you — the top of the screen is far, the breach line is at your feet — and nothing in the art said so. A craft at the top was drawn exactly like one about to breach, so the descent read as sliding rather than approaching.
+
+Everything standing on the **ground plane** now reads depth from one function: craft, the road, the tether. Shots and the battery deliberately do not. They are near-field and yours, and scaling a round by range would make an upgraded shot look weaker at distance, which is a lie about a stat.
+
+Kept gentle — 22% total falloff — because `seg.r` is untouched and must stay so. A craft drawn 12% smaller at the top still has to be hit by a round passing through the same pixels; anything stronger and the drawing stops matching the hitbox in a way players feel as unfairness.
+
+The road took three attempts, and the failures are the interesting part. One stroke per leg leaves a visible step at every corner where two widths meet. Subdividing into short overlapping strokes fixes the step and introduces something worse: translucent round caps **accumulate alpha** where they overlap, and the road comes out beaded like a string of pearls. It is a single filled ribbon now — offsets computed either side of the path and filled once — because one fill blends once.

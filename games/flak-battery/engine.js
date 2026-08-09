@@ -424,62 +424,108 @@ export const LOCK_TIME = 1.5;
 /** Four branches, five tiers each. Costs escalate steeply enough that a run
  *  affords roughly 60% of the tree, so you commit to a build rather than
  *  maxing everything. */
+/* Eight branches, five tiers each, and **each one moves exactly one stat**.
+
+   They used to be four branches carrying two or three stats apiece — Barrel was
+   damage *and* round size, Chamber was heat *and* cooling *and* lockout, Optics
+   was shot speed *and* marker lead. That made every purchase a bundle: you
+   bought three numbers to get the one you wanted, and no card could tell you
+   what it was actually selling. Splitting them means more, smaller decisions
+   and a card whose title is the whole description.
+
+   The prices divide rather than multiply: the branches a given old branch split
+   into sum to what that old branch cost. Barrel's 945 became Damage 518 plus
+   Calibre 427; Chamber's 882 became Cooling, Breech and Interlock. So the tree
+   is the same investment cut into more, smaller decisions — a first pass simply
+   repricing each new branch had inflated the total by 45%, which is a
+   difficulty change smuggled in under a UI one.
+
+   `convergence` is new, and is the answer to guns firing at a fixed point while
+   the column moves: see `aimPoint`. */
 export const UPGRADES = {
-  barrel: {
-    name: 'Barrel',
-    blurb: 'Damage, then round size',
-    costs: [42, 91, 161, 259, 392],
-    /* shotR's top end pulled in (was 3.2→6.0). The shell draws a filled arc
-       at `r` plus two glowDots at `r` and `r/2`, so the on-screen bloom is
-       roughly twice the number — at 6.0 a maxed shot was a blob big enough
-       to hide what it was about to hit. Damage still climbs the same. */
-    tiers: [
-      { dmg: 1.0, shotR: 3.0 },
-      { dmg: 1.3, shotR: 3.0 },
-      { dmg: 1.6, shotR: 3.4 },
-      { dmg: 2.0, shotR: 3.8 },
-      { dmg: 2.5, shotR: 4.2 },
-      { dmg: 3.1, shotR: 4.6 },
-    ],
+  damage: {
+    name: 'Damage', stat: 'dmg',
+    blurb: 'Damage per round',
+    costs: [23, 50, 88, 142, 215],
+    tiers: [{ dmg: 1.0 }, { dmg: 1.3 }, { dmg: 1.6 }, { dmg: 2.0 }, { dmg: 2.5 }, { dmg: 3.1 }],
   },
-  chamber: {
-    name: 'Chamber',
-    blurb: 'Less heat, faster cooling, shorter lockout',
-    costs: [39, 84, 151, 241, 367],
-    tiers: [
-      { heatPerShot: 1.00, cool: 1.00, lock: 1.00 },
-      { heatPerShot: 0.90, cool: 1.15, lock: 0.92 },
-      { heatPerShot: 0.81, cool: 1.32, lock: 0.84 },
-      { heatPerShot: 0.72, cool: 1.52, lock: 0.76 },
-      { heatPerShot: 0.64, cool: 1.75, lock: 0.68 },
-      { heatPerShot: 0.56, cool: 2.00, lock: 0.60 },
-    ],
+  calibre: {
+    name: 'Calibre', stat: 'shotR',
+    /* Round size is a real stat — a fatter round forgives a near miss — but its
+       top end stays pulled in: the shell draws a filled arc at `r` plus glow at
+       `r` and `r/2`, so the bloom is about twice the number, and a maxed round
+       used to be a blob big enough to hide what it was about to hit. */
+    blurb: 'Round size, so a near miss still connects',
+    costs: [19, 41, 73, 117, 177],
+    tiers: [{ shotR: 3.0 }, { shotR: 3.2 }, { shotR: 3.5 }, { shotR: 3.8 }, { shotR: 4.2 }, { shotR: 4.6 }],
+  },
+  cooling: {
+    name: 'Cooling', stat: 'cool',
+    blurb: 'Heat bleeds off faster',
+    costs: [13, 29, 51, 82, 124],
+    tiers: [{ cool: 1.0 }, { cool: 1.18 }, { cool: 1.38 }, { cool: 1.6 }, { cool: 1.82 }, { cool: 2.05 }],
+  },
+  breech: {
+    name: 'Breech', stat: 'heatPerShot',
+    blurb: 'Less heat per shot',
+    costs: [13, 29, 51, 82, 124],
+    tiers: [{ heatPerShot: 1.0 }, { heatPerShot: 0.9 }, { heatPerShot: 0.81 },
+            { heatPerShot: 0.72 }, { heatPerShot: 0.64 }, { heatPerShot: 0.56 }],
+  },
+  interlock: {
+    name: 'Interlock', stat: 'lock',
+    blurb: 'Shorter overheat lockout',
+    costs: [13, 27, 48, 77, 117],
+    tiers: [{ lock: 1.0 }, { lock: 0.92 }, { lock: 0.84 }, { lock: 0.76 }, { lock: 0.68 }, { lock: 0.6 }],
+  },
+  velocity: {
+    name: 'Velocity', stat: 'shotSpeed',
+    blurb: 'Faster rounds',
+    costs: [25, 54, 95, 153, 232],
+    tiers: [{ shotSpeed: 520 }, { shotSpeed: 585 }, { shotSpeed: 650 },
+            { shotSpeed: 720 }, { shotSpeed: 800 }, { shotSpeed: 890 }],
   },
   optics: {
-    name: 'Optics',
-    blurb: 'Round speed, and marker lead',
-    costs: [45, 95, 168, 269, 406],
-    tiers: [
-      { shotSpeed: 520, predict: 1.6 },
-      { shotSpeed: 585, predict: 1.8 },
-      { shotSpeed: 650, predict: 2.0 },
-      { shotSpeed: 720, predict: 2.3 },
-      { shotSpeed: 800, predict: 2.6 },
-      { shotSpeed: 890, predict: 3.0 },
-    ],
+    name: 'Optics', stat: 'predict',
+    blurb: 'The aim marker leads further ahead',
+    costs: [19, 41, 72, 116, 175],
+    tiers: [{ predict: 1.6 }, { predict: 1.8 }, { predict: 2.0 },
+            { predict: 2.3 }, { predict: 2.6 }, { predict: 3.0 }],
   },
   munitions: {
-    name: 'Munitions',
-    blurb: 'Pierce and wall bounces',
-    costs: [49, 104, 182, 291, 437],
-    tiers: [
-      { pierce: 0, bounces: 2 },
-      { pierce: 0, bounces: 3 },
-      { pierce: 1, bounces: 3 },
-      { pierce: 1, bounces: 4 },
-      { pierce: 2, bounces: 5 },
-      { pierce: 2, bounces: 6 },
-    ],
+    name: 'Munitions', stat: 'pierce',
+    blurb: 'Rounds punch through more craft',
+    costs: [47, 102, 181, 291, 440],
+    tiers: [{ pierce: 0, bounces: 2 }, { pierce: 0, bounces: 3 }, { pierce: 1, bounces: 3 },
+            { pierce: 1, bounces: 4 }, { pierce: 2, bounces: 5 }, { pierce: 2, bounces: 6 }],
+  },
+  /* Convergence: how far the battery's focal point tracks the column.
+
+     Every gun fires at one shared point (`aimPointFor`), which sat at a flat
+     620px out. With one mount that is invisible; with five spread across the
+     board it is the whole problem — the guns converge at a fixed distance while
+     the column advances past it. This buys the focal point the freedom to
+     follow the nearest craft on the aim line.
+
+     **It is a trade, not a straight upgrade, and the blurb says so.** Measured
+     across every tier: a maxed battery with convergence scores about 20% more
+     (it kills more) and takes more breaches (it leaks more). The reason is
+     worth knowing before anyone "fixes" it: the fixed focal point is not a
+     limitation, it is load-bearing. Five mounts spread laterally, all aiming at
+     one distant point, throw a *fan* across a dense column and hit many craft
+     at once. Focusing them concentrates that damage onto fewer craft, which is
+     more damage where you pointed and less everywhere else.
+
+     So this is the "focus fire" upgrade a player asks for, with the cost focus
+     fire actually has. Tracking-plus-stagger was tried, to rake a stretch of
+     the column rather than drill one hole in it, and measured no better —
+     see DECISIONS. */
+  convergence: {
+    name: 'Convergence', stat: 'converge',
+    blurb: 'Guns focus on the column instead of a fixed range — harder hits, thinner cover',
+    costs: [46, 98, 172, 276, 418],
+    tiers: [{ converge: 0 }, { converge: 0.25 }, { converge: 0.45 },
+            { converge: 0.65 }, { converge: 0.83 }, { converge: 1.0 }],
   },
 };
 
@@ -548,12 +594,15 @@ export function buyUpgrade(w, mountIndex, branch) {
  *  more, and a default would quietly hand back the wrong numbers. */
 export function stats(w, gun) {
   const u = (gun && gun.upgrades) || newUpgrades();
-  return {
-    ...UPGRADES.barrel.tiers[u.barrel],
-    ...UPGRADES.chamber.tiers[u.chamber],
-    ...UPGRADES.optics.tiers[u.optics],
-    ...UPGRADES.munitions.tiers[u.munitions],
-  };
+  const out = {};
+  /* Folded over BRANCHES rather than listed by hand. With four branches a list
+     was fine; with nine, a branch added and not spread here would resolve to
+     `undefined` at every call site and be very hard to trace back. */
+  for (const b of BRANCHES) {
+    const tiers = UPGRADES[b].tiers;
+    Object.assign(out, tiers[Math.min(u[b] || 0, tiers.length - 1)]);
+  }
+  return out;
 }
 
 /** Scrap to max every branch on **one** emplacement. */
@@ -904,10 +953,67 @@ export const DEPTH_RP = [3, 6];
  *  only changes by how much. */
 export const GUN_RP = { auto: 4, rail: 6, mortar: 7, ion: 9 };
 
+/* ---------- gun marks: research that improves a type, not just unlocks it ----
+
+   Learning a gun type was a one-off: pay the points, own it forever, and the
+   type's numbers never moved again. So a gun you liked had nothing further to
+   spend on, and research past the last unlock had nowhere to go at all.
+
+   A **mark** is a permanent upgrade to a type's base line, applied to every
+   mount carrying it, in every future run. Marks multiply into `GUN_TYPES`
+   through `gunStats`, which is now the only place a gun type's numbers come
+   from — read that, never the table.
+
+   Deliberately small per mark and steeply priced: this is the long tail of
+   progression, not a shortcut past the in-run tree. Five marks take a gun to
+   about +28% damage and -17% cooldown, which is a real gun without being a
+   different one. */
+export const MAX_MARK = 5;
+/** Per-mark growth. `rate` is a cooldown multiplier, so it divides. */
+export const MARK_GAIN = { dmg: 0.05, rate: 0.035 };
+/** Research points for the Nth mark, steepening so the last one is a project. */
+export const MARK_RP = [3, 5, 8, 12, 17];
+
+/** RP for the next mark on a type, or null if maxed or the type is unknown. */
+export function markCost(w, type) {
+  if (!GUN_TYPES[type]) return null;
+  const have = w.research?.marks?.[type] ?? 0;
+  return have >= MAX_MARK ? null : MARK_RP[have];
+}
+
+/** Buy one mark. `standard` is included on purpose — the cannon every run
+ *  starts with should not be the one gun that can never improve. */
+export function researchMark(w, type) {
+  const cost = markCost(w, type);
+  if (cost === null || w.research.points < cost) return false;
+  // a type has to be known before it can be improved; standard always is
+  if (type !== 'standard' && !w.research.guns[type]) return false;
+  w.research.points -= cost;
+  w.research.marks[type] = (w.research.marks[type] || 0) + 1;
+  return true;
+}
+
+/** A gun type's numbers, after its marks. The one place they come from. */
+export function gunStats(w, type) {
+  const G = GUN_TYPES[type];
+  if (!G) return null;
+  const m = Math.min(MAX_MARK, w?.research?.marks?.[type] ?? 0);
+  return {
+    ...G,
+    dmg: G.dmg * (1 + MARK_GAIN.dmg * m),
+    rate: G.rate / (1 + MARK_GAIN.rate * m),
+  };
+}
+
 export function newResearch() {
   const depth = {};
   for (const b of BRANCHES) depth[b] = 0;      // extra tiers unlocked past FREE_TIER
-  return { points: 0, depth, guns: { auto: false, rail: false, mortar: false, ion: false } };
+  const marks = {};
+  for (const t of GUN_KEYS) marks[t] = 0;      // permanent upgrades per gun type
+  return {
+    points: 0, depth, marks,
+    guns: { auto: false, rail: false, mortar: false, ion: false },
+  };
 }
 
 /** Defensive read of a stored research object — a value past the caps would
@@ -920,6 +1026,9 @@ export function sanitizeResearch(raw) {
     r.depth[b] = clamp(Math.floor(Number(raw.depth?.[b]) || 0), 0, MAX_TIER - FREE_TIER);
   }
   for (const t of Object.keys(r.guns)) r.guns[t] = !!raw.guns?.[t];
+  for (const t of GUN_KEYS) {
+    r.marks[t] = clamp(Math.floor(Number(raw.marks?.[t]) || 0), 0, MAX_MARK);
+  }
   return r;
 }
 
@@ -1017,16 +1126,86 @@ export function setGunType(w, mountIndex, type, free = false) {
   return true;
 }
 
-/** The point the battery is aiming at: follow the shared aim vector out from
- *  centre to a fixed range. Every gun fires toward this point, so the spread
- *  converges there. */
-export function aimPoint(w) {
+/** The fixed focal distance, used at convergence tier 0 and as the fallback
+ *  whenever there is nothing on the aim line to focus on. */
+export const FOCUS_RANGE = 620;
+/** The focal point never comes closer than this, however hard convergence
+ *  pulls it in: at very short focal ranges the outer mounts have to angle
+ *  almost sideways, and their rounds cross the column at a glance. */
+export const MIN_FOCUS = 500;
+
+/** How far along the aim line the nearest craft sits, or null if the line is
+ *  empty. Measured as a distance from the battery, not a point, because that
+ *  is what the focal range is. */
+function targetRange(w) {
   const b = w.battery;
-  const range = 620;
+  const ox = w.L.W / 2, oy = b.y;
+  const dx = Math.cos(b.ang), dy = Math.sin(b.ang);
+  let best = null;
+  for (const ch of w.chains) {
+    for (let i = 0; i < ch.segs.length; i++) {
+      const p = segPos(w.path, w.pathLen, ch, i);
+      if (p.off) continue;
+      // distance along the aim line, and how far off it the craft sits
+      const along = (p.x - ox) * dx + (p.y - oy) * dy;
+      if (along <= 40) continue;                     // behind or on top of us
+      const perp = Math.abs(-(p.x - ox) * dy + (p.y - oy) * dx);
+      // a generous corridor: this is "what are we shooting toward", not a hit test
+      if (perp > 90) continue;
+      if (best === null || along < best) best = along;
+    }
+  }
+  return best;
+}
+
+/** The point the battery is aiming at. Every gun fires toward it, so it is
+ *  where their fire converges.
+ *
+ *  It used to be a flat `FOCUS_RANGE` out along the aim vector, which is
+ *  invisible with one mount and the whole problem with five: the guns converge
+ *  at a fixed distance while the column advances past it, so a battery that was
+ *  focused a moment ago is firing either side of its target by the time it
+ *  arrives. The `convergence` upgrade buys the focal point the freedom to
+ *  follow the nearest craft on the line — at tier 0 nothing moves, at the cap
+ *  it sits on the target.
+ *
+ *  Read from the *best* convergence on the battery: it describes the fire
+ *  control the battery is shooting under, and a shared aim point cannot
+ *  sensibly resolve to five different distances at once. */
+/** Where one gun focuses.
+ *
+ *  Without convergence every mount aims at the same fixed `FOCUS_RANGE`, which
+ *  is invisible with one gun and the whole problem with five: the battery
+ *  converges at a set distance while the column advances past it.
+ *
+ *  Convergence does two things together, and both are needed. It lets the focal
+ *  range **track** the column, so the battery is focused where the craft
+ *  actually are; and it **staggers** the mounts, so each one focuses a little
+ *  deeper than the last. The stagger is not a detail — tracking alone was
+ *  measurably *worse* than the fixed point it replaced, because five guns
+ *  converging on one craft is four wasted rounds. Staggered, the battery rakes
+ *  a stretch of the column instead of drilling one hole in it. */
+export function aimPointFor(w, gun) {
+  const b = w.battery;
+  const conv = gun ? (stats(w, gun).converge || 0) : 0;
+  let range = FOCUS_RANGE;
+  if (conv > 0) {
+    const t = targetRange(w);
+    if (t !== null) {
+      range = Math.max(MIN_FOCUS, FOCUS_RANGE + (t - FOCUS_RANGE) * conv);
+    }
+  }
   return {
     x: w.L.W / 2 + Math.cos(b.ang) * range,
     y: b.y + Math.sin(b.ang) * range,
   };
+}
+
+/** The battery's nominal focal point — mount 1's. What the shell draws the aim
+ *  line through, and what anything that just wants "where is the battery
+ *  looking" should read. */
+export function aimPoint(w) {
+  return aimPointFor(w, w.battery.guns[0]);
 }
 
 /** Fire one gun toward the aim point. Returns the primary shot or null if the
@@ -1036,11 +1215,12 @@ function fireGun(w, gun) {
   const b = w.battery;
   const T = OD_TIERS[b.od];
   const S = stats(w, gun);
-  const G = GUN_TYPES[gun.type];
+  // through gunStats, so the type's permanent marks apply — never the raw table
+  const G = gunStats(w, gun.type);
   const mount = b.guns.indexOf(gun);
 
   const muzzleX = gun.x, muzzleY = b.y;
-  const tp = aimPoint(w);
+  const tp = aimPointFor(w, gun);
   const a0 = Math.atan2(tp.y - muzzleY, tp.x - muzzleX);
 
   // A multi-barrel mount fires all its barrels in one volley, at a small
@@ -1095,12 +1275,13 @@ function fireGun(w, gun) {
   // the main barrel first, so it is the shot returned to the caller
   const offsets = BARREL_OFFSETS[barrelsOf(gun)] ?? BARREL_OFFSETS[1];
   const shot = makeShot(0, false);
+  shot.mount = mount;          // so a pickup this round claims goes to this gun
   w.shots.push(shot);
   for (const off of offsets) w.shots.push(makeShot(off, true));
 
   // Spread stays an angular fan: it is a power-up that widens your cone, which
   // is a different idea from a barrel that sits alongside the main one.
-  if (hasEffect(w, 'spread')) {
+  if (gunHasEffect(gun, 'spread')) {
     for (const da of [-0.16, 0.16]) {
       const s = makeShot(0, true);
       s.vx = Math.cos(a0 + da) * spd; s.vy = Math.sin(a0 + da) * spd;
@@ -1258,7 +1439,7 @@ export function spawnPickup(w, x, y, kind) {
 
 /** Apply a power-up. Timed effects stack duration rather than refreshing, so
  *  collecting two of the same is meaningfully better than one. */
-export function applyPowerup(w, kind) {
+export function applyPowerup(w, kind, mount = null) {
   const P = POWERUPS[kind];
   if (!P) return false;
 
@@ -1291,12 +1472,45 @@ export function applyPowerup(w, kind) {
     return true;
   }
 
+  /* Spread lands on the mount whose round claimed it, not on the battery.
+     A fan is a property of a *gun*, and giving all five the same fan turned one
+     pickup into a wall of rounds that made the aim decision irrelevant for nine
+     seconds. Earned by the gun that shot it, spent by the gun that shot it.
+
+     Caught in the band rather than shot down, there is no such gun — the
+     nearest mount to where it landed takes it, which is the one the player
+     steered under it. */
+  if (kind === 'spread') {
+    const g = w.battery.guns[mountFor(w, mount)];
+    if (g) {
+      g.effects = g.effects || {};
+      g.effects.spread = (g.effects.spread || 0) + P.dur;
+      w.fx.push(P.name.toUpperCase(), g.x, w.cannon.y - 70, P.col);
+      return true;
+    }
+  }
+
   w.effects[kind] = (w.effects[kind] || 0) + P.dur;
   w.fx.push(P.name.toUpperCase(), w.cannon.x, w.cannon.y - 70, P.col);
   return true;
 }
 
+/** Which mount a power-up belongs to: the one that shot it if we know, else
+ *  whichever sits nearest to where it was picked up. */
+function mountFor(w, mount) {
+  if (Number.isInteger(mount) && w.battery.guns[mount]) return mount;
+  const x = w.bombAt ? w.bombAt.x : w.cannon.x;
+  let best = 0, bd = Infinity;
+  w.battery.guns.forEach((g, i) => {
+    const d = Math.abs(g.x - x);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+
 export const hasEffect = (w, kind) => (w.effects[kind] || 0) > 0;
+/** As above, but for an effect a single mount owns. Spread is the only one. */
+export const gunHasEffect = (gun, kind) => (gun?.effects?.[kind] || 0) > 0;
 
 export function stepPickups(w, dt) {
   const c = w.cannon;
@@ -1322,6 +1536,14 @@ export function stepPickups(w, dt) {
     if (w.effects[k] > 0) {
       w.effects[k] = Math.max(0, w.effects[k] - dt);
       if (w.effects[k] === 0) delete w.effects[k];
+    }
+  }
+  // and the effects a single mount owns — spread, since v30
+  for (const g of w.battery.guns) {
+    if (!g.effects) continue;
+    for (const k of Object.keys(g.effects)) {
+      g.effects[k] = Math.max(0, g.effects[k] - dt);
+      if (g.effects[k] === 0) delete g.effects[k];
     }
   }
 }
@@ -1579,7 +1801,8 @@ export function stepShots(w, dt) {
       const pu = w.pickups[q];
       if (Math.hypot(p.x - pu.x, p.y - pu.y) < pu.r + p.r) {
         w.bombAt = { x: pu.x, y: pu.y };
-        applyPowerup(w, pu.kind);
+        // the round that claimed it says which mount earned it
+        applyPowerup(w, pu.kind, p.mount);
         w.bombAt = null;
         w.pickups.splice(q, 1);
         w.shots.splice(k, 1);
