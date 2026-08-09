@@ -1003,14 +1003,20 @@ function frame(now) {
     // a wave just finished: the board is quiet and the run is worth keeping
     if (wasActive && !world.waveActive && !world.over) {
       saveNow();
-      if (continuous && !world.justWon) E.startWave(world);
+      if (continuous && !world.justWon && world.wave < E.winWave(world.difficulty)) E.startWave(world);
     }
     /* Continuous means continuous: the next wave opens as soon as this one has
        finished *spawning*, not once the last straggler is dead. Waiting for the
        board to empty left a lull at the end of every wave — which is exactly
        the tap this toggle exists to remove. `startWave` already overlaps, so
-       this is just letting it. */
-    if (continuous && !stillSpawning && world.waveActive && !world.over && !world.justWon) {
+       this is just letting it.
+
+       It stops at the win wave, though. The win asks for a clear board, and
+       auto-starting through it would keep feeding the board forever — which is
+       precisely how v29 made the campaign unwinnable on Auto. The last wave is
+       always allowed to resolve. */
+    if (continuous && !stillSpawning && world.waveActive && !world.over && !world.justWon
+        && world.wave < E.winWave(world.difficulty)) {
       E.startWave(world);
     }
     // taking the circuit interrupts everything, continuous mode included

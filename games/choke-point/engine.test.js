@@ -367,6 +367,57 @@ function clearTo(w, wave) {
   return w;
 }
 
+/** A world whose run is finished and won, for tests about what that unlocks. */
+function wonWorld(difficulty = 'easy') {
+  const w = E.createWorld({ difficulty });
+  clearTo(w, E.winWave(difficulty));
+  return w;
+}
+
+test('the win is reachable with waves overlapping, which is how Auto plays', () => {
+  /* The v29 regression, pinned. The win used to hang off the wave-*clear* edge,
+     and Auto opens the next wave the moment the current stops spawning — so the
+     board rarely empties, that edge rarely fires, and the wave counter sailed
+     past the win wave with nothing happening. */
+  const w = E.createWorld({ difficulty: 'easy' });
+  w.wave = E.winWave('easy');
+  w.waveActive = true;
+  // overlapping waves: something is always queued, so a clear edge never comes
+  w.spawnQueue = [{ type: 'surge', at: 0 }];
+  w.enemies = [{ type: 'surge', dist: 0, hp: 5, maxhp: 5, speed: 0, r: 12, slow: 0 }];
+  E.step(w, 1 / 60);
+  assert.equal(w.won, false, 'not while there is still a wave on the board');
+
+  // the moment the board is genuinely clear, it lands — no edge required
+  w.spawnQueue = [];
+  w.enemies = [];
+  E.step(w, 1 / 60);
+  assert.equal(w.won, true);
+  assert.equal(w.justWon, true);
+});
+
+test('the win cannot be had by starting waves you never clear', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  w.wave = E.winWave('easy') + 20;          // spammed Start Wave
+  w.waveActive = true;
+  w.spawnQueue = [];
+  w.enemies = [{ type: 'load', dist: 0, hp: 500, maxhp: 500, speed: 0, r: 19, slow: 0 }];
+  E.step(w, 1 / 60);
+  assert.equal(w.won, false, 'the board still has to be cleared');
+});
+
+test('waves cleared is counted separately from waves started', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  assert.equal(w.wavesCleared, 0);
+  E.startWave(w);
+  E.startWave(w);                            // overlapped: two started, none done
+  assert.equal(w.wave, 2);
+  assert.equal(w.wavesCleared, 0);
+  w.spawnQueue = []; w.enemies = [];
+  E.step(w, 1 / 60);
+  assert.equal(w.wavesCleared, 1, 'one clear, however many waves were queued into it');
+});
+
 test('clearing the win wave takes the circuit', () => {
   const w = E.createWorld({ difficulty: 'easy' });
   assert.equal(w.won, false, 'a run does not start won');
@@ -512,6 +563,45 @@ test('a resumed run remembers it was won, but is not congratulated again', () =>
 });
 
 /* ---------- difficulty ---------- */
+
+test('the ladder steps up at every rung, on every dial', () => {
+  /* Easy was reported as too easy, so the whole ladder shifted up one: the old
+     Medium is the new Easy, the old Hard the new Medium, and Hard is new. */
+  const keys = E.DIFFICULTY_KEYS;
+  for (let i = 1; i < keys.length; i++) {
+    const lo = E.DIFFICULTIES[keys[i - 1]], hi = E.DIFFICULTIES[keys[i]];
+    assert.ok(hi.hp > lo.hp, `${keys[i]} enemies should be tougher`);
+    assert.ok(hi.components < lo.components, `${keys[i]} should start poorer`);
+    assert.ok(hi.integrity < lo.integrity, `${keys[i]} should forgive fewer leaks`);
+    assert.ok(hi.winWave > lo.winWave, `${keys[i]} should run longer`);
+  }
+  assert.ok(E.DIFFICULTIES.easy.hp >= 1.0, 'the new easy is the old medium, not softer still');
+});
+
+test('hard cuts the income as well as raising the health', () => {
+  /* More health alone stops being difficulty past a point and becomes waiting:
+     the towers still win every exchange, each one just takes longer. */
+  const easy = E.createWorld({ difficulty: 'easy' });
+  const hard = E.createWorld({ difficulty: 'hard' });
+  assert.ok(E.bountyOf(hard, 'surge') < E.bountyOf(easy, 'surge'), 'kills pay less on hard');
+  assert.equal(E.bountyOf(easy, 'surge'), E.ENEMY_TYPES.surge.bounty, 'and easy is untouched');
+});
+
+test('score is not scaled by difficulty, only income is', () => {
+  const hard = E.createWorld({ difficulty: 'hard' });
+  hard.enemies = [{ type: 'surge', dist: 0, hp: 0, maxhp: 20, speed: 0, r: 12, slow: 0 }];
+  const before = { comps: hard.components, score: hard.score };
+  E.step(hard, 1 / 60);
+  assert.equal(hard.score - before.score, E.ENEMY_TYPES.surge.bounty, 'score is comparable across runs');
+  assert.ok(hard.components - before.comps < E.ENEMY_TYPES.surge.bounty, 'but the purse is not');
+});
+
+test('a fractional bounty is not rounded away to nothing', () => {
+  // a 0.75 cut on a 1-component Surge floors to 0 if rounded per kill, which
+  // would make Hard's Swarm literally worthless
+  const hard = E.createWorld({ difficulty: 'hard' });
+  assert.ok(E.bountyOf(hard, 'swarm') > 0);
+});
 
 test('difficulty scales enemy hp and the opening purse in opposite directions', () => {
   const easy = E.createWorld({ difficulty: 'easy' });

@@ -125,6 +125,95 @@ function startWire(L) {
   return cells;
 }
 
+/* ---------- checkpoints ----------
+
+   Filling the board is a 576-cell job: 286 meals from a starting length of 4,
+   roughly 3,300 ticks, and about four and a half minutes of *flawless* play.
+   The length is not the problem — 226 of those 286 meals happen after the tick
+   rate has bottomed out at 16.7 cells a second, with a wire hundreds of cells
+   long threading through itself. One mistake in minute four costs all of it,
+   which is what made the win read as theoretical rather than hard.
+
+   Checkpoints cut it into four. Crossing a quarter of the board banks the run;
+   losing after that offers to drop you back to the last bank rather than to
+   length 4. Each one is a small win in its own right, which a single
+   unbroken 286-meal climb never gave anyone.
+
+   Banked as `{ eaten, score }` rather than as a board: the wire's exact coils
+   at the moment of a checkpoint are not worth restoring even if they could be —
+   they are usually the shape that just killed you. `eaten` carries both the
+   length and the speed, since both derive from it. */
+export const CHECKPOINTS = [0.25, 0.5, 0.75];
+
+/** Cells the wire occupies at a given meal count. */
+export const lengthAt = (eaten) => START_LEN + eaten * GROW_PER_FOOD;
+
+/** Meals needed to fill a board — the whole game, in one number. */
+export const mealsToWin = (L) =>
+  Math.ceil((L.COLS * L.ROWS - START_LEN) / GROW_PER_FOOD);
+
+/** The checkpoint index a run has reached, or -1 for none yet. */
+export function checkpointReached(w) {
+  const filled = lengthAt(w.eaten) / (w.L.COLS * w.L.ROWS);
+  let hit = -1;
+  for (let i = 0; i < CHECKPOINTS.length; i++) if (filled >= CHECKPOINTS[i]) hit = i;
+  return hit;
+}
+
+/** Lay out a wire of `len` cells as a serpentine from the top-left, head at
+ *  index 0. A resumed checkpoint can be hundreds of cells long, which will not
+ *  fit in a straight line — folding it is the only shape that both fits and
+ *  leaves the player somewhere legal to move. */
+export function layoutWire(L, len) {
+  const cells = [];
+  const max = L.COLS * L.ROWS;
+  const n = Math.max(1, Math.min(len, max));
+  for (let i = 0; i < n; i++) {
+    const row = Math.floor(i / L.COLS);
+    const col = row % 2 === 0 ? i % L.COLS : L.COLS - 1 - (i % L.COLS);
+    cells.push({ x: col, y: row });
+  }
+  // head at index 0: the serpentine is built tail-first, so reverse it
+  cells.reverse();
+  return cells;
+}
+
+/** Restart from a banked checkpoint. Returns false if there is nothing banked,
+ *  so the shell can hide the option rather than offer a dead button. */
+export function resumeFromCheckpoint(w, bank) {
+  if (!bank || !Number.isFinite(bank.eaten) || bank.eaten <= 0) return false;
+  const eaten = Math.max(0, Math.floor(bank.eaten));
+  resetGame(w);
+  w.eaten = eaten;
+  w.score = Math.max(0, Math.floor(bank.score) || 0);
+  w.wire = layoutWire(w.L, lengthAt(eaten));
+  /* Point the head somewhere it can actually go.
+
+     The obvious rule — carry on the way the fold was running — is wrong
+     whenever the serpentine ends flush against a wall, which happens exactly
+     when the length is a multiple of the row width. A 144-cell wire on the
+     18-wide portrait board fills eight rows precisely, leaving the head in the
+     corner facing off the edge and dead on the first tick.
+
+     So the direction is *searched* rather than derived: try continuing, then
+     the turns, and take the first that lands on a free cell inside the board. */
+  const head = w.wire[0], next = w.wire[1];
+  const along = next ? { x: Math.sign(head.x - next.x), y: Math.sign(head.y - next.y) }
+                     : { x: 1, y: 0 };
+  const body = new Set(w.wire.map(c => c.x + ',' + c.y));
+  const options = [along, { x: along.y, y: along.x }, { x: -along.y, y: -along.x },
+                   { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+  w.dir = options.find(d => {
+    if (!d.x && !d.y) return false;
+    const nx = head.x + d.x, ny = head.y + d.y;
+    return inBounds(w.L, nx, ny) && !body.has(nx + ',' + ny);
+  }) || { x: 1, y: 0 };
+  w.queue = [];
+  w.food = null; w.bonus = null;
+  spawnFood(w);
+  return true;
+}
+
 export function createWorld(opts = {}) {
   const L = { ...LAYOUT, ...(opts.layout || {}) };
   const w = {
@@ -137,6 +226,9 @@ export function createWorld(opts = {}) {
     eaten: 0, score: 0,
     acc: 0,
     running: false, over: false, won: false,
+    /* Highest checkpoint crossed this run, and the one-frame edge the shell
+       catches to celebrate it. Same split as Choke Point's won/justWon. */
+    checkpoint: -1, justCheckpoint: false,
     seed: opts.seed ?? 20260722,
     fx: opts.fx || { eat() {}, bonus() {}, die() {} },
   };
@@ -153,6 +245,7 @@ export function resetGame(w) {
   w.eaten = 0; w.score = 0;
   w.acc = 0;
   w.over = false; w.won = false;
+  w.checkpoint = -1; w.justCheckpoint = false;
   w.seed = 20260722;
   spawnFood(w);
 }
@@ -237,6 +330,9 @@ export function tick(w) {
     if (!spawnFood(w)) { w.won = true; w.over = true; w.running = false; }
     // a bonus rides in every few foods, but never two at once
     if (!w.bonus && w.eaten % BONUS_EVERY === 0) spawnBonus(w);
+    // crossing a quarter of the board banks the run
+    const cp = checkpointReached(w);
+    if (cp > w.checkpoint) { w.checkpoint = cp; w.justCheckpoint = true; }
   } else if (w.bonus && w.bonus.x === nx && w.bonus.y === ny) {
     w.score += BONUS_SCORE;
     w.bonus = null;
