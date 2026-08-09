@@ -100,7 +100,8 @@ test('every cannon portrait draws something', async () => {
   for (let barrels = 1; barrels <= E.MAX_BARRELS; barrels++) {
     for (const g2 of world.battery.guns) g2.barrels = barrels;
     for (let i = 0; i < world.battery.guns.length; i++) {
-      doc.querySelectorAll('#shopTabs .tab')[i]?.dispatchEvent(
+      // the strip leads with the "All" overview tab, so mount i is tab i+1
+      doc.querySelectorAll('#shopTabs .tab')[i + 1]?.dispatchEvent(
         new w.MouseEvent('click', { bubbles: true }));
       const canvas = doc.querySelector('#branches .portrait canvas');
       assert.ok(canvas, `tab ${i} rendered no portrait`);
@@ -161,8 +162,8 @@ test('the research tab renders alongside the mount tabs and the add slot', async
   world.shopOpen = true;
   g.frame(1000);
   const tabs = doc.querySelectorAll('#shopTabs .tab');
-  assert.equal(tabs.length, world.battery.guns.length + 2,
-    'a tab per mount, plus the add slot, plus research');
+  assert.equal(tabs.length, world.battery.guns.length + 3,
+    'the overview, a tab per mount, the add slot, and research');
   tabs[tabs.length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   assert.ok(doc.querySelectorAll('#battery .branch').length > 0, 'the research tab has cards');
   assert.deepEqual(g.errors, [], 'the research tab threw');
@@ -179,13 +180,14 @@ test('research is bought on the research tab and gates the deep tiers', async ()
   /* Tier 4 must read as "go and research this", not as "maxed" — those are a
      signpost and a dead end, and the whole feature fails if they look alike. */
   const tabs = () => doc.querySelectorAll('#shopTabs .tab');
-  const renderTab = (i) => tabs()[i].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  // tab 0 is the emplacement overview the shop now opens on; mount 1 is tab 1
+  const renderTab = (i) => tabs()[i + 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
 
-  for (let i = 0; i < E.FREE_TIER; i++) E.buyUpgrade(world, 0, 'barrel');
+  for (let i = 0; i < E.FREE_TIER; i++) E.buyUpgrade(world, 0, 'damage');
   renderTab(0);
   const branch = [...doc.querySelectorAll('#branches .branch')]
-    .find(el => /^Barrel$/.test(el.querySelector('h3')?.textContent || ''));
-  assert.ok(branch, 'the mount tab shows the Barrel branch');
+    .find(el => /^Damage$/.test(el.querySelector('h3')?.textContent || ''));
+  assert.ok(branch, 'the mount tab shows the Damage branch');
   assert.match(branch.querySelector('button').textContent, /research/i,
     'a gated tier says so rather than claiming to be maxed');
 
@@ -193,17 +195,17 @@ test('research is bought on the research tab and gates the deep tiers', async ()
   world.research.points = 1e6;
   tabs()[tabs().length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   const depthCard = [...doc.querySelectorAll('#battery .branch')]
-    .find(el => /Barrel depth/.test(el.querySelector('h3')?.textContent || ''));
+    .find(el => /Damage depth/.test(el.querySelector('h3')?.textContent || ''));
   assert.ok(depthCard, 'the research tab offers branch depth');
   const before = world.research.points;
   depthCard.querySelector('button').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   assert.ok(world.research.points < before, 'it spent research points');
-  assert.equal(E.tierCap(world, 'barrel'), E.FREE_TIER + 1);
+  assert.equal(E.tierCap(world, 'damage'), E.FREE_TIER + 1);
 
   // and the mount's tab now sells the tier it refused a moment ago
   renderTab(0);
   const again = [...doc.querySelectorAll('#branches .branch')]
-    .find(el => /^Barrel$/.test(el.querySelector('h3')?.textContent || ''));
+    .find(el => /^Damage$/.test(el.querySelector('h3')?.textContent || ''));
   assert.match(again.querySelector('button').textContent, /buy/i, 'tier 4 is for sale now');
   assert.deepEqual(g.errors, [], 'the research tab threw');
 });
@@ -266,7 +268,8 @@ test('barrels are bought on the mount they belong to', async () => {
   world.shopOpen = true;
   g.frame(1000);
 
-  // mount 1's tab is showing; its Barrels card must move mount 1 and nothing else
+  // into mount 1's own tab — the shop opens on the overview now
+  doc.querySelectorAll('#shopTabs .tab')[1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   const card = [...doc.querySelectorAll('#branches .branch')]
     .find(el => /Barrels/.test(el.querySelector('h3')?.textContent || ''));
   assert.ok(card, 'the mount tab carries a Barrels card');

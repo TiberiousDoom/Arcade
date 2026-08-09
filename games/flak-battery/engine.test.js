@@ -182,8 +182,16 @@ test('the hp cap does not make late waves unwinnable', () => {
   // new arrivals bare — which is the intended balance, but it is not what this
   // test means by "fully maxed".
   while (E.buyMount(w));
+  /* Every branch except convergence. This test asks whether the hp curve can be
+     out-*damaged*; convergence does not add damage, it redistributes it —
+     concentrating the battery's fan onto fewer craft, which is measurably more
+     score and measurably more leaks. Including it here would be testing a
+     playstyle rather than the damage ceiling. */
   for (let m = 0; m < w.battery.guns.length; m++) {
-    for (const b of E.BRANCHES) while (E.buyUpgrade(w, m, b));
+    for (const b of E.BRANCHES) {
+      if (b === 'convergence') continue;
+      while (E.buyUpgrade(w, m, b));
+    }
   }
 
   const aim = () => {
@@ -438,7 +446,7 @@ test('a snapshot round-trips a run exactly', () => {
   w.running = true;
   w.wave = 4; E.spawnWave(w);
   w.score = 7700; w.scrap = 55; w.lives = 2; w.breaches = 1;
-  E.buyUpgrade(w, 0, 'barrel');
+  E.buyUpgrade(w, 0, 'damage');
   learn(w, 'rail');
   E.setGunType(w, 0, 'rail', true);      // free: this is about the save, not the economy
   w.cannon.streak = 6;
@@ -1161,28 +1169,28 @@ test('a new run starts with an empty tree', () => {
 test('buying spends scrap and raises the tier', () => {
   const w = E.createWorld();
   w.scrap = 1000;
-  const cost = E.upgradeCost(gun0(w).upgrades, 'barrel');
-  assert.equal(E.buyUpgrade(w, 0, 'barrel'), true);
-  assert.equal(gun0(w).upgrades.barrel, 1);
+  const cost = E.upgradeCost(gun0(w).upgrades, 'damage');
+  assert.equal(E.buyUpgrade(w, 0, 'damage'), true);
+  assert.equal(gun0(w).upgrades.damage, 1);
   assert.equal(w.scrap, 1000 - cost);
 });
 
 test('you cannot buy what you cannot afford', () => {
   const w = E.createWorld();
   w.scrap = 0;
-  assert.equal(E.canAfford(w, 0, 'barrel'), false);
-  assert.equal(E.buyUpgrade(w, 0, 'barrel'), false);
-  assert.equal(gun0(w).upgrades.barrel, 0);
+  assert.equal(E.canAfford(w, 0, 'damage'), false);
+  assert.equal(E.buyUpgrade(w, 0, 'damage'), false);
+  assert.equal(gun0(w).upgrades.damage, 0);
 });
 
 test('a branch cannot be pushed past its last tier', () => {
   const w = openTree(E.createWorld());
   w.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) assert.equal(E.buyUpgrade(w, 0, 'chamber'), true);
-  assert.equal(gun0(w).upgrades.chamber, E.MAX_TIER);
-  assert.equal(E.upgradeCost(gun0(w).upgrades, 'chamber'), null, 'no cost once maxed');
-  assert.equal(E.buyUpgrade(w, 0, 'chamber'), false);
-  assert.equal(gun0(w).upgrades.chamber, E.MAX_TIER, 'tier unchanged');
+  for (let i = 0; i < E.MAX_TIER; i++) assert.equal(E.buyUpgrade(w, 0, 'cooling'), true);
+  assert.equal(gun0(w).upgrades.cooling, E.MAX_TIER);
+  assert.equal(E.upgradeCost(gun0(w).upgrades, 'cooling'), null, 'no cost once maxed');
+  assert.equal(E.buyUpgrade(w, 0, 'cooling'), false);
+  assert.equal(gun0(w).upgrades.cooling, E.MAX_TIER, 'tier unchanged');
 });
 
 /* ---------- research: the progression that outlives a run ---------- */
@@ -1191,18 +1199,18 @@ test('the last two tiers of a branch are locked until researched', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
   for (let i = 0; i < E.FREE_TIER; i++) {
-    assert.equal(E.buyUpgrade(w, 0, 'barrel'), true, `tier ${i + 1} is free to all`);
+    assert.equal(E.buyUpgrade(w, 0, 'damage'), true, `tier ${i + 1} is free to all`);
   }
-  assert.equal(gun0(w).upgrades.barrel, E.FREE_TIER);
-  assert.equal(E.buyUpgrade(w, 0, 'barrel'), false, 'tier 4 needs research');
-  assert.equal(E.canAfford(w, 0, 'barrel'), false, 'and money is not the problem');
-  assert.equal(E.upgradeCost(gun0(w).upgrades, 'barrel', E.tierCap(w, 'barrel')), null);
+  assert.equal(gun0(w).upgrades.damage, E.FREE_TIER);
+  assert.equal(E.buyUpgrade(w, 0, 'damage'), false, 'tier 4 needs research');
+  assert.equal(E.canAfford(w, 0, 'damage'), false, 'and money is not the problem');
+  assert.equal(E.upgradeCost(gun0(w).upgrades, 'damage', E.tierCap(w, 'damage')), null);
 
   w.research.points = E.DEPTH_RP[0];
-  assert.equal(E.researchDepth(w, 'barrel'), true);
-  assert.equal(E.buyUpgrade(w, 0, 'barrel'), true, 'and now it goes through');
-  assert.equal(gun0(w).upgrades.barrel, E.FREE_TIER + 1);
-  assert.equal(E.buyUpgrade(w, 0, 'barrel'), false, 'but only the one tier was opened');
+  assert.equal(E.researchDepth(w, 'damage'), true);
+  assert.equal(E.buyUpgrade(w, 0, 'damage'), true, 'and now it goes through');
+  assert.equal(gun0(w).upgrades.damage, E.FREE_TIER + 1);
+  assert.equal(E.buyUpgrade(w, 0, 'damage'), false, 'but only the one tier was opened');
 });
 
 test('research is bought per branch, not for the whole tree', () => {
@@ -1211,27 +1219,27 @@ test('research is bought per branch, not for the whole tree', () => {
   w.research.points = 1e6;
   E.researchDepth(w, 'optics');
   assert.equal(E.tierCap(w, 'optics'), E.FREE_TIER + 1);
-  assert.equal(E.tierCap(w, 'barrel'), E.FREE_TIER, 'the others stay shallow');
+  assert.equal(E.tierCap(w, 'damage'), E.FREE_TIER, 'the others stay shallow');
 });
 
 test('depth research costs more the second time, and runs out', () => {
   const w = E.createWorld();
   w.research.points = 1e6;
-  const first = E.depthCost(w, 'chamber');
-  E.researchDepth(w, 'chamber');
-  const second = E.depthCost(w, 'chamber');
+  const first = E.depthCost(w, 'cooling');
+  E.researchDepth(w, 'cooling');
+  const second = E.depthCost(w, 'cooling');
   assert.ok(second > first, 'the fifth tier is dearer to open than the fourth');
-  E.researchDepth(w, 'chamber');
-  assert.equal(E.depthCost(w, 'chamber'), null, 'nothing left to open');
-  assert.equal(E.researchDepth(w, 'chamber'), false);
-  assert.equal(E.tierCap(w, 'chamber'), E.MAX_TIER);
+  E.researchDepth(w, 'cooling');
+  assert.equal(E.depthCost(w, 'cooling'), null, 'nothing left to open');
+  assert.equal(E.researchDepth(w, 'cooling'), false);
+  assert.equal(E.tierCap(w, 'cooling'), E.MAX_TIER);
 });
 
 test('research you cannot afford changes nothing', () => {
   const w = E.createWorld();
   w.research.points = E.DEPTH_RP[0] - 1;
-  assert.equal(E.researchDepth(w, 'barrel'), false);
-  assert.equal(E.tierCap(w, 'barrel'), E.FREE_TIER);
+  assert.equal(E.researchDepth(w, 'damage'), false);
+  assert.equal(E.tierCap(w, 'damage'), E.FREE_TIER);
   assert.equal(w.research.points, E.DEPTH_RP[0] - 1, 'and cost nothing');
 });
 
@@ -1290,16 +1298,89 @@ test('research is not run state, so a snapshot leaves it alone', () => {
 test('a stored research object is clamped rather than trusted', () => {
   const junk = E.sanitizeResearch({
     points: -50,
-    depth: { barrel: 99, chamber: 'nonsense', optics: -3 },
+    depth: { damage: 99, cooling: 'nonsense', optics: -3 },
     guns: { rail: 1, nonsense: true },
   });
   assert.equal(junk.points, 0, 'never negative');
-  assert.equal(junk.depth.barrel, E.MAX_TIER - E.FREE_TIER, 'clamped to what the shop can sell');
-  assert.equal(junk.depth.chamber, 0);
+  assert.equal(junk.depth.damage, E.MAX_TIER - E.FREE_TIER, 'clamped to what the shop can sell');
+  assert.equal(junk.depth.cooling, 0);
   assert.equal(junk.depth.optics, 0);
   assert.equal(junk.guns.rail, true);
   assert.equal(junk.guns.nonsense, undefined, 'unknown types dropped');
   assert.equal(E.sanitizeResearch(null).points, 0, 'and nothing at all is fine');
+});
+
+/* ---------- gun marks ---------- */
+
+test('a mark raises a gun type permanently, on every mount carrying it', () => {
+  const w = E.createWorld();
+  const before = E.gunStats(w, 'standard');
+  assert.equal(before.dmg, E.GUN_TYPES.standard.dmg, 'unmarked is the table value');
+
+  w.research.points = 1e6;
+  assert.equal(E.researchMark(w, 'standard'), true);
+  const after = E.gunStats(w, 'standard');
+  assert.ok(after.dmg > before.dmg, 'hits harder');
+  assert.ok(after.rate < before.rate, 'and reloads quicker — rate is a cooldown');
+  assert.equal(E.gunStats(w, 'rail').dmg, E.GUN_TYPES.rail.dmg, 'other types untouched');
+});
+
+test('marks cap, and cost more each time', () => {
+  const w = E.createWorld();
+  w.research.points = 1e6;
+  let last = 0;
+  for (let i = 0; i < E.MAX_MARK; i++) {
+    const cost = E.markCost(w, 'standard');
+    assert.ok(cost > last, `mark ${i + 1} should cost more than the one before`);
+    last = cost;
+    assert.equal(E.researchMark(w, 'standard'), true);
+  }
+  assert.equal(E.markCost(w, 'standard'), null, 'nothing left to buy');
+  assert.equal(E.researchMark(w, 'standard'), false);
+});
+
+test('a gun must be known before it can be marked', () => {
+  const w = E.createWorld();
+  w.research.points = 1e6;
+  assert.equal(E.researchMark(w, 'rail'), false, 'not learned yet');
+  assert.equal(w.research.marks.rail, 0);
+  learn(w, 'rail');
+  assert.equal(E.researchMark(w, 'rail'), true, 'and now it can be improved');
+});
+
+test('the starting cannon can be marked, unlike being learned', () => {
+  // it is the gun every run begins with; being the one type that can never
+  // improve would make it strictly a thing to replace
+  const w = E.createWorld();
+  w.research.points = 1e6;
+  assert.equal(E.gunResearchCost(w, 'standard'), null, 'never learned');
+  assert.equal(E.researchMark(w, 'standard'), true, 'but always improvable');
+});
+
+test('marks reach the shots a gun actually fires', () => {
+  const plain = E.createWorld();
+  E.fire(plain);
+  const before = plain.shots[plain.shots.length - 1].dmg;
+
+  const marked = E.createWorld();
+  marked.research.points = 1e6;
+  for (let i = 0; i < E.MAX_MARK; i++) E.researchMark(marked, 'standard');
+  E.fire(marked);
+  const after = marked.shots[marked.shots.length - 1].dmg;
+  assert.ok(after > before, `a marked cannon should hit harder (${after} vs ${before})`);
+});
+
+test('marks survive a reset and are clamped on the way in', () => {
+  const w = E.createWorld();
+  w.research.points = 1e6;
+  E.researchMark(w, 'standard');
+  E.resetRun(w);
+  assert.equal(w.research.marks.standard, 1, 'research is what carries between runs');
+
+  const junk = E.sanitizeResearch({ marks: { standard: 99, rail: -4, nonsense: 3 } });
+  assert.equal(junk.marks.standard, E.MAX_MARK, 'clamped to what the shop can sell');
+  assert.equal(junk.marks.rail, 0);
+  assert.equal(junk.marks.nonsense, undefined, 'unknown types dropped');
 });
 
 test('a world can be built with research already in hand', () => {
@@ -1309,6 +1390,212 @@ test('a world can be built with research already in hand', () => {
   const w = E.createWorld({ research: saved });
   assert.equal(w.research.points, 12);
   assert.equal(w.gunUnlocks.rail, true, 'a researched gun is fittable from the first wave');
+});
+
+/* ---------- the branch split ---------- */
+
+test('every branch moves exactly one stat', () => {
+  /* The point of splitting four branches into nine: a card's title is now its
+     whole description. A branch that quietly moved a second stat would put the
+     bundling straight back. */
+  const w = E.createWorld();
+  const base = E.stats(w, { upgrades: E.newUpgrades() });
+  for (const b of E.BRANCHES) {
+    const u = E.newUpgrades();
+    u[b] = E.MAX_TIER;
+    const after = E.stats(w, { upgrades: u });
+    const moved = Object.keys(after).filter(k => after[k] !== base[k]);
+    assert.ok(moved.length >= 1, `${b} moves nothing at all`);
+    assert.ok(moved.includes(E.UPGRADES[b].stat),
+      `${b} should move ${E.UPGRADES[b].stat}, moved ${moved}`);
+    // munitions carries `bounces` alongside `pierce` on purpose: both are what
+    // one round does after its first contact, and neither is worth its own card
+    const extra = moved.filter(k => k !== E.UPGRADES[b].stat);
+    assert.ok(extra.length === 0 || (b === 'munitions' && extra.join() === 'bounces'),
+      `${b} also moved ${extra}`);
+  }
+});
+
+test('splitting the tree redistributed its cost rather than inflating it', () => {
+  /* The branches a given old branch became must sum to what it cost, or the
+     split smuggles a difficulty change in under a UI change. Convergence is the
+     one genuinely new line. */
+  const sum = (b) => E.UPGRADES[b].costs.reduce((a, c) => a + c, 0);
+  const near = (a, b, tol = 12) => Math.abs(a - b) <= tol;
+  assert.ok(near(sum('damage') + sum('calibre'), 945), 'Barrel split');
+  assert.ok(near(sum('cooling') + sum('breech') + sum('interlock'), 882), 'Chamber split');
+  assert.ok(near(sum('velocity') + sum('optics'), 983), 'Optics split');
+  assert.ok(near(sum('munitions'), 1063), 'Munitions kept');
+  assert.ok(E.BRANCHES.length >= 8, 'and there really are more of them now');
+});
+
+test('every branch is buyable and reachable', () => {
+  const w = E.createWorld();
+  w.scrap = 1e9;
+  w.research.points = 1e6;
+  for (const b of E.BRANCHES) {
+    while (E.researchDepth(w, b));
+    for (let i = 0; i < E.MAX_TIER; i++) {
+      assert.equal(E.buyUpgrade(w, 0, b), true, `${b} tier ${i + 1} should be buyable`);
+    }
+    assert.equal(E.upgradeCost(gun0(w).upgrades, b, E.tierCap(w, b)), null, `${b} maxes out`);
+  }
+});
+
+/* ---------- convergence ---------- */
+
+test('convergence moves the focal point toward the column', () => {
+  const w = E.createWorld();
+  w.scrap = 1e9; w.research.points = 1e6;
+  w.wave = 3; E.spawnWave(w);
+  w.chains[0].s = 900;                       // bring the column onto the board
+  w.cannon.ang = -Math.PI / 2;               // straight up the middle
+
+  const fixed = E.aimPointFor(w, gun0(w));
+  const rFixed = Math.hypot(fixed.x - w.L.W / 2, fixed.y - w.cannon.y);
+  assert.ok(Math.abs(rFixed - E.FOCUS_RANGE) < 1e-6, 'untouched, it sits at the fixed range');
+
+  while (E.researchDepth(w, 'convergence'));
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'convergence');
+  const tracked = E.aimPointFor(w, gun0(w));
+  const rTracked = Math.hypot(tracked.x - w.L.W / 2, tracked.y - w.cannon.y);
+  assert.notEqual(rTracked, rFixed, 'bought, it tracks');
+  assert.ok(rTracked >= E.MIN_FOCUS, 'but never pulls in past the floor');
+});
+
+test('the focal point never collapses onto the battery', () => {
+  // at very short focal ranges the outer mounts angle almost sideways and their
+  // rounds glance across the column instead of into it
+  const w = E.createWorld();
+  w.scrap = 1e9; w.research.points = 1e6;
+  while (E.researchDepth(w, 'convergence'));
+  while (E.buyMount(w));
+  for (let m = 0; m < w.battery.guns.length; m++) {
+    for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, m, 'convergence');
+  }
+  w.wave = 5; E.spawnWave(w);
+  w.cannon.ang = -Math.PI / 2;
+  // walk the column right up to the battery
+  for (let s = 200; s < w.pathLen; s += 120) {
+    w.chains[0].s = s;
+    for (const g of w.battery.guns) {
+      const p = E.aimPointFor(w, g);
+      const r = Math.hypot(p.x - w.L.W / 2, p.y - w.cannon.y);
+      assert.ok(r >= E.MIN_FOCUS - 1e-6, `focal range ${r} fell through the floor at s=${s}`);
+    }
+  }
+});
+
+test('convergence is what makes a close command ship killable', () => {
+  /* The reported problem, pinned as a behavioural claim rather than as a
+     constant: at higher waves a command ship that reached the last stretch was
+     very nearly unkillable. Five mounts converging at a fixed 620px throw their
+     rounds either side of something at 137px. */
+  const build = (conv) => {
+    const w = E.createWorld();
+    w.research.points = 1e6;
+    for (const b of E.BRANCHES) while (E.researchDepth(w, b));
+    w.scrap = 1e9; w.lives = 999;
+    while (E.buyMount(w));
+    for (let m = 0; m < w.battery.guns.length; m++) {
+      for (const b of E.BRANCHES) {
+        if (b === 'convergence') continue;
+        while (E.buyUpgrade(w, m, b));
+      }
+      for (let i = 0; i < conv; i++) E.buyUpgrade(w, m, 'convergence');
+    }
+    w.wave = 14;
+    E.spawnWave(w);
+    const ch = w.chains[0];
+    ch.segs.length = 13;                 // head plus a thinned escort
+    ch.speed = 0;                        // held still: this times damage, not travel
+    ch.s = w.pathLen * 0.92;             // right on top of the battery
+    return w;
+  };
+  const timeToKill = (conv) => {
+    const w = build(conv);
+    let t = 0;
+    for (let f = 0; f < 60 * 60 && w.chains.length; f++) {
+      const ch = w.chains[0];
+      if (!ch) break;
+      const hp = E.segPos(w.path, w.pathLen, ch, 0);
+      if (!hp.off) w.cannon.ang = E.clampAim(Math.atan2(hp.y - w.cannon.y, hp.x - w.cannon.x));
+      E.step(w, 1 / 60, true);
+      t += 1 / 60;
+    }
+    return w.chains.length === 0 ? t : Infinity;
+  };
+
+  const without = timeToKill(0);
+  const with5 = timeToKill(E.MAX_TIER);
+  assert.ok(Number.isFinite(without), 'the fixture kills it eventually either way');
+  assert.ok(with5 < without * 0.6,
+    `maxed convergence should transform a close kill (${with5.toFixed(1)}s vs ${without.toFixed(1)}s)`);
+});
+
+test('the tiers buy reach, and every one of them engages at least as far out', () => {
+  /* Interpolating the *degree* of convergence made the middle tiers worse than
+     the low ones — a battery focused halfway to its target has neither the fan
+     nor the point. The tiers buy how far out the focus commits instead, which
+     is monotonic by construction, and this pins it. */
+  const w = E.createWorld();
+  const engageAt = (tier) => {
+    const u = E.newUpgrades();
+    u.convergence = tier;
+    return E.ENGAGE_MIN + (E.stats(w, { upgrades: u }).converge || 0) * (E.ENGAGE_MAX - E.ENGAGE_MIN);
+  };
+  for (let t = 1; t <= E.MAX_TIER; t++) {
+    assert.ok(engageAt(t) > engageAt(t - 1), `tier ${t} should commit further out than ${t - 1}`);
+  }
+  assert.ok(engageAt(0) >= E.ENGAGE_MIN, 'and tier 0 never commits early');
+});
+
+test('the first tier of convergence costs nothing at range', () => {
+  /* The property that makes this an upgrade rather than a trade: tier 1 only
+     engages right on top of the battery, so the fan that sweeps a distant
+     column is untouched. Higher tiers reach further and *do* trade sweep for
+     reach — that is a choice, but it must not be forced at the first purchase. */
+  const w = E.createWorld();
+  w.scrap = 1e9; w.research.points = 1e6;
+  while (E.researchDepth(w, 'convergence'));
+  E.buyUpgrade(w, 0, 'convergence');
+  w.wave = 8; E.spawnWave(w);
+  w.cannon.ang = -Math.PI / 2;
+
+  // a column across the far half of the board keeps the fixed focal range
+  w.chains[0].s = 200;
+  const p = E.aimPointFor(w, gun0(w));
+  const r = Math.hypot(p.x - w.L.W / 2, p.y - w.cannon.y);
+  assert.ok(Math.abs(r - E.FOCUS_RANGE) < 1e-6,
+    `tier 1 must leave a distant column alone (focal ${r.toFixed(0)})`);
+});
+
+test('convergence keeps the fan at long range', () => {
+  // far out the spread is an asset, so the focus must not tighten there
+  const w = E.createWorld();
+  w.scrap = 1e9; w.research.points = 1e6;
+  while (E.researchDepth(w, 'convergence'));
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'convergence');
+  w.wave = 5; E.spawnWave(w);
+  w.cannon.ang = -Math.PI / 2;
+
+  // a column still far away: the focal range should stay at its fixed value
+  w.chains[0].s = 60;
+  const far = E.aimPointFor(w, gun0(w));
+  const rFar = Math.hypot(far.x - w.L.W / 2, far.y - w.cannon.y);
+  assert.ok(Math.abs(rFar - E.FOCUS_RANGE) < 40,
+    `a distant column should leave the fan alone (focal ${rFar.toFixed(0)})`);
+});
+
+test('with nothing on the aim line, convergence changes nothing', () => {
+  const w = E.createWorld();
+  w.scrap = 1e9; w.research.points = 1e6;
+  while (E.researchDepth(w, 'convergence'));
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'convergence');
+  w.chains = [];
+  const p = E.aimPointFor(w, gun0(w));
+  const r = Math.hypot(p.x - w.L.W / 2, p.y - w.cannon.y);
+  assert.ok(Math.abs(r - E.FOCUS_RANGE) < 1e-6, 'falls back to the fixed range');
 });
 
 test('unknown branches are rejected', () => {
@@ -1322,7 +1609,7 @@ test('stats resolve from the current tiers', () => {
   const w = E.createWorld();
   const base = E.stats(w, gun0(w));
   w.scrap = 1e6;
-  E.buyUpgrade(w, 0, 'barrel');
+  E.buyUpgrade(w, 0, 'damage');
   const up = E.stats(w, gun0(w));
   assert.ok(up.dmg > base.dmg, 'barrel raises damage');
   assert.equal(up.shotSpeed, base.shotSpeed, 'other branches untouched');
@@ -1371,13 +1658,17 @@ test('a long run cannot afford everything', () => {
   const everything = treeCost + mountCost + refitCost;
 
   assert.ok(income < everything, `12 waves earns ${income}, everything costs ${everything}`);
-  assert.ok(income > treeCost * 0.5, 'but a good run still makes real progress');
+  /* A third of the tree, not half: v30 split four branches into nine, and the
+     nine include convergence, which is new spend rather than redistributed
+     spend. The claim being made is "a good run makes real progress", and the
+     fraction that means moved when the denominator grew. */
+  assert.ok(income > treeCost * 0.33, `12 waves earns ${income} against a ${treeCost} tree`);
 });
 
 test('upgrades and overdrive multiply rather than replace', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'barrel');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'damage');
 
   E.fire(w);
   const plain = w.shots[w.shots.length - 1].dmg;
@@ -1393,7 +1684,7 @@ test('chamber tiers make overheating harder', () => {
   const hot = E.createWorld();
   const cool = E.createWorld();
   cool.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(cool, 0, 'chamber');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(cool, 0, 'cooling');
 
   const shotsUntilLock = (w) => {
     let n = 0;
@@ -1428,14 +1719,14 @@ test('wall bounces are limited by munitions', () => {
   assert.equal(w.shots.length, 0, 'expired after its bounce budget');
 });
 
-test('optics speeds shots up', () => {
+test('velocity speeds shots up', () => {
   const w = E.createWorld();
   E.fire(w);
   const slow = w.shots[w.shots.length - 1];
   const v0 = Math.hypot(slow.vx, slow.vy);
 
   w.scrap = 1e6;
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'optics');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'velocity');
   gun0(w).cool = 0;
   E.fire(w);
   const fast = w.shots[w.shots.length - 1];
@@ -1634,10 +1925,10 @@ test('buying on one mount leaves the others untouched', () => {
   E.buyMount(w); E.buyMount(w);
   assert.equal(w.battery.guns.length, 3);
 
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 1, 'barrel');
-  assert.equal(w.battery.guns[1].upgrades.barrel, E.MAX_TIER);
-  assert.equal(w.battery.guns[0].upgrades.barrel, 0, 'mount 0 untouched');
-  assert.equal(w.battery.guns[2].upgrades.barrel, 0, 'mount 2 untouched');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 1, 'damage');
+  assert.equal(w.battery.guns[1].upgrades.damage, E.MAX_TIER);
+  assert.equal(w.battery.guns[0].upgrades.damage, 0, 'mount 0 untouched');
+  assert.equal(w.battery.guns[2].upgrades.damage, 0, 'mount 2 untouched');
 
   // and it shows up in the numbers, not just the counter
   assert.ok(E.stats(w, w.battery.guns[1]).dmg > E.stats(w, w.battery.guns[0]).dmg);
@@ -1657,8 +1948,8 @@ test('buying against a mount that does not exist changes nothing', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
   const before = w.scrap;
-  assert.equal(E.buyUpgrade(w, 4, 'barrel'), false);
-  assert.equal(E.canAfford(w, 4, 'barrel'), false);
+  assert.equal(E.buyUpgrade(w, 4, 'damage'), false);
+  assert.equal(E.canAfford(w, 4, 'damage'), false);
   assert.equal(w.scrap, before, 'and it did not take the money');
 });
 
@@ -1666,7 +1957,7 @@ test('each gun cools at its own Chamber tier', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
   E.buyMount(w);
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'chamber');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'cooling');
   const [hot, cold] = w.battery.guns;
   hot.heat = 1; cold.heat = 1;
   E.stepCannon(w, 0.5, false);
@@ -1684,7 +1975,7 @@ test('a maxed battery costs five trees plus the mounts', () => {
 test('resetting a run wipes the tree', () => {
   const w = E.createWorld();
   w.scrap = 1e6;
-  E.buyUpgrade(w, 0, 'barrel');
+  E.buyUpgrade(w, 0, 'damage');
   E.buyUpgrade(w, 0, 'optics');
   E.resetRun(w);
   for (const b of E.BRANCHES) assert.equal(gun0(w).upgrades[b], 0, `${b} reset`);
@@ -1876,11 +2167,73 @@ test('rapid shortens the cooldown', () => {
 
 test('spread fires a three-shot fan', () => {
   const w = E.createWorld();
-  E.applyPowerup(w, 'spread');
+  E.applyPowerup(w, 'spread', 0);
   E.fire(w);
   assert.equal(w.shots.length, 3, 'centre plus two flankers');  // one gun, fan of 3
   const angles = w.shots.map(s => Math.atan2(s.vy, s.vx));
   assert.equal(new Set(angles.map(a => a.toFixed(3))).size, 3, 'all at different angles');
+});
+
+test('spread belongs to the gun that shot it, not the battery', () => {
+  /* Five mounts all fanning off one pickup turned a single catch into a wall of
+     rounds and made aiming irrelevant for nine seconds. A fan is a property of
+     a gun. */
+  const w = E.createWorld();
+  w.scrap = 1e6;
+  E.buyMount(w); E.buyMount(w);
+  assert.equal(w.battery.guns.length, 3);
+
+  E.applyPowerup(w, 'spread', 1);
+  assert.equal(E.gunHasEffect(w.battery.guns[1], 'spread'), true, 'mount 2 has it');
+  assert.equal(E.gunHasEffect(w.battery.guns[0], 'spread'), false, 'mount 1 does not');
+  assert.equal(E.hasEffect(w, 'spread'), false, 'and it is not a battery-wide effect');
+
+  for (const g of w.battery.guns) g.cool = 0;
+  E.fire(w);
+  // 1 + 3 + 1: only the middle mount fans
+  assert.equal(w.shots.length, 5, `expected one fanning mount, got ${w.shots.length} rounds`);
+});
+
+test('a round that claims a pickup hands it to the mount that fired it', () => {
+  const w = E.createWorld({ drops: true });
+  w.scrap = 1e6;
+  E.buyMount(w); E.buyMount(w);
+  // a pickup parked exactly where mount 3's round will be
+  const gun = w.battery.guns[2];
+  w.shots = [{ x: gun.x, y: 300, vx: 0, vy: -400, dmg: 1, pierce: 0, r: 4,
+               bounces: 2, bounced: 0, mount: 2, travelled: 0 }];
+  E.spawnPickup(w, gun.x, 300, 'spread');
+  E.stepShots(w, 1 / 60);
+  assert.equal(E.gunHasEffect(w.battery.guns[2], 'spread'), true, 'the firing mount got it');
+  assert.equal(E.gunHasEffect(w.battery.guns[0], 'spread'), false);
+});
+
+test('a pickup caught rather than shot still lands on one mount', () => {
+  /* The catch band sits at the battery centre, not on each mount, so a caught
+     pickup has no gun that "earned" it. It goes to the mount nearest where it
+     landed — which for a centre catch is the centre gun. The point being
+     asserted is that it is still *one* mount and not the whole battery. */
+  const w = E.createWorld({ drops: true });
+  w.scrap = 1e6;
+  E.buyMount(w); E.buyMount(w);
+  E.spawnPickup(w, w.cannon.x, w.cannon.y - 10, 'spread');
+  E.stepPickups(w, 1 / 60);
+  assert.equal(w.pickups.length, 0, 'it was caught');
+
+  const fanning = w.battery.guns.filter(g => E.gunHasEffect(g, 'spread'));
+  assert.equal(fanning.length, 1, 'exactly one mount got it');
+  assert.equal(fanning[0], w.battery.guns[0], 'the one under the catch band');
+  assert.equal(E.hasEffect(w, 'spread'), false, 'never battery-wide');
+});
+
+test('a mount\'s spread times out on its own', () => {
+  const w = E.createWorld();
+  E.applyPowerup(w, 'spread', 0);
+  const gun = w.battery.guns[0];
+  assert.equal(E.gunHasEffect(gun, 'spread'), true);
+  E.stepPickups(w, E.POWERUPS.spread.dur + 0.1);
+  assert.equal(E.gunHasEffect(gun, 'spread'), false, 'and is cleaned up, not left at zero');
+  assert.equal(gun.effects.spread, undefined);
 });
 
 test('pierce and ricochet raise their shot properties', () => {

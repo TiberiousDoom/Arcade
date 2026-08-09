@@ -157,14 +157,41 @@ addEventListener('keydown', e => {
 /* ---------- settings: swipe sensitivity + input mode ----------
    Both stored in localStorage, guarded the same way shared/scores.js is —
    a setting that fails to persist is not worth crashing a game over. */
-const SENS_KEY = 'arcade:feedline:sensitivity';
+/* v2 key: the value's *meaning* changed from a px threshold to a 0-100
+   sensitivity, and the two ranges overlap, so a stored old value cannot be told
+   from a new one. A new key means an old setting is ignored rather than
+   misread — the cost is re-adjusting one slider, which beats a player finding
+   their swipe silently recalibrated. */
+const SENS_KEY = 'arcade:feedline:sensitivity2';
 const MODE_KEY = 'arcade:feedline:inputmode';
+
+/* The slider is a *sensitivity*, 0-100, and it now means what it says.
+
+   It used to store the raw pixel threshold on a 4-40 scale, which made the
+   control backwards — the label read "Swipe sensitivity" while sliding right
+   made swipes *less* sensitive — and put the default at 10px, only 17% along
+   its own travel. Most of the range was in territory too dead to play with.
+
+   Rebased so the default sits in the middle, as asked. Taking "80% sensitivity
+   on the old scale" as the target: 40 - 0.8 x (40 - 4) = 11px. The px range is
+   now 4-18, so 11 is exactly the midpoint and the slider has equal usable room
+   either side of it. Higher = more sensitive, throughout. */
+const SWIPE_PX_MIN = 4;          // most sensitive: a 4px flick turns you
+const SWIPE_PX_MAX = 18;         // least: a deliberate drag
+const SENS_DEFAULT = 50;         // = 11px, the midpoint
+
+/** Sensitivity (0-100) to the pixel threshold the gesture actually uses. */
+const sensToPx = (sens) =>
+  SWIPE_PX_MAX - (clamp01(sens) / 100) * (SWIPE_PX_MAX - SWIPE_PX_MIN);
+function clamp01(v) { return Math.min(100, Math.max(0, v)); }
 
 function readSensitivity() {
   try {
-    const v = parseInt(localStorage.getItem(SENS_KEY), 10);
-    return Number.isFinite(v) ? Math.min(40, Math.max(4, v)) : 10;
-  } catch { return 10; }
+    const raw = localStorage.getItem(SENS_KEY);
+    const v = parseInt(raw, 10);
+    if (!Number.isFinite(v)) return SENS_DEFAULT;
+    return clamp01(v);
+  } catch { return SENS_DEFAULT; }
 }
 function writeSensitivity(v) { try { localStorage.setItem(SENS_KEY, String(v)); } catch {} }
 function readInputMode() {
@@ -177,7 +204,8 @@ function writeInputMode(m) { try { localStorage.setItem(MODE_KEY, m); } catch {}
 let swipe = null;
 // Lowered from a hardcoded 24 after real-device testing, then made a stored,
 // player-adjustable value — what felt right on one phone did not on another.
-let SWIPE_MIN = readSensitivity();
+let swipeSens = readSensitivity();
+let SWIPE_MIN = sensToPx(swipeSens);
 let inputMode = readInputMode();
 
 // Listen on the stage, not just the canvas, so a swipe that starts in the
@@ -238,10 +266,79 @@ function start() {
   if (world.over) E.resetGame(world);
   world.running = true;
   gfx.clear();               // don't let the death flash bleed into a fresh run
+  hideExtraButtons();
   $('banner').classList.add('hide');
   sync();
 }
 $('go').addEventListener('click', start);
+
+/* ---------- checkpoints ----------
+
+   Filling this board takes 286 meals and about four and a half minutes of
+   flawless play — see the note on CHECKPOINTS in the engine. The length was
+   never the problem; losing all of it to one mistake in minute four was. The
+   quarter marks are banked, and a lost run can drop back to the last one.
+
+   Stored, so a bank survives closing the tab. Feedline is still deliberately
+   outside shared/resume.js — that restores a *run in progress*, which a
+   one-life score-attack should not have. This is different: it restores a
+   milestone you already earned. */
+const BANK_KEY = 'arcade:feedline:checkpoint';
+
+function readBank() {
+  try {
+    const b = JSON.parse(localStorage.getItem(BANK_KEY) || 'null');
+    if (!b || !Number.isFinite(b.eaten) || b.eaten <= 0) return null;
+    return { eaten: Math.floor(b.eaten), score: Math.floor(b.score) || 0 };
+  } catch { return null; }
+}
+function writeBank(b) {
+  try { localStorage.setItem(BANK_KEY, JSON.stringify(b)); } catch {}
+}
+function clearBank() { try { localStorage.removeItem(BANK_KEY); } catch {} }
+
+let bank = readBank();
+
+/** Extra banner buttons — resume-from-checkpoint and quit. Built once and
+ *  moved in and out, so their listeners are bound a single time. */
+function makeBannerButton(id, label, bg) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.id = id; b.textContent = label;
+  b.style.cssText = `margin-left:8px;background:${bg};color:var(--bone)`;
+  return b;
+}
+const resumeBtn = makeBannerButton('cpResume', 'From checkpoint', '#1b3038');
+const quitBtn = makeBannerButton('quitBtn', 'Quit', '#2a1a17');
+
+resumeBtn.addEventListener('click', () => {
+  if (!E.resumeFromCheckpoint(world, bank)) return;
+  world.running = true;
+  gfx.clear();
+  hideExtraButtons();
+  $('banner').classList.add('hide');
+  sync();
+});
+quitBtn.addEventListener('click', () => { location.href = '../../index.html'; });
+
+function hideExtraButtons() { resumeBtn.remove(); quitBtn.remove(); }
+
+/* A checkpoint is a mini-win and has to feel like one, without stopping play —
+   the wire is still moving. A banner would be worse than nothing here. */
+let cpFlash = { text: '', life: 0 };
+function flashCheckpoint(pct) {
+  cpFlash = { text: `${pct}% BANKED`, life: 2.2 };
+  audio.bonus();
+  gfx.hit(.35);
+}
+
+/** Put the loss options on the banner: resume from a bank if there is one,
+ *  and always a way out of the game entirely. */
+function showLossButtons() {
+  hideExtraButtons();
+  const go = $('go');
+  if (bank) go.after(resumeBtn);
+  (bank ? resumeBtn : go).after(quitBtn);
+}
 
 /* `let`, and declared before syncInputMode can call it — makeFit performs the
    first fit itself, so the binding only has to exist by the time a *later*
@@ -275,7 +372,7 @@ settingsEl.className = 'menuSettings';
 settingsEl.innerHTML = `
   <h3>Settings</h3>
   <label>Swipe sensitivity
-    <input type="range" id="sensRange" min="4" max="40" step="1" value="${SWIPE_MIN}">
+    <input type="range" id="sensRange" min="0" max="100" step="1" value="${swipeSens}">
   </label>
   <div class="modeRow">
     <label><input type="radio" name="inputMode" value="swipe"> Swipe</label>
@@ -283,8 +380,9 @@ settingsEl.innerHTML = `
   </div>
 `;
 settingsEl.querySelector('#sensRange').addEventListener('input', e => {
-  SWIPE_MIN = Number(e.target.value);
-  writeSensitivity(SWIPE_MIN);
+  swipeSens = Number(e.target.value);
+  SWIPE_MIN = sensToPx(swipeSens);
+  writeSensitivity(swipeSens);
 });
 for (const radio of settingsEl.querySelectorAll('[name=inputMode]')) {
   radio.checked = radio.value === inputMode;
@@ -327,16 +425,34 @@ function frame(now) {
     recordProgress(GAME_ID, 1);
     const r = submit(GAME_ID, world.score, `Length ${world.wire.length}`);
     syncBest();
-    if (world.won) showBanner('Board Cleared', `You filled the grid. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Play again');
-    else showBanner('Game Over',
-      r.record
-        ? `New best — <b style="color:var(--brass)">${world.score}</b>, length ${world.wire.length}`
-        : `Score <b style="color:var(--brass)">${world.score}</b> · length ${world.wire.length} · best ${r.best}`,
-      'Play again');
+    if (world.won) {
+      clearBank(); bank = null;      // nothing left to resume toward
+      showBanner('Board Cleared', `You filled the grid. Score <b style="color:var(--brass)">${world.score}</b>.`, 'Play again');
+      hideExtraButtons();
+      $('go').after(quitBtn);
+    } else {
+      showBanner('Game Over',
+        r.record
+          ? `New best — <b style="color:var(--brass)">${world.score}</b>, length ${world.wire.length}`
+          : `Score <b style="color:var(--brass)">${world.score}</b> · length ${world.wire.length} · best ${r.best}`,
+        'Play again');
+      showLossButtons();
+    }
+  }
+  /* Banking a checkpoint. Written the moment it is crossed rather than at the
+     end of the run, because the run ends by dying — waiting would mean the
+     bank only ever recorded runs that did not need it. */
+  if (world.justCheckpoint) {
+    world.justCheckpoint = false;
+    const b = { eaten: world.eaten, score: world.score };
+    if (!bank || b.eaten > bank.eaten) { bank = b; writeBank(b); }
+    const pct = Math.round(E.CHECKPOINTS[world.checkpoint] * 100);
+    flashCheckpoint(pct);
   }
   if (world.running) sync();
 
   gfx.step(dt);
+  if (cpFlash.life > 0) cpFlash.life = Math.max(0, cpFlash.life - dt);
 
   draw();
   requestAnimationFrame(frame);
@@ -374,6 +490,22 @@ function draw() {
   if (gfx.flash > 0) {
     ctx.fillStyle = `rgba(224,80,60,${gfx.flash * .28})`;
     ctx.fillRect(0, 0, L.W, L.H);
+  }
+
+  // the checkpoint mark, fading out over the board without interrupting it
+  if (cpFlash.life > 0) {
+    const a = Math.min(1, cpFlash.life / 0.6);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = `700 ${Math.round(L.CELL * 1.1)}px 'Chivo Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#050b0d';
+    ctx.strokeText(cpFlash.text, L.W / 2, L.H * 0.28);
+    ctx.fillStyle = '#c9a227';
+    ctx.fillText(cpFlash.text, L.W / 2, L.H * 0.28);
+    ctx.restore();
   }
 
   // also accumulating (multiply, so it settles darker than written) — hence low

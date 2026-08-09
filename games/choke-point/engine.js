@@ -375,6 +375,14 @@ export const ENEMY_TYPES = {
 };
 export const ENEMY_KEYS = Object.keys(ENEMY_TYPES);
 
+/** Components a kill pays, after the difficulty's cut. Fractional bounties are
+ *  kept as fractions rather than rounded per kill — rounding a 0.75 bounty on a
+ *  1-component Surge would floor to 0 and make Hard's Swarm worthless. The HUD
+ *  floors the total for display. */
+export function bountyOf(w, type) {
+  return ENEMY_TYPES[type].bounty * (diffOf(w.difficulty).bounty ?? 1);
+}
+
 /** How far a Patch's repair reaches, in pixels. */
 export const HEAL_RADIUS = 140;
 /** No hit is ever fully absorbed — armour caps out at leaving this through. */
@@ -396,10 +404,21 @@ export const SLOW_BRITTLE = 1.4;
    run that goes best is the one that ends most anticlimactically — so each
    difficulty now has a line to cross. Higher difficulties ask for longer runs
    as well as harder ones, so the three are not interchangeable. */
+/* The ladder shifted up one rung in v30: Easy was reported as too easy, so the
+   old Medium *is* the new Easy and the old Hard is the new Medium. Hard is a
+   new step above anything that existed before — a real wall rather than a
+   relabelling, since simply renaming would have left the top of the game where
+   it already was.
+
+   Hard also scales `bounty`, which the other two do not touch. Past a point,
+   more enemy health alone stops being difficulty and becomes waiting: your
+   towers still win every exchange, each one just takes longer. Cutting the
+   income as well is what makes a hard board a question about what you can
+   afford rather than about your patience. */
 export const DIFFICULTIES = {
-  easy:   { name: 'Easy',   hp: 0.8, components: 80, integrity: 25, winWave: 50 },
-  medium: { name: 'Medium', hp: 1.0, components: 55, integrity: 20, winWave: 100 },
-  hard:   { name: 'Hard',   hp: 1.35, components: 40, integrity: 14, winWave: 150 },
+  easy:   { name: 'Easy',   hp: 1.0,  components: 55, integrity: 20, bounty: 1,    winWave: 50 },
+  medium: { name: 'Medium', hp: 1.35, components: 40, integrity: 14, bounty: 1,    winWave: 100 },
+  hard:   { name: 'Hard',   hp: 1.9,  components: 30, integrity: 10, bounty: 0.75, winWave: 150 },
 };
 export const DIFFICULTY_KEYS = Object.keys(DIFFICULTIES);
 /* Easy is the default now, not medium: it is the only difficulty a new player
@@ -591,6 +610,10 @@ export function createWorld(opts = {}) {
     score: 0,
     over: false,
     won: false, justWon: false,
+    /* Waves actually finished, as opposed to waves *started* — `wave` counts
+       the latter and can run ahead of it, because waves overlap. This is what
+       the win reads. */
+    wavesCleared: 0,
     seed,
     fx: opts.fx || { kill() {}, leak() {}, shot() {}, build() {}, level() {} },
   };
@@ -615,7 +638,7 @@ export function resetGame(w, opts = {}) {
   const D = diffOf(w.difficulty);
   w.components = D.components; w.integrity = D.integrity;
   w.score = 0; w.over = false;
-  w.won = false; w.justWon = false;
+  w.won = false; w.justWon = false; w.wavesCleared = 0;
   w.seed = 20260722;
   // classUpgrades deliberately survives: the armoury is the thing that carries
   // between runs. Clearing it is a separate, explicit action in the menu.
@@ -982,7 +1005,10 @@ export function step(w, dt) {
   for (let i = w.enemies.length - 1; i >= 0; i--) {
     const e = w.enemies[i];
     if (e.hp <= 0) {
-      w.components += ENEMY_TYPES[e.type].bounty;
+      /* Income is scaled by difficulty, score is not. Score has to stay
+         comparable across a run's own history; what the difficulty changes is
+         how much defence that run can afford, not what a kill was worth. */
+      w.components += bountyOf(w, e.type);
       w.score += ENEMY_TYPES[e.type].bounty;
       const p = enemyPos(w, e);
       w.fx.kill(p.x, p.y, e.type);
@@ -1007,13 +1033,30 @@ export function step(w, dt) {
   if (w.waveActive && w.spawnQueue.length === 0 && w.enemies.length === 0) {
     w.waveActive = false;
     w.betweenWaves = true;
+    w.wavesCleared++;
     // surviving a wave pays a bonus that grows with the wave
     w.score += 20 + w.wave * 10;
-    /* Clearing the difficulty's win wave takes the circuit. `justWon` is an
-       edge for the shell to catch (it shows a banner and banks the unlock);
-       `won` stays set for the rest of the run, so a player who chooses to keep
-       going is not congratulated again on every subsequent wave. */
-    if (!w.won && w.wave >= winWave(w.difficulty)) { w.won = true; w.justWon = true; }
+  }
+
+  /* Taking the circuit: you have reached the win wave and the board is clear.
+
+     Deliberately a *state* check, not the wave-clear edge it was in v29. That
+     edge was unreachable in practice: waves overlap (`startWave` works mid-wave
+     and bumps `w.wave`), and with Auto on the shell opens the next wave the
+     moment the current one stops spawning — so the board rarely empties, the
+     edge rarely fires, and a player on Auto watched the counter sail past 50
+     with nothing happening. Asking "am I at the wave, and is the board clear?"
+     every frame cannot be missed by being on the wrong frame.
+
+     It still requires genuinely clearing what is on the board, so it cannot be
+     had by spamming Start Wave — and the shell stops auto-starting at the win
+     wave, so the run is always given the chance to resolve.
+
+     `justWon` is a one-frame edge for the shell; `won` stays set, so a player
+     who keeps going is not congratulated again. */
+  if (!w.won && w.wave >= winWave(w.difficulty)
+      && w.spawnQueue.length === 0 && w.enemies.length === 0) {
+    w.won = true; w.justWon = true;
   }
 }
 
@@ -1038,6 +1081,7 @@ export function snapshot(w) {
        a one-frame edge for the shell, and restoring it would fire the victory
        banner again on the first frame back. */
     won: w.won,
+    wavesCleared: w.wavesCleared,
     towers: w.towers.map(t => ({
       c: t.c, r: t.r, type: t.type, level: t.level, xp: t.xp,
       priority: t.priority, cool: t.cool,
@@ -1080,6 +1124,9 @@ export function hydrate(w, snap) {
   w.score = snap.score ?? 0;
   w.over = !!snap.over;
   w.won = !!snap.won; w.justWon = false;
+  // pre-v30 saves have no count; fall back to the wave number, which is the
+  // closest thing they carry and never under-reports a finished run
+  w.wavesCleared = snap.wavesCleared ?? Math.max(0, (snap.wave ?? 1) - 1);
 
   /* `aim` is rebuilt: it points at a live enemy object, and object identity
      cannot survive JSON. Safe to drop because `step` re-acquires every frame.

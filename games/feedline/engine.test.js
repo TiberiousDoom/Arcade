@@ -408,6 +408,117 @@ test('tickProgress reports the slide between cells', () => {
   assert.ok(E.tickProgress(w) > 0.4 && E.tickProgress(w) < 0.6);
 });
 
+/* ---------- checkpoints ---------- */
+
+test('the board takes the number of meals it takes — the win, in one number', () => {
+  /* The calculation the checkpoints exist because of. 576 cells, a wire that
+     starts at 4 and grows 2 a meal, so 286 meals fills it. Pinned so a change
+     to the grid or the growth rate shows up here rather than being discovered
+     by a player four minutes into a run. */
+  const L = E.LAYOUT;
+  assert.equal(L.COLS * L.ROWS, 576);
+  assert.equal(E.mealsToWin(L), 286);
+  assert.equal(E.mealsToWin(E.LAYOUT_TALL), E.mealsToWin(L), 'both boards are the same job');
+  assert.equal(E.lengthAt(E.mealsToWin(L)), 576, 'and 286 meals is exactly a full board');
+});
+
+test('most of a winning run is spent at the speed floor', () => {
+  // why one mistake costs so much: the tick rate bottoms out early and the
+  // remaining ~80% of the run is played at full pace with a very long wire
+  const atFloor = Math.ceil((E.START_TICK - E.MIN_TICK) / E.TICK_STEP);
+  assert.ok(atFloor < E.mealsToWin(E.LAYOUT) * 0.3,
+    `speed floor should arrive early, hit at meal ${atFloor}`);
+});
+
+test('checkpoints land at the quarters and only move forward', () => {
+  const w = E.createWorld();
+  assert.equal(w.checkpoint, -1, 'nothing banked yet');
+  const cells = w.L.COLS * w.L.ROWS;
+  for (const [i, frac] of E.CHECKPOINTS.entries()) {
+    w.eaten = Math.ceil((frac * cells - E.START_LEN) / E.GROW_PER_FOOD);
+    assert.equal(E.checkpointReached(w), i, `${frac * 100}% is checkpoint ${i}`);
+  }
+  // one meal short of the first is still nothing
+  w.eaten = Math.ceil((E.CHECKPOINTS[0] * cells - E.START_LEN) / E.GROW_PER_FOOD) - 1;
+  assert.equal(E.checkpointReached(w), -1);
+});
+
+test('crossing a checkpoint raises an edge exactly once', () => {
+  const w = E.createWorld();
+  w.running = true;
+  const cells = w.L.COLS * w.L.ROWS;
+  const need = Math.ceil((E.CHECKPOINTS[0] * cells - E.START_LEN) / E.GROW_PER_FOOD);
+  /* One meal short, then eat it — driving 70 meals by hand would just be
+     testing that a straight line hits a wall. `checkpointReached` reads
+     `eaten`, so the count is what matters, not how it got there. */
+  w.eaten = need - 1;
+  assert.equal(E.checkpointReached(w), -1, 'fixture really is one short');
+  w.food = { x: w.wire[0].x + w.dir.x, y: w.wire[0].y + w.dir.y };
+  assert.ok(E.inBounds(w.L, w.food.x, w.food.y), 'and there is room to take it');
+  E.tick(w);
+
+  assert.equal(w.eaten, need);
+  assert.equal(w.checkpoint, 0);
+  assert.equal(w.justCheckpoint, true, 'the shell gets an edge');
+  w.justCheckpoint = false;
+  E.tick(w);
+  assert.equal(w.justCheckpoint, false, 'and not again on the next tick');
+});
+
+test('a resumed checkpoint is a legal board, not a knot', () => {
+  const w = E.createWorld();
+  assert.equal(E.resumeFromCheckpoint(w, null), false, 'nothing banked, nothing to resume');
+  assert.equal(E.resumeFromCheckpoint(w, { eaten: 0 }), false);
+
+  assert.equal(E.resumeFromCheckpoint(w, { eaten: 143, score: 900 }), true);
+  assert.equal(w.eaten, 143, 'the speed comes back with the length');
+  assert.equal(w.score, 900);
+  assert.equal(w.wire.length, E.lengthAt(143));
+
+  const seen = new Set(w.wire.map(c => c.x + ',' + c.y));
+  assert.equal(seen.size, w.wire.length, 'no cell used twice');
+  assert.ok(w.wire.every(c => E.inBounds(w.L, c.x, c.y)), 'all on the board');
+  for (let i = 1; i < w.wire.length; i++) {
+    const a = w.wire[i - 1], b = w.wire[i];
+    assert.equal(Math.abs(a.x - b.x) + Math.abs(a.y - b.y), 1, `body contiguous at ${i}`);
+  }
+  assert.ok(w.food, 'and there is something to eat');
+});
+
+test('every checkpoint resumes into a legal, survivable board on both grids', () => {
+  /* The serpentine ends flush against a wall whenever the length is a whole
+     number of rows — 144 cells on the 18-wide portrait board is exactly eight —
+     and the head then faces straight off the edge. Continuing "the way the fold
+     was running" killed it on the first tick. Every checkpoint on every layout,
+     because that is the shape of the bug: it depends on length vs row width. */
+  for (const layout of [E.LAYOUT, E.LAYOUT_TALL]) {
+    const cells = layout.COLS * layout.ROWS;
+    for (const frac of E.CHECKPOINTS) {
+      const eaten = Math.ceil((frac * cells - E.START_LEN) / E.GROW_PER_FOOD);
+      const w = E.createWorld({ layout });
+      assert.equal(E.resumeFromCheckpoint(w, { eaten, score: 0 }), true);
+      const where = `${layout.COLS}x${layout.ROWS} at ${frac * 100}%`;
+
+      const head = w.wire[0];
+      const nx = head.x + w.dir.x, ny = head.y + w.dir.y;
+      assert.ok(E.inBounds(w.L, nx, ny), `${where}: heading stays on the board`);
+      assert.ok(!w.wire.some(c => c.x === nx && c.y === ny), `${where}: and not into itself`);
+
+      w.running = true;
+      for (let i = 0; i < 8 && !w.over; i++) E.tick(w);
+      assert.equal(w.over, false, `${where}: survives the ticks it is given`);
+    }
+  }
+});
+
+test('resuming clears the flags a finished run left behind', () => {
+  const w = E.createWorld();
+  w.over = true; w.won = true; w.running = false;
+  E.resumeFromCheckpoint(w, { eaten: 70, score: 100 });
+  assert.equal(w.over, false);
+  assert.equal(w.won, false);
+});
+
 /* ---------- win condition ---------- */
 
 test('filling the board wins rather than crashing on nowhere to put food', () => {
