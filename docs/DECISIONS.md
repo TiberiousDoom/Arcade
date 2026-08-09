@@ -938,7 +938,33 @@ The win is a **state** check now — "am I at the wave, and is the board clear?"
 
 The general lesson, and it is not the first time in this project: **an edge is a claim that you will be looking at the exact moment something changes.** Every feature that made waves flow more smoothly made that claim less true.
 
-## 2026-08-08 — Focusing the guns is a downgrade, and the fixed focal point was load-bearing
+## 2026-08-08 — Convergence, take two: the tiers buy *reach*, not *degree*
+
+Superseded the entry below, on a report that stands on its own: at higher waves a command ship that got in close was nearly impossible to destroy. That is true, it is measurable, and the first version of convergence made it worse rather than better.
+
+The measurement that mattered was the one I had not taken. My first pass optimised for *total column damage* — perfect aim on a dense 78-craft column — and concluded focusing was a downgrade. The actual pain point is the opposite case: one hard target, close in. With five mounts converging at a fixed 620px and a command ship at 137px, the rounds pass either side of it. Time to kill, escort thinned to 12: **9.9s**.
+
+Worse, `MIN_FOCUS = 500` — a floor I added to stop the outer mounts angling sideways — clamped the focal point to 500px while the target sat at 137. So convergence pulled the guns to a distance that was wrong for everything. It measured *worse than the fixed point* at close range, and I read that as "focusing does not work" rather than "the floor is in the wrong place". The floor is 120 now.
+
+Two design corrections, both from measurement:
+
+**The focus engages by range, not always.** Far out the fan is an asset — five mounts on one distant point sweep a column and hit many craft at once. Close in it is the whole problem. So convergence commits only inside an engagement range.
+
+**The tiers buy how far out it engages, not how completely it converges.** Interpolating the *degree* produced a non-monotonic curve where tier 2 was worse than tier 1 at close range: a battery focused halfway to its target has neither the fan (which sweeps) nor the point (which kills), and the middle is worse than either end. Buying "engages sooner" is monotonic by construction — every tier is the last plus more board where the guns commit.
+
+The result, measured across tiers:
+
+| | close (137px) | mid (238px) | long-column run |
+|---|---|---|---|
+| none | 9.9s | 11.3s | wave 20, 0 breaches |
+| tier 1 | **3.5s** | **3.9s** | wave 20, 0 breaches |
+| tier 5 | 3.5s | 3.9s | wave 16, 7 breaches |
+
+**Tier 1 is a pure win** — it solves the reported problem with no measured cost, because it only engages right on top of the battery where the fan was never helping. The higher tiers reach further out and genuinely trade sweep for reach, which is a choice worth offering but must not be forced at the first purchase. Both properties have tests.
+
+The lesson is about benchmarks, not turrets: **a synthetic measurement encodes a playstyle, and mine encoded the one the feature was not for.** "Focusing is a downgrade" was a true statement about sweeping a dense column and a false statement about the game.
+
+## 2026-08-08 — [superseded] Focusing the guns is a downgrade, and the fixed focal point was load-bearing
 
 The request was an upgrade making the battery's focus point flexible so the guns could focus fire as the column advances. Built, measured, and it made the battery *worse* at every tier — wave 20 with no breaches unupgraded, wave 9 with twelve breaches at maximum convergence.
 

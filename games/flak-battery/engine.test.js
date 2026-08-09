@@ -1486,6 +1486,107 @@ test('the focal point never collapses onto the battery', () => {
   }
 });
 
+test('convergence is what makes a close command ship killable', () => {
+  /* The reported problem, pinned as a behavioural claim rather than as a
+     constant: at higher waves a command ship that reached the last stretch was
+     very nearly unkillable. Five mounts converging at a fixed 620px throw their
+     rounds either side of something at 137px. */
+  const build = (conv) => {
+    const w = E.createWorld();
+    w.research.points = 1e6;
+    for (const b of E.BRANCHES) while (E.researchDepth(w, b));
+    w.scrap = 1e9; w.lives = 999;
+    while (E.buyMount(w));
+    for (let m = 0; m < w.battery.guns.length; m++) {
+      for (const b of E.BRANCHES) {
+        if (b === 'convergence') continue;
+        while (E.buyUpgrade(w, m, b));
+      }
+      for (let i = 0; i < conv; i++) E.buyUpgrade(w, m, 'convergence');
+    }
+    w.wave = 14;
+    E.spawnWave(w);
+    const ch = w.chains[0];
+    ch.segs.length = 13;                 // head plus a thinned escort
+    ch.speed = 0;                        // held still: this times damage, not travel
+    ch.s = w.pathLen * 0.92;             // right on top of the battery
+    return w;
+  };
+  const timeToKill = (conv) => {
+    const w = build(conv);
+    let t = 0;
+    for (let f = 0; f < 60 * 60 && w.chains.length; f++) {
+      const ch = w.chains[0];
+      if (!ch) break;
+      const hp = E.segPos(w.path, w.pathLen, ch, 0);
+      if (!hp.off) w.cannon.ang = E.clampAim(Math.atan2(hp.y - w.cannon.y, hp.x - w.cannon.x));
+      E.step(w, 1 / 60, true);
+      t += 1 / 60;
+    }
+    return w.chains.length === 0 ? t : Infinity;
+  };
+
+  const without = timeToKill(0);
+  const with5 = timeToKill(E.MAX_TIER);
+  assert.ok(Number.isFinite(without), 'the fixture kills it eventually either way');
+  assert.ok(with5 < without * 0.6,
+    `maxed convergence should transform a close kill (${with5.toFixed(1)}s vs ${without.toFixed(1)}s)`);
+});
+
+test('the tiers buy reach, and every one of them engages at least as far out', () => {
+  /* Interpolating the *degree* of convergence made the middle tiers worse than
+     the low ones — a battery focused halfway to its target has neither the fan
+     nor the point. The tiers buy how far out the focus commits instead, which
+     is monotonic by construction, and this pins it. */
+  const w = E.createWorld();
+  const engageAt = (tier) => {
+    const u = E.newUpgrades();
+    u.convergence = tier;
+    return E.ENGAGE_MIN + (E.stats(w, { upgrades: u }).converge || 0) * (E.ENGAGE_MAX - E.ENGAGE_MIN);
+  };
+  for (let t = 1; t <= E.MAX_TIER; t++) {
+    assert.ok(engageAt(t) > engageAt(t - 1), `tier ${t} should commit further out than ${t - 1}`);
+  }
+  assert.ok(engageAt(0) >= E.ENGAGE_MIN, 'and tier 0 never commits early');
+});
+
+test('the first tier of convergence costs nothing at range', () => {
+  /* The property that makes this an upgrade rather than a trade: tier 1 only
+     engages right on top of the battery, so the fan that sweeps a distant
+     column is untouched. Higher tiers reach further and *do* trade sweep for
+     reach — that is a choice, but it must not be forced at the first purchase. */
+  const w = E.createWorld();
+  w.scrap = 1e9; w.research.points = 1e6;
+  while (E.researchDepth(w, 'convergence'));
+  E.buyUpgrade(w, 0, 'convergence');
+  w.wave = 8; E.spawnWave(w);
+  w.cannon.ang = -Math.PI / 2;
+
+  // a column across the far half of the board keeps the fixed focal range
+  w.chains[0].s = 200;
+  const p = E.aimPointFor(w, gun0(w));
+  const r = Math.hypot(p.x - w.L.W / 2, p.y - w.cannon.y);
+  assert.ok(Math.abs(r - E.FOCUS_RANGE) < 1e-6,
+    `tier 1 must leave a distant column alone (focal ${r.toFixed(0)})`);
+});
+
+test('convergence keeps the fan at long range', () => {
+  // far out the spread is an asset, so the focus must not tighten there
+  const w = E.createWorld();
+  w.scrap = 1e9; w.research.points = 1e6;
+  while (E.researchDepth(w, 'convergence'));
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'convergence');
+  w.wave = 5; E.spawnWave(w);
+  w.cannon.ang = -Math.PI / 2;
+
+  // a column still far away: the focal range should stay at its fixed value
+  w.chains[0].s = 60;
+  const far = E.aimPointFor(w, gun0(w));
+  const rFar = Math.hypot(far.x - w.L.W / 2, far.y - w.cannon.y);
+  assert.ok(Math.abs(rFar - E.FOCUS_RANGE) < 40,
+    `a distant column should leave the fan alone (focal ${rFar.toFixed(0)})`);
+});
+
 test('with nothing on the aim line, convergence changes nothing', () => {
   const w = E.createWorld();
   w.scrap = 1e9; w.research.points = 1e6;

@@ -50,21 +50,28 @@ the speed floor with a wire hundreds of cells long, and one mistake in minute
 four cost all of it. Quarter-board **checkpoints** now bank progress, plus a
 Quit button and a sensitivity slider that is no longer backwards.
 
-**One item did not survive contact with measurement.** The flexible focus point
-was built and made the battery *worse at every tier* — wave 20 with no breaches
-unupgraded, wave 9 with twelve breaches maxed. Three variants were tried. The
-fixed 620px focal point turns out to be load-bearing: five mounts aiming at one
-distant point throw a fan across the column, and focusing them concentrates
-damage onto fewer craft. It ships as an honest trade (+20% score, more leaks)
-with a blurb that says so, rather than as a straight upgrade that quietly makes
-you worse. See DECISIONS.
+**Convergence took two passes, and the second one is the real feature.** My
+first attempt measured focusing as a downgrade and shipped it as a trade — but
+the benchmark I used optimised for *total column damage*, and the actual problem
+(reported next round) is the opposite case: a command ship in close was nearly
+unkillable, because five mounts converging at a fixed 620px put their rounds
+either side of something at 137px. A `MIN_FOCUS` floor of 500 I had added made
+it worse still, clamping the focus to a distance wrong for everything.
+
+Rebuilt: the focus engages **by range**, and the tiers buy how far out it
+engages rather than how completely it converges — interpolating the degree gave
+a non-monotonic curve where tier 2 was worse than tier 1. Measured, escort
+thinned to 12: a close command ship goes **9.9s → 3.5s**, and **tier 1 costs
+nothing at range** (long-column run unchanged at wave 20 / 0 breaches) because it
+only engages right on top of the battery. Higher tiers reach further and do
+trade sweep for reach. Both properties have tests.
 
 ### Still open after this round
 
-- **Convergence is a trade and wants a play opinion.** If focus fire is not
-  wanted as a trade, the honest options are to drop the branch or to rebuild it
-  as per-gun targeting (each mount picking its own craft), which is a bigger
-  change than this round had room for.
+- **Convergence's higher tiers are a trade and want a play opinion.** Tier 1 is
+  free of cost; tiers 2-5 extend the engagement range and measurably thin the
+  sweep on a long column. Whether that reads as a real choice or as a trap only
+  play will say.
 - The win waves (50/100/150) are still untested by play, and the difficulty
   rescale moved the ground under them.
 - Feedline's checkpoints are at the quarters by guess. Whether three is the

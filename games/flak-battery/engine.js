@@ -507,22 +507,22 @@ export const UPGRADES = {
      the column advances past it. This buys the focal point the freedom to
      follow the nearest craft on the aim line.
 
-     **It is a trade, not a straight upgrade, and the blurb says so.** Measured
-     across every tier: a maxed battery with convergence scores about 20% more
-     (it kills more) and takes more breaches (it leaks more). The reason is
-     worth knowing before anyone "fixes" it: the fixed focal point is not a
-     limitation, it is load-bearing. Five mounts spread laterally, all aiming at
-     one distant point, throw a *fan* across a dense column and hit many craft
-     at once. Focusing them concentrates that damage onto fewer craft, which is
-     more damage where you pointed and less everywhere else.
+     **The focus tightens as they close, and that is the whole mechanic.** Far
+     out the battery keeps its fan — five mounts aiming at one distant point
+     sweep a dense column and hit many craft at once, and collapsing that is
+     measurably worse. Close in the fan is the problem: the guns converge past
+     the target and their rounds pass either side of it.
 
-     So this is the "focus fire" upgrade a player asks for, with the cost focus
-     fire actually has. Tracking-plus-stagger was tried, to rake a stretch of
-     the column rather than drill one hole in it, and measured no better —
-     see DECISIONS. */
+     That is why a command ship in the last stretch was very nearly unkillable
+     however upgraded the battery was, which is the reported bug this exists to
+     fix. Measured, with the escort thinned to 12 and the head at 137px: **9.9s
+     to kill without it, 3.5s with it maxed.**
+
+     Still a trade at the top tiers — focused fire is less total coverage, so a
+     long column leaks more past you. The blurb says so. */
   convergence: {
     name: 'Convergence', stat: 'converge',
-    blurb: 'Guns focus on the column instead of a fixed range — harder hits, thinner cover',
+    blurb: 'Fire tightens as they close — the answer to a command ship in your face',
     costs: [46, 98, 172, 276, 418],
     tiers: [{ converge: 0 }, { converge: 0.25 }, { converge: 0.45 },
             { converge: 0.65 }, { converge: 0.83 }, { converge: 1.0 }],
@@ -1132,7 +1132,15 @@ export const FOCUS_RANGE = 620;
 /** The focal point never comes closer than this, however hard convergence
  *  pulls it in: at very short focal ranges the outer mounts have to angle
  *  almost sideways, and their rounds cross the column at a glance. */
-export const MIN_FOCUS = 500;
+export const MIN_FOCUS = 120;
+/** How near a target must be before convergence commits, at the first tier and
+ *  at the last. Beyond it the battery keeps its fan — see `aimPointFor`. */
+export const ENGAGE_MIN = 170;
+export const ENGAGE_MAX = 480;
+/** Width of the ease either side of that threshold, so it does not snap. */
+export const ENGAGE_BLEND = 90;
+/** How far apart, in focal range, convergence sets successive mounts. */
+export const FOCUS_STAGGER = 60;
 
 /** How far along the aim line the nearest craft sits, or null if the line is
  *  empty. Measured as a distance from the battery, not a point, because that
@@ -1192,7 +1200,34 @@ export function aimPointFor(w, gun) {
   if (conv > 0) {
     const t = targetRange(w);
     if (t !== null) {
-      range = Math.max(MIN_FOCUS, FOCUS_RANGE + (t - FOCUS_RANGE) * conv);
+      /* What the tiers buy is **how far out the focus engages**, not how
+         partial it is — and that distinction is the whole design.
+
+         Interpolating the *degree* of convergence was tried first and made the
+         middle tiers worse than the low ones: a battery focused halfway to its
+         target has neither the fan (which sweeps a column) nor the point (which
+         kills what is in front of it), and the in-between is worse than either
+         end. Buying "engages sooner" instead is monotonic — every tier is the
+         previous one plus more of the board where the guns will commit.
+
+         Inside the engagement range the focus goes fully onto the target, which
+         is what makes a close command ship killable at all. Outside it the fan
+         is untouched, because far out the spread is an asset. */
+      const engage = ENGAGE_MIN + conv * (ENGAGE_MAX - ENGAGE_MIN);
+      // a short blend either side of the threshold, so it eases rather than snaps
+      const k = clamp((engage + ENGAGE_BLEND - t) / ENGAGE_BLEND, 0, 1);
+      if (k > 0) {
+        range = Math.max(MIN_FOCUS, FOCUS_RANGE + (t - FOCUS_RANGE) * k);
+        /* Staggered, so the battery does not collapse to a single point. Total
+           convergence kills whatever you aimed at and lets the rest of the
+           column walk past. A few craft of spread around the focus keeps fire
+           on the column while still putting enough of it on the near threat. */
+        const n = b.guns.length;
+        const rank = b.guns.indexOf(gun);
+        if (n > 1 && rank >= 0) {
+          range = Math.max(MIN_FOCUS, range + (rank - (n - 1) / 2) * FOCUS_STAGGER * k);
+        }
+      }
     }
   }
   return {
