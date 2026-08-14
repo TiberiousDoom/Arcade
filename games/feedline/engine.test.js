@@ -430,13 +430,28 @@ test('most of a winning run is spent at the speed floor', () => {
     `speed floor should arrive early, hit at meal ${atFloor}`);
 });
 
-test('checkpoints land at the quarters and only move forward', () => {
+test('the first checkpoint arrives early enough to actually be met', () => {
+  /* The whole reason the ladder changed. At 25% of the board the first bank was
+     70 meals away — further than most runs get — so it shipped, worked, and was
+     reported as missing. */
+  const L = E.LAYOUT;
+  const first = Math.ceil((E.CHECKPOINTS[0] * L.COLS * L.ROWS - E.START_LEN) / E.GROW_PER_FOOD);
+  assert.ok(first <= 20, `the first bank should be inside the opening minute, is ${first} meals`);
+  assert.ok(E.CHECKPOINTS.length >= 6, 'and there should be several to chase');
+  // strictly increasing, and none of them at or past a full board
+  for (let i = 1; i < E.CHECKPOINTS.length; i++) {
+    assert.ok(E.CHECKPOINTS[i] > E.CHECKPOINTS[i - 1], `checkpoint ${i} moves forward`);
+  }
+  assert.ok(E.CHECKPOINTS[E.CHECKPOINTS.length - 1] < 1, 'the last one is not the win itself');
+});
+
+test('checkpoints land where the ladder says and only move forward', () => {
   const w = E.createWorld();
   assert.equal(w.checkpoint, -1, 'nothing banked yet');
   const cells = w.L.COLS * w.L.ROWS;
   for (const [i, frac] of E.CHECKPOINTS.entries()) {
     w.eaten = Math.ceil((frac * cells - E.START_LEN) / E.GROW_PER_FOOD);
-    assert.equal(E.checkpointReached(w), i, `${frac * 100}% is checkpoint ${i}`);
+    assert.equal(E.checkpointReached(w), i, `${(frac * 100).toFixed(0)}% is checkpoint ${i}`);
   }
   // one meal short of the first is still nothing
   w.eaten = Math.ceil((E.CHECKPOINTS[0] * cells - E.START_LEN) / E.GROW_PER_FOOD) - 1;
@@ -485,6 +500,11 @@ test('a resumed checkpoint is a legal board, not a knot', () => {
   assert.ok(w.food, 'and there is something to eat');
 });
 
+/** Unsteered ticks a resumed wire must survive, and cells of clear run it must
+ *  be given. Five, because the deepest checkpoint leaves only six on the
+ *  portrait board — the board is 80% full by then. */
+const RESUME_RUN = 5;
+
 test('every checkpoint resumes into a legal, survivable board on both grids', () => {
   /* The serpentine ends flush against a wall whenever the length is a whole
      number of rows — 144 cells on the 18-wide portrait board is exactly eight —
@@ -504,8 +524,23 @@ test('every checkpoint resumes into a legal, survivable board on both grids', ()
       assert.ok(E.inBounds(w.L, nx, ny), `${where}: heading stays on the board`);
       assert.ok(!w.wire.some(c => c.x === nx && c.y === ny), `${where}: and not into itself`);
 
+      /* The head must be pointed somewhere with room, not merely somewhere
+         legal. A 30-cell wire lies along one row, so "carry on the way the fold
+         was running" can be legal for two ticks and then a wall — which is why
+         the direction is chosen by run length. Five is the bar because the
+         deepest checkpoint genuinely has only six: at 80% of a full board there
+         is not much anywhere, and past that it is the player's job to steer. */
+      const body = new Set(w.wire.map(c => c.x + ',' + c.y));
+      let run = 0;
+      for (let x = head.x, y = head.y;;) {
+        x += w.dir.x; y += w.dir.y;
+        if (!E.inBounds(w.L, x, y) || body.has(x + ',' + y)) break;
+        run++;
+      }
+      assert.ok(run >= RESUME_RUN, `${where}: only ${run} cells of room ahead`);
+
       w.running = true;
-      for (let i = 0; i < 8 && !w.over; i++) E.tick(w);
+      for (let i = 0; i < RESUME_RUN && !w.over; i++) E.tick(w);
       assert.equal(w.over, false, `${where}: survives the ticks it is given`);
     }
   }

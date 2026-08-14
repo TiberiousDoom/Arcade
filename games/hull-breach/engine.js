@@ -84,7 +84,7 @@ export function levelSpeed(level, L = LAYOUT) {
 }
 
 /** How far off vertical the ball leaves the paddle, mapped from where it lands:
- *  centre sends it straight up, the edges kick it out near 60°. This is the
+ *  center sends it straight up, the edges kick it out near 60°. This is the
  *  whole control scheme — the paddle is a protractor, not just a wall. */
 export const PADDLE_MAX_ANGLE = 1.05;   // ~60° from vertical
 /** Slight lean on the opening launch so the first ball is never a dead-vertical
@@ -205,27 +205,45 @@ export function stats(w) {
 
 /* ---------- bricks ---------- */
 
-/** The opening levels are all single-hit plating, and only then does armour
+/** The opening levels are all single-hit plating, and only then does armor
  *  appear. Reported as the start being too hard: level 1 shipped three-hit
  *  bricks in its back rows, so a new player's first board asked for accurate
  *  repeat hits on the same cell before they had the paddle-angle control to
  *  aim one. A single-hit field breaks apart wherever the ball goes, which is
  *  what an opener should do.
  *
- *  Level 3 caps at two so the step up to full armour is a step and not a wall. */
-export const SOFT_LEVELS = 2;      // levels that are entirely single-hit
-export const ARMOUR_FROM = 4;      // full 1-3 banding from here on
+ *  Level 3 caps at two so the step up to full armor is a step and not a wall. */
+/** The most hits a brick can take, at the deepest levels. */
+export const MAX_BRICK_HP = 4;
 
-/** Rows are tougher toward the top: the back rows take three hits, the front
- *  row one. Uniform within a horizontal band so the colouring reads as strata. */
-export function brickHp(row, rows = LAYOUT.BRICK_ROWS, level = ARMOUR_FROM) {
-  const full = clamp(Math.ceil((rows - row) / 2), 1, 3);
-  if (level <= SOFT_LEVELS) return 1;
-  if (level < ARMOUR_FROM) return Math.min(2, full);
-  return full;
+/** How many levels of one pattern cycle before the next armor tier appears.
+ *  `brickPresent` cycles its four shapes every 4 levels, so tying the armor
+ *  ramp to the same period means a player meets **every layout at its current
+ *  difficulty** before anything gets tougher — the shapes and the armor
+ *  escalate on the same clock instead of drifting against each other. */
+export const ARMOR_CYCLE = 4;
+
+/** The toughest brick that may appear at `level`: 1 for the first pass through
+ *  the four layouts, then 2, then 3, then 4 from level 13 on. */
+export function armorCap(level) {
+  return clamp(1 + Math.floor((level - 1) / ARMOR_CYCLE), 1, MAX_BRICK_HP);
 }
 
-/** Points for clearing a brick, scaled by how much armour it had. */
+/** Rows are tougher toward the top, capped by what the level has unlocked.
+ *
+ *  Color is derived from this (see `BRICK_COL` in the shell), so the two can
+ *  no longer disagree: a yellow-green brick takes one hit *because* it takes one
+ *  hit, not because it happens to sit in a front row. They used to be separate
+ *  functions of `row` that correlated by accident, which is why a player could
+ *  reasonably read the colors as difficulty and be wrong. */
+export function brickHp(row, rows = LAYOUT.BRICK_ROWS, level = 13) {
+  const cap = armorCap(level);
+  // spread the available tiers across the rows, toughest at the back
+  const depth = (rows - row) / rows;                 // 0 at the front, ~1 at the back
+  return clamp(Math.ceil(depth * cap), 1, cap);
+}
+
+/** Points for clearing a brick, scaled by how much armor it had. */
 export function brickScore(maxhp) {
   return maxhp * 10;
 }
@@ -247,7 +265,7 @@ export function brickPresent(level, r, c, rows = LAYOUT.BRICK_ROWS, cols = LAYOU
   // level under them.
   switch ((level - 1) % 4) {
     case 0: return (r + c) % 2 === 0;                      // checkerboard
-    case 1: {                                              // centred pyramid
+    case 1: {                                              // centerd pyramid
       const mid = (cols - 1) / 2;
       return Math.abs(c - mid) <= r;
     }
@@ -285,27 +303,28 @@ export function buildBricks(level = 1, L = LAYOUT) {
 
 export const aliveBricks = (w) => w.bricks.filter(b => b.alive).length;
 
-/** Salvage a softened level pays on clear, to make up for the armour it does
+/** Salvage a softened level pays on clear, to make up for the armor it does
  *  not have.
  *
  *  Salvage is `brickSalvage(maxhp)` per brick, so making levels 1-3 lighter
  *  also cut what they pay — by more than half on level 1 — and the shop opens
  *  on the *first* clear, so an easier opening would have bought a slower one.
- *  Paying the difference on the clear keeps `brickSalvage` tied to armour
+ *  Paying the difference on the clear keeps `brickSalvage` tied to armor
  *  everywhere, which is the property that makes a back row worth digging out;
- *  inflating it instead would have decoupled pay from armour on every level to
+ *  inflating it instead would have decoupled pay from armor on every level to
  *  fix three.
  *
  *  Computed from the same two functions that build the field, so it cannot
  *  drift from them if the banding or the layouts change. Zero from
- *  `ARMOUR_FROM` on, where nothing was taken away. */
+ *  `ARMOR_FROM` on, where nothing was taken away. */
 export function softClearBonus(level, L = LAYOUT) {
-  if (level >= ARMOUR_FROM) return 0;
+  const FULL = 1 + (MAX_BRICK_HP - 1) * ARMOR_CYCLE;   // first level at full armor
+  if (level >= FULL) return 0;
   let owed = 0;
   for (let r = 0; r < L.BRICK_ROWS; r++) {
     for (let c = 0; c < L.BRICK_COLS; c++) {
       if (!brickPresent(level, r, c, L.BRICK_ROWS, L.BRICK_COLS)) continue;
-      owed += brickSalvage(brickHp(r, L.BRICK_ROWS, ARMOUR_FROM))
+      owed += brickSalvage(brickHp(r, L.BRICK_ROWS, FULL))
             - brickSalvage(brickHp(r, L.BRICK_ROWS, level));
     }
   }
@@ -315,7 +334,7 @@ export function softClearBonus(level, L = LAYOUT) {
 /* ---------- powerups ---------- */
 
 /** The four drops. `wide` and `slow` are timed; `multi` and `life` fire once.
- *  Kept as data so the shell can label and colour them without a second table. */
+ *  Kept as data so the shell can label and color them without a second table. */
 export const POWERUPS = {
   multi: { name: 'Split',  col: '#6fb7e8', timed: false },
   wide:  { name: 'Wide',   col: '#3fae8f', timed: true  },
@@ -574,7 +593,7 @@ export function relayout(w, L2) {
     if (was) { b.hp = was.hp; b.alive = was.alive; b.flash = 0; }
   }
 
-  const centreFrac = w.paddle.x / w.L.W;      // keep the paddle where it sat
+  const centerFrac = w.paddle.x / w.L.W;      // keep the paddle where it sat
   w.L = L2;
   w.bricks = rebuilt;
   w.balls = [];
@@ -584,19 +603,19 @@ export function relayout(w, L2) {
   // and the paddle is re-widened against the new layout's base width.
   w.drops = [];
   w.paddle.w = paddleWidth(w);
-  setPaddle(w, centreFrac * L2.W);
+  setPaddle(w, centerFrac * L2.W);
   return w;
 }
 
 /* ---------- paddle ---------- */
 
-/** Half the paddle width plus the wall inset — the paddle centre can't go past
+/** Half the paddle width plus the wall inset — the paddle center can't go past
  *  this from either edge, so the bar never overlaps the border. */
 function paddleLimit(w) {
   return w.L.WALL + w.paddle.w / 2;
 }
 
-/** Set the paddle centre directly (pointer control), clamped to the walls. */
+/** Set the paddle center directly (pointer control), clamped to the walls. */
 export function setPaddle(w, x) {
   const lim = paddleLimit(w);
   w.paddle.x = clamp(x, lim, w.L.W - lim);
@@ -607,7 +626,7 @@ export function nudgePaddle(w, dx) {
   setPaddle(w, w.paddle.x + dx);
 }
 
-/** Where a held ball sits: centred on the paddle, resting on its top edge. */
+/** Where a held ball sits: centerd on the paddle, resting on its top edge. */
 export function heldBallPos(w) {
   return { x: w.paddle.x, y: w.L.PADDLE_Y - w.L.BALL_R - 1 };
 }
@@ -699,7 +718,10 @@ function brickBounce(w, ball) {
     bestBrick.alive = false;
     w.score += brickScore(bestBrick.maxhp);
     w.salvage += brickSalvage(bestBrick.maxhp);
-    w.fx.brick(bestBrick.x + bestBrick.w / 2, bestBrick.y + bestBrick.h / 2, bestBrick.row);
+    // row drives the audio pitch, maxhp the particle color — they are
+    // different things now that color means hits rather than depth
+    w.fx.brick(bestBrick.x + bestBrick.w / 2, bestBrick.y + bestBrick.h / 2,
+               bestBrick.row, bestBrick.maxhp);
     const kind = dropFor(w.level, bestBrick.row, bestBrick.col);
     if (kind) {
       w.drops.push({
@@ -786,7 +808,7 @@ export function step(w, dt) {
     // clearing a board pays a bonus that grows with the level
     w.score += 100 + w.level * 50;
     // and, on the softened opening levels only, the salvage their missing
-    // armour would have paid — see `softClearBonus`
+    // armor would have paid — see `softClearBonus`
     w.salvage += softClearBonus(w.level, w.L);
   }
 }

@@ -1,10 +1,12 @@
 # STATUS
 
-Last updated: 2026-08-08 (v30 — round 8 feedback: the win that could not be reached, and a tree cut into nine)
+Last updated: 2026-08-14 (v31 — round 9 feedback: four reports whose causes were not what they looked like)
 
 ## Read this first
 
 This is the "pick back up" file — check here before touching code. See [CLAUDE.md](CLAUDE.md) for architecture (and for how this file is meant to be maintained), and [docs/DECISIONS.md](docs/DECISIONS.md) for why past choices were made.
+
+**The feedback rounds are the playtesting, and they come from a phone.** Every "V*n* Feedback" list in the history below is someone playing these games on a device — so touch, portrait and the safe-area fit work are the *primary* path, not an untested one, and a report about how something feels is a report about glass. It also sets the performance target: a frame time measured in this container or in a desktop browser is a direction, not a verdict.
 
 ## What's playable
 
@@ -14,11 +16,76 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **The cabinet** ([index.html](index.html)) — the front door, listing all four games. Each game links back to it.
 
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). Per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run, buying gun types and the deepest two tiers of each branch). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
-- **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, armoured back rows (from level 4 — the opening levels are single-hit plating), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
-- **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and quarter-board checkpoints a lost run can resume from. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
-- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armoury, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
+- **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance), and played on a phone each round.
+- **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
+- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**491 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — Flak Battery 249, Choke Point 107, Hull Breach 82, Feedline 51, shared 2 — plus **46 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**502 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **47 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 9 feedback — four reports, four causes that were not the report (v31, 2026-08-13)
+
+Every item this round turned out to be worth investigating rather than
+implementing. All four of the interesting ones are written up in
+[docs/DECISIONS.md](docs/DECISIONS.md); the short version:
+
+**Feedline's checkpoints were implemented, tested and unreachable.** The report
+was "didn't get implemented" — the code shipped in v30 and worked. The first
+checkpoint was at 25% of the board: 70 meals, ~80 seconds of clean play, further
+than almost any run gets. The ladder starts at **5%** now and spaces out over
+nine rungs, so an ordinary run banks two or three, and the HUD shows progress to
+the next one instead of the system only ever appearing on the death screen.
+
+**Flak Battery stopped getting harder at wave 17.** `hpScale` hit its ceiling
+there and `waveCount` capped at wave 7, so every wave past 17 was *identical*
+while the player kept upgrading — which is exactly the "too easy by wave 30"
+report. Health now keeps climbing on a gentler endless slope (wave 50: 10.5, was
+6.5), and the **mix** escalates too: at wave 30 plain craft drop from 37 to 10 in
+favour of hardened/shielded/armored. The mix matters more than the health — raw
+hp asks for the damage stat you were already buying; a shielded column asks for
+the right gun.
+
+**The choppiness was the shot glow**, measured at 82 rounds on screen and ~650
+arc fills a frame: **16.36 ms**. Batching every arc into one path per pass was
+implemented and *rejected* — a single fill blends overlapping rounds once and
+dimmed clustered fire (1772 pixels differing). Hoisting the `save`/`restore` and
+composite change out of the loop gets the same pixels at **8.19 ms**, which is
+where the whole win was.
+
+**Pausing the Armory broke the Armory refreshing** — both were reports in this
+same round, and the fix for one caused the other. Gating the frame loop on the
+shop being closed froze `sync()`, which is what repaints affordability. `sync()`
+lives outside the simulation gate now, and the regression test asserts *both*
+properties together, because either alone passes on the broken build.
+
+**Also this round:** Flak Battery's card art was drawn at 420x190 into a 260x110
+bitmap and cropped to the top-left ~60% — the canvas keeps its coordinate space
+and CSS sizes it down; per-gun tabs left the overview (which *is* the gun picker)
+and pin above the detail view, which gained a resolved stat block; power-ups
+default on; mortar rounds got a blast radius; shields cap at 3; convergence
+focuses on the leading command ship's position as asked, and the proportional
+stagger that respec needed took close TTK from 11.6s back to **3.5s**. Choke
+Point: Breaker's cheap track is **range**, Armory prices and scaling raised, XP
+scales with difficulty and Breaker levels slower, scrolling removed, and
+**British spelling swept to American throughout** — including the storage key,
+which migrates the old one forward so nobody loses purchases.
+
+### Still open after this round
+
+- The checkpoint ladder's nine rungs and their spacing are a play judgement. The
+  first bank is now reachable, which was the point; whether banking at 5% feels
+  like a reward or a participation trophy is a question for a session.
+- Flak Battery's late-game climb is measured, not played. Wave 50 at 10.5 hp
+  scale with a hardened mix is a guess at where "still getting harder" stops
+  being "unwinnable".
+- Mortar splash is new and its radius/damage are untuned by play.
+- Choke Point's raised Armory prices move the whole economy; nothing has been
+  played end to end at the new numbers.
+- **Whether the shot-glow fix actually lands on a phone.** The 16.36 ms → 8.19 ms
+  measurement is desktop-class hardware through node-canvas, spot-checked in
+  desktop Chromium. The glow is fill-rate bound — many overlapping translucent
+  arcs under `lighter` — and a phone at DPR 3 pushes several times the pixels, so
+  that number is a direction, not a verdict. Five mounts at deep tiers is the case
+  to re-check on the device the report came from.
 
 ## Round 8 feedback — the unreachable win, and a tree cut into nine (v30, 2026-08-08)
 
@@ -78,7 +145,8 @@ trade sweep for reach. Both properties have tests.
   right number is a play question.
 - Flak Battery's nine branches have not been played as an economy — the costs
   sum correctly to the old tree, which is not the same as being right.
-- Still no device play, on this round or the last two.
+- ~~Still no device play, on this round or the last two.~~ **Wrong** — corrected
+  2026-08-14. Every round has been played, on a phone; see DECISIONS.
 
 ## Round 7 feedback — a campaign, and less to read (v29, 2026-08-07)
 
@@ -95,7 +163,7 @@ fixed together, because one is the gate the other needed:
 - **Easy is the only difficulty to start with.** One win opens Medium, one
   Medium win opens Hard. `DEFAULT_DIFFICULTY` moved to easy to match, which
   meant `START_COMPONENTS`/`START_INTEGRITY` had to stop hardcoding medium.
-- Progress lives beside the armoury in localStorage, with the rules
+- Progress lives beside the armory in localStorage, with the rules
   (`routeUnlocked`/`difficultyUnlocked`/`recordWin`) as pure engine functions.
 
 **Two real bugs behind the UI reports.** The turret pointing away from its
@@ -110,14 +178,14 @@ missing selector.
 **Also:** Auto now opens the next wave when the current one stops *spawning*,
 not when the board empties (the lull it existed to remove); toggled buttons take
 the hot accent with a border and a glow instead of a muted fill; the FF button
-reads `1×` rather than a play triangle; the armoury is a table with classes
+reads `1×` rather than a play triangle; the armory is a table with classes
 across and tracks down, each cell a buy button carrying its price and five pips;
 and carriers drop a power-up about one time in four instead of every time.
 
 **Text cut back everywhere.** The rule used was *delete anything the interface
 already says*: the cabinet's rules paragraphs (the `.how` line names the
-control), the armoury's pricing note (the table's tinting shows it), Choke
-Point's enemy-roster paragraph (colour and size carry it), Flak Battery's
+control), the armory's pricing note (the table's tinting shows it), Choke
+Point's enemy-roster paragraph (color and size carry it), Flak Battery's
 "research a type on the Research tab" (there is a Research tab on screen). The
 one-line lore per game stayed — it was a deliberate call in the naming pass.
 
@@ -125,13 +193,14 @@ one-line lore per game stayed — it was a deliberate call in the naming pass.
 
 - **The win waves are untested by play.** 50/100/150 are first drafts, and
   nobody has yet played Easy to wave 50 to find out whether that is twenty
-  minutes or an hour. The armoury growing between runs cuts both ways here.
+  minutes or an hour. The armory growing between runs cuts both ways here.
 - The campaign has three circuits × three difficulties = nine wins available,
-  but the armoury is shared across all of them, so a Hard run late in the
+  but the armory is shared across all of them, so a Hard run late in the
   campaign starts far stronger than a Hard run early. Whether that wants a
   counterweight is a question for after some play.
 - `DROP_CHANCE` (0.26) is a first pass at "an event, not wallpaper".
-- Still no device play, on this round or the last.
+- ~~Still no device play, on this round or the last.~~ **Wrong** — corrected
+  2026-08-14. Every round has been played, on a phone; see DECISIONS.
 
 ## Round 6 feedback — research, relocation, and a gentler opener (v28, 2026-08-06)
 
@@ -149,7 +218,7 @@ carrying forward:
 - **"Coil's cheap upgrade is splash" — the splash track was inert on a Coil.**
   Base splash was 0 and `stats` grows it multiplicatively, so it did nothing at
   any price. **Node had the same bug and worse**: splash is its *weak* track, so
-  the armoury charged a surcharge for an upgrade that did nothing. Both have a
+  the armory charged a surcharge for an upgrade that did nothing. Both have a
   real base now, and a test asserts every track moves a stat on every class.
 - **Optics' "longer intercept read" is `predict`**, the aim marker's lookahead —
   and the marker read **mount 1 only**, so since v27 made upgrades
@@ -162,14 +231,14 @@ carrying forward:
 (RP) earned at the end of a run from the wave reached, buying gun types
 permanently and the last two tiers of each branch. Scrap stays the run economy;
 fitting a gun still costs scrap, so only the repetition went. Shaped exactly like
-Choke Point's armoury: engine holds it on the world, shell owns the storage.
+Choke Point's armory: engine holds it on the world, shell owns the storage.
 **The counterweight is deliberately not built** — see the open item below.
 
 **Choke Point**: XP cut tenfold (10×, not the 100× first asked — at 100× level 10
 stops being reachable in a run at all); class costs went geometric, since an
-armoury that never resets must not fill up; towers can be **moved** for exactly
+armory that never resets must not fill up; towers can be **moved** for exactly
 what a sell-and-rebuild would burn, keeping level and XP; the ready animation no
-longer strobes; the centre hub glows like the rest of the tower; and Purchase
+longer strobes; the center hub glows like the rest of the tower; and Purchase
 Upgrades moved into the wave row as a glyph, which gives the board a row of
 height back under `fillWidth`.
 
@@ -191,9 +260,10 @@ the shop's tab strip rather than a card buried on another tab.
   actually softens it is unmeasured. Play it first. `researchEarned`'s constants
   (`(wave-1) + floor(wave/5)*2`), `DEPTH_RP`, `GUN_RP` and `FREE_TIER` are all
   first drafts.
-- **Nothing in this round has had device play.** The move gesture in particular
-  wants a real thumb: `DRAG_ARM` is 8px, and the tap-versus-drag split on a tower
-  is the kind of thing that feels different on glass.
+- ~~**Nothing in this round has had device play.**~~ **Wrong** — corrected
+  2026-08-14; it was played on a phone like every other round. The open part was
+  real, though, and the feedback answered it: `DRAG_ARM` at 8px and the
+  tap-versus-drag split on a tower do feel different on glass.
 - Choke Point's `CLASS_COST_STEP` (1.85) roughly doubles a full track's bill.
   Untuned against the new XP rate, and the two interact.
 - Coil is a different class now — short-reach area support rather than long-reach
@@ -292,7 +362,7 @@ The first depth work rather than feel work, and the item `w.balls` was built as 
 
 **Which brick drops what is pure arithmetic on `(level, row, col)`** (`dropFor`), because this engine has no randomness anywhere — so a level's drop map is identical every run and in every test, and is therefore learnable. Same reasoning as `brickPresent`. About one brick in seven drops; the weighting lives in a table's repeats rather than a branch, with `life` one entry in eight.
 
-Timed effects are cleared on life loss, `nextLevel` and `resetGame`, and **survive a relayout** (they were earned) while in-flight capsules do not (their position means nothing on a new board). 16 new engine tests. The shell draws capsules as coloured pills with a one-letter glyph, tints the paddle while `wide` is up, and shows remaining time as slim bars just inside the floor line — bottom-left, because the audio and help buttons own the top corners.
+Timed effects are cleared on life loss, `nextLevel` and `resetGame`, and **survive a relayout** (they were earned) while in-flight capsules do not (their position means nothing on a new board). 16 new engine tests. The shell draws capsules as colored pills with a one-letter glyph, tints the paddle while `wide` is up, and shows remaining time as slim bars just inside the floor line — bottom-left, because the audio and help buttons own the top corners.
 
 Verified in a browser: all four catch correctly through the real `step()`, and the draw path was exercised with every kind on screen plus the empty case.
 
@@ -308,7 +378,7 @@ Device feedback confirmed the aim rework was right, and asked for more difficult
 
 Measured curve: wave 1 is 18 segments / 65 total hp, wave 10 is 54 / ~640, wave 25 is 56 / ~1024. A fully maxed battery with perfect aim clears wave 46 without a breach, so the cap is not a wall — there's a test pinning that it reaches wave 20 untouched.
 
-**The head.** Killing the head now destroys the whole chain and scores every remaining segment — but the head is *armoured by its body*: incoming damage is multiplied by `headDamageFactor(bodyLeft)` = `1/(1+bodyLeft)`. This matters because the head sits at index 0, the **leading** segment: closest to the battery and first to breach. An unprotected instant-kill head would have been the easiest shot on the board and would have made recoil, mid-chain cutting, splitters and flanking all pointless — a large difficulty *decrease*. With the penalty it's a risk/reward call: clear the body, or spend a burst on an early decapitation. Made visible by a ring around the head that thins as the body clears, plus a white flash when a shot is absorbed.
+**The head.** Killing the head now destroys the whole chain and scores every remaining segment — but the head is *armored by its body*: incoming damage is multiplied by `headDamageFactor(bodyLeft)` = `1/(1+bodyLeft)`. This matters because the head sits at index 0, the **leading** segment: closest to the battery and first to breach. An unprotected instant-kill head would have been the easiest shot on the board and would have made recoil, mid-chain cutting, splitters and flanking all pointless — a large difficulty *decrease*. With the penalty it's a risk/reward call: clear the body, or spend a burst on an early decapitation. Made visible by a ring around the head that thins as the body clears, plus a white flash when a shot is absorbed.
 
 **GUI polish** in the same pass: the `.meta` HUD now gives the value weight and the label none (shared, so all four games benefit) at a 4px header cost; shop tap targets went from ~28px to 42px (`.buy`) and 26px to 34px (`.chip`); and "can't afford" is now visually distinct from "maxed" and states the shortfall ("40 · need 15 more") instead of leaving you to subtract.
 
@@ -319,12 +389,12 @@ Measured curve: wave 1 is 18 segments / 65 total hp, wave 10 is 54 / ~640, wave 
 Three of the five ideas from the depth discussion, chosen as the ones that add decisions rather than content.
 
 - **Three circuits, not one.** `ROUTES` holds three routes; a run picks one from its seed, and `resetGame` advances to the next so **Play again is a different board**. Per run, not per wave — swapping the path mid-run would strand towers. Each route is validated by test: axis-aligned legs (`pathCells` walks a cell at a time and relies on it), inside both grids, transposing cell-for-cell, identical length landscape vs portrait, and leaving 60+ buildable cells. `relayout` now carries `routeIndex`, which it previously would have silently reset to route 0 — that regression is tested. The HUD names the circuit (A/B/C), because otherwise a changed board on replay reads as a glitch.
-- **Enemies have abilities, not just bigger numbers.** Previously they differed only in hp/speed/bounty, so more of whichever tower was strongest was always right. Four traits — `armor` (flat reduction, punishes Node's many weak shots), `splashResist` (punishes Breaker's area damage), `slowImmune` (Coil can't set it up), `heals` (target priority starts to matter) — and four new types carrying them: Swarm (many/tiny, what splash is *for*), Shell (plated), Phase (insulated + unslowable), Patch (repairs neighbours). `ENEMY_UNLOCK` introduces one per threshold: swarm 4, shell 7, phase 9, patch 11.
+- **Enemies have abilities, not just bigger numbers.** Previously they differed only in hp/speed/bounty, so more of whichever tower was strongest was always right. Four traits — `armor` (flat reduction, punishes Node's many weak shots), `splashResist` (punishes Breaker's area damage), `slowImmune` (Coil can't set it up), `heals` (target priority starts to matter) — and four new types carrying them: Swarm (many/tiny, what splash is *for*), Shell (plated), Phase (insulated + unslowable), Patch (repairs neighbors). `ENEMY_UNLOCK` introduces one per threshold: swarm 4, shell 7, phase 9, patch 11.
 - **Coil is now a setup piece.** Anything slowed takes `SLOW_BRITTLE` (×1.4) extra damage from everything. The ordering is deliberate and tested: the bonus reads the slow *already* on the target, so a Coil's own shot gets nothing and it functions as support rather than a weak gun.
 
 Curve after the change: wave 1 is 8 enemies / 160 hp, wave 7 is 42 / ~1400, wave 14 is 77 / ~4580.
 
-Readability had to keep up, since "my towers aren't working" must read as *wrong tool* rather than *bug*: each trait gets a silhouette cue (heavy ring, dashed shell, chevron, cross), a patch draws its heal radius, and a mend flashes green. One collision was caught only by screenshot — the old slow tint repainted enemies in almost exactly Shell's blue, so `slow` is now a translucent frost *over* the type colour rather than a replacement.
+Readability had to keep up, since "my towers aren't working" must read as *wrong tool* rather than *bug*: each trait gets a silhouette cue (heavy ring, dashed shell, chevron, cross), a patch draws its heal radius, and a mend flashes green. One collision was caught only by screenshot — the old slow tint repainted enemies in almost exactly Shell's blue, so `slow` is now a translucent frost *over* the type color rather than a replacement.
 
 **Not done, deliberately:** projectiles (worth more once the above is played — travel time makes leading targets and placement angles matter, multiplying these changes rather than standing alone) and the between-waves choice. Difficulty numbers are still untuned by play.
 
@@ -350,7 +420,7 @@ The four games are one story, and were renamed to match it. **You play the invas
 |---|---|---|---|
 | 1 | **Feedline** | the invader — a connected body that grows by taking worlds | Live Wire |
 | 2 | **Flak Battery** | planetary anti-air as the fleet descends | Serpent Battery |
-| 3 | **Choke Point** | ground defence once they have landed | Circuit Breaker |
+| 3 | **Choke Point** | ground defense once they have landed | Circuit Breaker |
 | 4 | **Hull Breach** | the counter-attack against their hull | Angle Iron |
 
 The fiction was chosen to fit mechanics that already existed rather than the other way round: Feedline already grows and wins by covering the board, Flak Battery already faces a descending chain, Choke Point already funnels a column toward a core you defend, and Hull Breach was already a sphere against rectangular plates. Two existing mechanics gained a meaning for free — killing Flak Battery's head ending the formation is now a command ship, and Choke Point's Patch is a repair drone.
@@ -361,7 +431,7 @@ The fiction was chosen to fit mechanics that already existed rather than the oth
 
 **Game IDs and directories were renamed too**, at the owner's request, knowingly discarding all personal bests and saved runs — there is one player and he didn't mind. If that ever changes, note that `shared/scores.js` and `shared/resume.js` both key off the game id, and the cabinet derives that id from a CSS class, so a future rename needs a real migration with a fallback read of the old key.
 
-**The visual half landed in v20**, once the v17 trait cues were confirmed readable on device. Invaders are cubes, defenders are spheres, absolutely — Feedline is a chain of cubes on a tether, Flak Battery a column of square craft, Choke Point square ground units against round emplacements. Hull Breach needed no change: its ball was already a sphere, and its bricks stay rectangular *plates* because they are hull armour rather than craft.
+**The visual half landed in v20**, once the v17 trait cues were confirmed readable on device. Invaders are cubes, defenders are spheres, absolutely — Feedline is a chain of cubes on a tether, Flak Battery a column of square craft, Choke Point square ground units against round emplacements. Hull Breach needed no change: its ball was already a sphere, and its bricks stay rectangular *plates* because they are hull armor rather than craft.
 
 **The art direction is complete across all four games** as of v22. Flak Battery is a column of lit cube craft with glowing spherical ordnance; Hull Breach is lit hull plating with a trailing interceptor. Neither takes phosphor trails — both boards are mostly static, and static content accumulates under a fade; Hull Breach trails only the ball instead, tracked in the shell.
 
@@ -389,8 +459,8 @@ All three followed an existing pattern rather than inventing new architecture (F
 
 - **One settings menu, everywhere.** `shared/pause.js`, `shared/help.js`, and `shared/audio.js`'s `mountAudioToggle` — three separate always-visible corner buttons overlapping the board — are gone, replaced by one `shared/menu.js` (`makeMenu`). Opening it pauses the run (same `{paused, pause(), resume(), toggle()}` contract as the old `pause.js`), and the panel holds mute, controls reference, and (Hull Breach only, via `onLevels`) a Levels entry. `pause.js`/`help.js` are deleted; `audio.js` keeps `makeAudio()`, just not the button.
 - **Header safe-area was only half-fixed.** `shared/theme.css`'s `body` padding covered bottom/left/right insets but never `top` — added `env(safe-area-inset-top)` at the base rule and both media-query overrides.
-- **Choke Point:** Breaker now has its own steeper upgrade-cost curve (separate `upgradeBase`/`upgradeStep` per tower type) so it stops crowding out Node once charge piles up; bounties cut again; `rushWave` is now a gradual fast-forward (compresses remaining gaps, doesn't dump the wave at once); `startWave` now works **mid-wave**, overlapping wave N+1 onto wave N rather than refusing — a real behavior change, the old "cannot start mid-wave" test was rewritten to assert the new overlap instead. Enemy art now uses the same dark-body/lit-rim/offset-back treatment as the towers (`extrudeRect`), dropping the per-trait glyphs (armor border, splash-resist dash, slow-immune chevron, heals cross) — colour and size carry the distinction now. Tower tier pips shifted down-left to clear the body. Road art: dropped the dashed centerline, widened and brightened the edge glow, darkened the channel further.
-- **Flak Battery:** scrap and upgrade/mount costs cut further; base hp and the wave-length ramp both steepened (a zero-upgrade run was reaching wave 10+ unaided); `recoilGain`'s blowback softened (~40% less at the worst case). **Ion cannon reworked**: it now bypasses `shielded`'s frontal-arc deflection (hits from any angle) instead of resisting `hardened`'s damage; `hardened` is a plain tough kind again, and the railgun gets a damage bonus against it instead. New **multi-barrel** upgrade (`buyBarrel`/`barrelCost`, battery-wide, up to 3) — each mount fires that many rounds per volley off one shared heat pool. Fixed a real bug: shot colour used to be read live off the battery's current overdrive tier every frame, so a shot fired while cool would flip red mid-flight the instant the streak climbed — colour (and gun-type) is now baked onto the shot at fire time. Segments, the road, and the gun/barrel art all scaled up (draw-size only; collision radii untouched).
+- **Choke Point:** Breaker now has its own steeper upgrade-cost curve (separate `upgradeBase`/`upgradeStep` per tower type) so it stops crowding out Node once charge piles up; bounties cut again; `rushWave` is now a gradual fast-forward (compresses remaining gaps, doesn't dump the wave at once); `startWave` now works **mid-wave**, overlapping wave N+1 onto wave N rather than refusing — a real behavior change, the old "cannot start mid-wave" test was rewritten to assert the new overlap instead. Enemy art now uses the same dark-body/lit-rim/offset-back treatment as the towers (`extrudeRect`), dropping the per-trait glyphs (armor border, splash-resist dash, slow-immune chevron, heals cross) — color and size carry the distinction now. Tower tier pips shifted down-left to clear the body. Road art: dropped the dashed centerline, widened and brightened the edge glow, darkened the channel further.
+- **Flak Battery:** scrap and upgrade/mount costs cut further; base hp and the wave-length ramp both steepened (a zero-upgrade run was reaching wave 10+ unaided); `recoilGain`'s blowback softened (~40% less at the worst case). **Ion cannon reworked**: it now bypasses `shielded`'s frontal-arc deflection (hits from any angle) instead of resisting `hardened`'s damage; `hardened` is a plain tough kind again, and the railgun gets a damage bonus against it instead. New **multi-barrel** upgrade (`buyBarrel`/`barrelCost`, battery-wide, up to 3) — each mount fires that many rounds per volley off one shared heat pool. Fixed a real bug: shot color used to be read live off the battery's current overdrive tier every frame, so a shot fired while cool would flip red mid-flight the instant the streak climbed — color (and gun-type) is now baked onto the shot at fire time. Segments, the road, and the gun/barrel art all scaled up (draw-size only; collision radii untouched).
 - **Drift Net → Feedline.** Full rename (directory, file names, game id, manifest/cabinet/docs), following the existing 2-prior-renames precedent — discards the old personal-best under `drift-net`, same as before. Gained a settings section in its menu: a swipe-sensitivity slider and a swipe/virtual-d-pad input-mode choice, both stored in localStorage; keyboard keeps working regardless of mode.
 - **Hull Breach:** fixed the level-select stacking bug (`#levelSelect` now `z-index:8`, so the opening banner can never paint over it) and wired it into the new menu (`onLevels`) so it's reachable mid-run, not just from the opening banner.
 
@@ -400,9 +470,9 @@ All three followed an existing pattern rather than inventing new architecture (F
 
 The largest round so far, and mostly not tuning: **Flak Battery's shop and Choke Point's upgrade system were both replaced**, not adjusted.
 
-**Choke Point — towers level themselves, money buys the class.** The manual three-tier upgrade is gone. Towers carry `xp`/`level` (1–10) and level from damage that actually lands, capped at the target's remaining health plus a small kill bonus — otherwise a Breaker parked over the spawn levels on overkill. What scrap buys is a per-class **armoury** (damage / fire rate / range / splash), and it **persists across runs** in localStorage. Each class buys its speciality cheap and its opposite dear (Node rate/splash, Breaker splash/rate, Coil range/damage), which is what stops the three converging on the same build.
+**Choke Point — towers level themselves, money buys the class.** The manual three-tier upgrade is gone. Towers carry `xp`/`level` (1–10) and level from damage that actually lands, capped at the target's remaining health plus a small kill bonus — otherwise a Breaker parked over the spawn levels on overkill. What scrap buys is a per-class **armory** (damage / fire rate / range / splash), and it **persists across runs** in localStorage. Each class buys its speciality cheap and its opposite dear (Node rate/splash, Breaker splash/rate, Coil range/damage), which is what stops the three converging on the same build.
 
-Since the armoury only grows, **difficulty** (easy/medium/hard) is the counterweight, scaling enemy health and the opening purse in opposite directions, and it rides along with the score so a Hard wave 14 is not filed against an Easy one. `charge` became **components**; the save reads both names so a v26 run in progress resumes with its money.
+Since the armory only grows, **difficulty** (easy/medium/hard) is the counterweight, scaling enemy health and the opening purse in opposite directions, and it rides along with the score so a Hard wave 14 is not filed against an Easy one. `charge` became **components**; the save reads both names so a v26 run in progress resumes with its money.
 
 Two stated requirements are pinned by tests rather than left to drift: a **level-10 Breaker reaches exactly three cells**, and one with the range track maxed reaches exactly **four**.
 
@@ -412,7 +482,7 @@ Two stated requirements are pinned by tests rather than left to drift: a **level
 
 **Flak Battery — upgrades per emplacement.** `stats(w)` became `stats(w, gun)` and every caller must now say which mount it means. One tab per emplacement in the shop, each with its own four branches, its own retrofit row, and a **large drawing of the gun actually fitted there** — five of them, one per type. Prices deliberately unchanged: a new mount arrives bare, so a fifth gun competes against deepening the four you have.
 
-**The mortar lobs.** `arc: true` had been set on every mortar round since the gun shipped and was read by *nothing*, so the blurb described behaviour that did not exist. Rounds now carry a travelled distance and cannot hit anything inside `MORTAR_ARM`.
+**The mortar lobs.** `arc: true` had been set on every mortar round since the gun shipped and was read by *nothing*, so the blurb described behavior that did not exist. Rounds now carry a travelled distance and cannot hit anything inside `MORTAR_ARM`.
 
 **Extra barrels fire parallel**, laterally offset rather than angularly fanned, with smaller and weaker flanking rounds. Both the portrait and the mount art read the offsets from the engine so the picture cannot drift from the geometry.
 
@@ -428,7 +498,7 @@ Two stated requirements are pinned by tests rather than left to drift: a **level
 
 ### Still open after this round
 
-- The armoury has had no device play yet. The costs (`CLASS_BASE_COST`, `SPEC_DISCOUNT`/`WEAK_PENALTY`) and the XP curve (`xpForNext`) are first drafts and will want a pass once there is a feel for how fast a class actually climbs.
+- ~~The armory has had no device play yet.~~ **Wrong** — corrected 2026-08-14; it was played on a phone. The costs (`CLASS_BASE_COST`, `SPEC_DISCOUNT`/`WEAK_PENALTY`) and the XP curve (`xpForNext`) were first drafts, and later rounds did ask for exactly the pass this predicted.
 - Flak Battery's per-emplacement economy is untuned on purpose — the five-fold bill *is* the balance, but nobody has yet played a run deep enough to say whether a wide-and-shallow battery is genuinely competitive with a narrow-and-deep one.
 - `fillWidth` is Choke Point only. If another game ever wants it, the `body.scrolls` pairing is the part to remember.
 
@@ -438,11 +508,11 @@ Everything in the two queued lists below was acted on. Notable outcomes:
 
 - **The Flak Battery standalone is retired.** `flak-battery-standalone.html` and `build.mjs` are gone; its render test now boots the real shell in memory via `tools/inline.mjs`, like the other three. It even gained a boot test it never had.
 - **Menu button moved into the header**, absolutely positioned rather than as a flex child — as a third child it wrapped onto its own row and added ~50px of header height on every game. `header` gets `position:relative` + `padding-right` to reserve its column.
-- **The real "header too high" cause was a flexbox trap**, not padding: `body` was `align-items:center`, and a centred flex item taller than its container overflows *both* ways, so `overflow:hidden` clipped the top off-screen. Now `flex-start`.
+- **The real "header too high" cause was a flexbox trap**, not padding: `body` was `align-items:center`, and a centerd flex item taller than its container overflows *both* ways, so `overflow:hidden` clipped the top off-screen. Now `flex-start`.
 - **`fit.js` stopped guessing.** `GAP_AND_PADDING = 34` didn't track the ≤560px media query or safe-area insets; it now measures body padding, every shell child that isn't the board, and the flex gaps. Choke Point's `extra` was removed as a consequence — its controls strip is a shell child and was being counted twice.
 - **Choke Point's "dead space either side" needed no route redraw.** The board was height-constrained because three stacked full-width wave buttons ate 225px (28% of the screen). Putting Start / FF / Auto in one row cut that to 165px and the board now fills the full stage width (gutter 0; canvas 357×535, up from 318×478). The 12×8 grid and all three routes are untouched.
 - **Rush Wave became two controls**, per your correction: a **1×/2×/4× fast-forward** (the shell calls `step` N times per frame — a 4× `dt` would overshoot the sub-step sizes the collision and spawn code assume) and an **Auto** toggle that starts the next wave when one clears. `rushWave`/`RUSH_COMPRESSION` are deleted.
-- **Health is brightness now, in both games.** Flak Battery's hp numbers and Choke Point's hp bars are gone; a damaged thing dims instead, via a new shared `dim()` in `glow.js` (needed because `cube`/`extrudeRect` take colours but no intensity argument the way `glowStroke` does).
+- **Health is brightness now, in both games.** Flak Battery's hp numbers and Choke Point's hp bars are gone; a damaged thing dims instead, via a new shared `dim()` in `glow.js` (needed because `cube`/`extrudeRect` take colors but no intensity argument the way `glowStroke` does).
 - **The "more 3D" cue was the joining edges.** Choke Point's enemies moved to `cube()`; Flak Battery's oblong craft kept their hand-rolled path but gained the same corner-linking strokes. Both also had their body fill lifted off near-black — the same lesson already recorded for Choke Point's towers, which read as hollow rings until the body was lifted.
 - **Flak Battery's spacing had to grow with the craft.** At `long = r*2.8` against spacing 30 the plates were wider than the gap and a chain fused into one continuous fence. `SEGMENT_SPACING` is now 42 with square craft at `r*2.7`. That spacing is also what caps chain length: 78 craft × 42 ≈ 3276px of a 4374px portrait path (~75%), so further difficulty should come from `hpScale`, which has no geometric ceiling.
 - **Power-up drops are off by default**, behind `createWorld({ drops })` and a settings-menu toggle. Excluded from snapshots for the same reason `assistR` is — it describes the player's setting, not the run.

@@ -30,47 +30,57 @@ test('the 4th level in the cycle is a solid wall of the full grid', () => {
   assert.ok(bricks.every(b => b.alive));
 });
 
-test('bricks are armoured toward the back rows', () => {
-  assert.equal(E.brickHp(L.BRICK_ROWS - 1), 1, 'front row takes one hit');
-  assert.equal(E.brickHp(0), 3, 'back row takes three');
+test('bricks are armored toward the back rows', () => {
+  const deep = 1 + (E.MAX_BRICK_HP - 1) * E.ARMOR_CYCLE;   // first fully-armored level
+  assert.equal(E.brickHp(L.BRICK_ROWS - 1, L.BRICK_ROWS, deep), 1, 'front row takes one hit');
+  assert.equal(E.brickHp(0, L.BRICK_ROWS, deep), E.MAX_BRICK_HP, 'back row takes the most');
   for (let r = 1; r < L.BRICK_ROWS; r++) {
-    assert.ok(E.brickHp(r - 1) >= E.brickHp(r), 'hp never rises toward the front');
+    assert.ok(E.brickHp(r - 1, L.BRICK_ROWS, deep) >= E.brickHp(r, L.BRICK_ROWS, deep),
+      'hp never rises toward the front');
   }
 });
 
-test('brick score scales with armour', () => {
+test('brick score scales with armor', () => {
   assert.ok(E.brickScore(3) > E.brickScore(1));
 });
 
 test('the opening levels are single-hit plating only', () => {
-  for (let level = 1; level <= E.SOFT_LEVELS; level++) {
+  for (let level = 1; level <= E.ARMOR_CYCLE; level++) {
     for (const b of E.buildBricks(level)) {
       assert.equal(b.maxhp, 1, `level ${level} row ${b.row} should take one hit`);
     }
   }
 });
 
-test('armour arrives in a step, not a cliff', () => {
-  // level 3 caps at two hits; from ARMOUR_FROM on, the full 1-3 banding is back
-  const mid = E.buildBricks(E.ARMOUR_FROM - 1);
-  assert.ok(mid.every(b => b.maxhp <= 2), 'the level before full armour caps at two');
-  assert.ok(mid.some(b => b.maxhp === 2), 'but it is not all single-hit either');
-
-  const full = E.buildBricks(E.ARMOUR_FROM);
-  assert.ok(full.some(b => b.maxhp === 3), 'full armour is back');
-  assert.ok(full.some(b => b.maxhp === 1), 'and the front rows are still soft');
+test('armor arrives one tier per pass through the four layouts', () => {
+  /* The ramp is tied to `brickPresent`'s four-shape cycle on purpose, so a
+     player meets every layout at its current difficulty before anything gets
+     tougher. First pass all single-hit, then two, then three, then four. */
+  for (let tier = 1; tier <= E.MAX_BRICK_HP; tier++) {
+    const first = (tier - 1) * E.ARMOR_CYCLE + 1;
+    const last = tier * E.ARMOR_CYCLE;
+    for (let level = first; level <= last; level++) {
+      const bricks = E.buildBricks(level);
+      const worst = Math.max(...bricks.map(b => b.maxhp));
+      assert.equal(E.armorCap(level), tier, `level ${level} is on tier ${tier}`);
+      assert.ok(worst <= tier, `level ${level} should cap at ${tier}, saw ${worst}`);
+      assert.equal(worst, tier, `level ${level} should actually reach ${tier}`);
+      assert.ok(bricks.some(b => b.maxhp === 1), `level ${level} keeps soft front rows`);
+    }
+  }
 });
 
-test('a softened level pays back the salvage its missing armour would have earned', () => {
-  // what matters is that a soft clear is worth the same as an armoured one:
+test('a softened level pays back the salvage its missing armor would have earned', () => {
+  // what matters is that a soft clear is worth the same as an armored one:
   // the shop opens on the first clear, so an easier opener must not buy less
-  for (let level = 1; level < E.ARMOUR_FROM; level++) {
+  const FULL = 1 + (E.MAX_BRICK_HP - 1) * E.ARMOR_CYCLE;
+  for (let level = 1; level < FULL; level++) {
     const earned = E.buildBricks(level).reduce((a, b) => a + E.brickSalvage(b.maxhp), 0);
     const wouldHave = E.buildBricks(level).reduce(
-      (a, b) => a + E.brickSalvage(E.brickHp(b.row, L.BRICK_ROWS, E.ARMOUR_FROM)), 0);
+      (a, b) => a + E.brickSalvage(E.brickHp(b.row, L.BRICK_ROWS, FULL)), 0);
     assert.equal(earned + E.softClearBonus(level), wouldHave, `level ${level} is made whole`);
   }
-  assert.equal(E.softClearBonus(E.ARMOUR_FROM), 0, 'and nothing is owed once armour is back');
+  assert.equal(E.softClearBonus(FULL), 0, 'and nothing is owed once armor is back');
 });
 
 test('clearing a level pays its salvage bonus through the real step', () => {
@@ -223,7 +233,7 @@ test('the ball is still speed-correct after a relayout', () => {
 /* ---------- collision primitives ---------- */
 
 test('circleRect detects overlap and clears a gap', () => {
-  assert.equal(E.circleRect(50, 50, 10, 40, 40, 20, 20), true, 'centre inside');
+  assert.equal(E.circleRect(50, 50, 10, 40, 40, 20, 20), true, 'center inside');
   assert.equal(E.circleRect(5, 5, 3, 40, 40, 20, 20), false, 'far away');
   assert.equal(E.circleRect(38, 50, 3, 40, 40, 20, 20), true, 'just grazing the left face');
 });
@@ -242,7 +252,7 @@ test('rectHit returns null when the ball is clear', () => {
 
 /* ---------- paddle ---------- */
 
-test('the paddle centre is clamped inside the walls', () => {
+test('the paddle center is clamped inside the walls', () => {
   const w = E.createWorld();
   E.setPaddle(w, -500);
   assert.ok(w.paddle.x >= L.WALL + w.paddle.w / 2, 'not past the left wall');
@@ -310,14 +320,14 @@ test('a ball bounces off the top wall', () => {
   assert.ok(w.balls[0].vy > 0, 'now heading down');
 });
 
-test('the paddle sends a centre hit straight up and edge hits outward', () => {
+test('the paddle sends a center hit straight up and edge hits outward', () => {
   const w = emptyWorld();
   E.setPaddle(w, 400);
 
-  // centre strike
+  // center strike
   w.balls = [{ x: 400, y: L.PADDLE_Y - 2, vx: 0, vy: 200, r: L.BALL_R }];
   E.step(w, 1 / 60);
-  assert.ok(Math.abs(w.balls[0].vx) < 1e-6, 'centre goes straight up');
+  assert.ok(Math.abs(w.balls[0].vx) < 1e-6, 'center goes straight up');
   assert.ok(w.balls[0].vy < 0);
 
   // right-edge strike kicks the ball to the right
@@ -964,11 +974,11 @@ test('a long rally never lets the ball escape the playfield sideways or up', () 
   assert.ok(true, 'survived the rally without an assertion firing');
 });
 
-test('a ball fired straight down is always caught by a centred paddle', () => {
+test('a ball fired straight down is always caught by a centerd paddle', () => {
   const w = emptyWorld();
   // a decoy brick off in the corner keeps the board non-empty, so the run
   // doesn't flag "level clear" (which would freeze the ball) mid-test. The
-  // ball travels straight up/down the centre line and never reaches it.
+  // ball travels straight up/down the center line and never reaches it.
   w.bricks = [{ x: 40, y: 72, w: 20, h: 20, row: 0, col: 0, hp: 9, maxhp: 9, alive: true, flash: 0 }];
   E.setPaddle(w, 400);
   w.held = false;

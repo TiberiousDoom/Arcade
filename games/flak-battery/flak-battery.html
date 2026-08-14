@@ -96,8 +96,12 @@
   /* One tab per emplacement, plus the battery. Upgrades are per-gun, so the
      tabs are the only thing in the shop that says *which* gun you are
      spending on — they need to be unmissable and thumb-sized. Each carries
-     its mount's own colour, so "which of these is my railgun" is a glance. */
-  #shopTabs{display:flex;gap:5px;flex-wrap:wrap}
+     its mount's own color, so "which of these is my railgun" is a glance. */
+  /* Sticky, so moving between mounts stays possible while scrolled down a long
+     tree — nine branches plus barrels and refit is taller than the panel. */
+  #shopTabs{display:flex;gap:5px;flex-wrap:wrap;position:sticky;top:-16px;z-index:2;
+    background:rgba(11,20,24,.97);padding:6px 0}
+  #shopTabs.hidden{display:none}
   .tab{flex:1 1 0;min-width:62px;min-height:46px;display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:2px;cursor:pointer;border-radius:3px;
     border:1px solid var(--line);background:#0f2027;color:var(--dim);padding:5px 4px}
@@ -149,7 +153,7 @@
   /* A third state, and the reason it needs a look of its own: "maxed" and
      "locked behind research" are both disabled buttons, but one is the end of
      the road and the other is a signpost to the Research tab. Tinted toward
-     the research colour so the answer is where to go, not that you are done. */
+     the research color so the answer is where to go, not that you are done. */
   .buy.gated:disabled{background:#1a2b33;color:#7fb6cf;border:1px solid #2c4d5c}
   /* Research points are a different currency from scrap and must never be
      mistaken for it, so anything priced in RP is tinted rather than brass. */
@@ -188,6 +192,13 @@
   .markRow .pips i{flex:1 1 0;height:4px;background:#1b3038;border-radius:1px}
   .markRow .pips i.on{background:#7fb6cf}
   .fitted{font-size:9px;color:var(--dim);letter-spacing:.06em}
+
+  /* the resolved stat block on a mount's own tab */
+  .statBlock{grid-column:1/-1}
+  .statBlock dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));
+    gap:3px 10px;margin-top:2px}
+  .statBlock dt{font-size:9px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
+  .statBlock dd{font:700 12px/1.3 'Chivo Mono',monospace;color:var(--bone);margin-bottom:3px}
 
   #shopGo{align-self:center;margin-top:2px}
 </style>
@@ -250,7 +261,7 @@
 <script type="module">
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
-import { glowStroke, glowDot, dim, extrudeRect, extrudeDisc, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
+import { glowStroke, glowDot, glowDots, dim, extrudeRect, extrudeDisc, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
 import { recordProgress } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
@@ -311,13 +322,15 @@ const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in wind
    Feedline's input settings and shared/scores.js. */
 const DROPS_KEY = 'arcade:flak-battery:drops';
 function readDrops() {
-  try { return localStorage.getItem(DROPS_KEY) === '1'; } catch { return false; }
+  // on unless explicitly turned off — they are a good part of the game, and
+  // defaulting them off hid them behind a switch nobody had reason to find
+  try { return localStorage.getItem(DROPS_KEY) !== '0'; } catch { return true; }
 }
 function writeDrops(v) { try { localStorage.setItem(DROPS_KEY, v ? '1' : '0'); } catch {} }
 
 /* ---------- research: the progression that outlives a run ----------
 
-   Same division of labour as Choke Point's armoury: the engine holds the
+   Same division of labour as Choke Point's armory: the engine holds the
    research on the world so it stays the only thing that decides what is
    buyable, and the *shell* is what loads and saves it. The key is local rather
    than in `shared/` because Flak Battery is the only game with a research tree;
@@ -424,7 +437,7 @@ addEventListener('pointercancel', endPointer);
 
 /* Belt and braces on top of the CSS: a long press must not start a selection
    or open the context menu mid-game. Scoped to the game surface so normal
-   page behaviour survives on desktop. */
+   page behavior survives on desktop. */
 for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
   cv.addEventListener(ev, e => e.preventDefault());
 }
@@ -473,7 +486,7 @@ settingsEl.className = 'menuSettings';
 settingsEl.innerHTML = `
   <h3>Settings</h3>
   <label><input type="checkbox" id="dropsToggle"${world.drops ? ' checked' : ''}> Power-up drops</label>
-  <p class="settingNote">Applies from the next carrier destroyed.</p>
+  <p class="settingNote">On by default. Applies from the next carrier destroyed.</p>
   <p class="settingNote" id="rpNote"></p>
   <button type="button" id="wipeResearch">Reset research</button>
 `;
@@ -498,7 +511,7 @@ syncResearchNote();
 
 wipeResearch.addEventListener('click', () => {
   // Two taps, because it throws away every run's worth of research and there is
-  // no getting it back. Copied from Choke Point's armoury reset, deliberately —
+  // no getting it back. Copied from Choke Point's armory reset, deliberately —
   // the two controls destroy the same kind of thing and should behave alike.
   if (wipeResearch.dataset.armed !== '1') {
     wipeResearch.dataset.armed = '1';
@@ -595,7 +608,7 @@ function predictHit() {
   /* The marker reads the *best* optics on the battery, not mount 1's.
 
      It used to take guns[0] on the grounds that the aim line is drawn through
-     the centre gun — but since v27 made upgrades per-emplacement that meant
+     the center gun — but since v27 made upgrades per-emplacement that meant
      buying Optics on mounts 2-5 changed nothing you could see, while the shop
      blurb promised a longer read. Taking the maximum makes the purchase honest
      wherever it is made: the marker shows the furthest-ahead solution any of
@@ -681,6 +694,7 @@ function renderShop() {
   port.appendChild(cap);
   host.appendChild(port);
   drawCannonPortrait(pc.getContext('2d'), gun.type, E.barrelsOf(gun));
+  host.appendChild(renderGunStats(gun));
 
   // this mount's four branches
   for (const b of E.BRANCHES) {
@@ -761,44 +775,55 @@ function renderTabs() {
   const host = $('shopTabs');
   host.innerHTML = '';
 
-  // the overview, leftmost: the way back out of a single mount's tree
-  const ov = document.createElement('button');
-  ov.className = 'tab' + (shopTab === OVERVIEW ? ' on' : '');
-  ov.innerHTML = `<b>&#9707;</b><span>All</span>`;
-  ov.addEventListener('click', () => { shopTab = OVERVIEW; renderShop(); });
-  host.appendChild(ov);
+  /* The **gun** tabs only exist while you are looking at a gun.
 
-  world.battery.guns.forEach((g, i) => {
-    const b = document.createElement('button');
-    b.className = 'tab' + (i === shopTab ? ' on' : '');
-    b.style.setProperty('--tab', E.GUN_TYPES[g.type].col);
-    b.innerHTML = `<b>${i + 1}</b><span>${E.GUN_TYPES[g.type].name}</span>`;
-    b.addEventListener('click', () => { shopTab = i; renderShop(); });
-    host.appendChild(b);
-  });
+     On the overview they were a second copy of the cards directly below them —
+     the cards *are* the picker, and offering both meant two controls doing one
+     job. In a mount's detail view they are how you move between mounts without
+     going back out, so there they stay, pinned at the top.
 
-  /* The add-mount tab: a dashed "+" slot sitting where the next emplacement
-     will appear. It used to be a card buried on the Battery tab, which meant
-     the one purchase that changes this strip was the one you had to leave it to
-     make. The price rides on the tab itself, so saving up for a mount does not
-     mean going to another tab to check the number. */
-  const mCost = E.mountCost(world);
-  const add = document.createElement('button');
-  add.className = 'tab add';
-  const full = mCost === null;
-  add.innerHTML = `<b>+</b><span>${full ? 'Full' : mCost}</span>`;
-  add.disabled = full || world.scrap < mCost;
-  add.setAttribute('aria-label', full ? 'All emplacements built' : `Add an emplacement for ${mCost} scrap`);
-  add.addEventListener('click', () => {
-    if (E.buyMount(world)) {
-      // land on the gun you just bought — it is bare, and its tab is where
-      // every decision about it now lives
-      shopTab = world.battery.guns.length - 1;
-      renderShop();
-      sync();
-    }
-  });
-  host.appendChild(add);
+     Research is not a gun, and stays reachable from either view. So does adding
+     an emplacement, which the overview offers as a card instead of a tab. */
+  const detail = shopTab !== OVERVIEW;
+
+  if (detail) {
+    const ov = document.createElement('button');
+    ov.className = 'tab';
+    ov.innerHTML = `<b>&#9707;</b><span>All</span>`;
+    ov.addEventListener('click', () => { shopTab = OVERVIEW; renderShop(); });
+    host.appendChild(ov);
+
+    world.battery.guns.forEach((g, i) => {
+      const b = document.createElement('button');
+      b.className = 'tab' + (i === shopTab ? ' on' : '');
+      b.style.setProperty('--tab', E.GUN_TYPES[g.type].col);
+      b.innerHTML = `<b>${i + 1}</b><span>${E.GUN_TYPES[g.type].name}</span>`;
+      b.addEventListener('click', () => { shopTab = i; renderShop(); });
+      host.appendChild(b);
+    });
+
+    /* The add-mount slot: a dashed "+" where the next emplacement will appear.
+       The price rides on the tab itself, so saving up for a mount does not mean
+       going elsewhere to check the number. */
+    const mCost = E.mountCost(world);
+    const full = mCost === null;
+    const add = document.createElement('button');
+    add.className = 'tab add';
+    add.innerHTML = `<b>+</b><span>${full ? 'Full' : mCost}</span>`;
+    add.disabled = full || world.scrap < mCost;
+    add.setAttribute('aria-label',
+      full ? 'All emplacements built' : `Add an emplacement for ${mCost} scrap`);
+    add.addEventListener('click', () => {
+      if (E.buyMount(world)) {
+        // land on the gun you just bought — it is bare, and its own tab is
+        // where every decision about it lives
+        shopTab = world.battery.guns.length - 1;
+        renderShop();
+        sync();
+      }
+    });
+    host.appendChild(add);
+  }
 
   const bt = document.createElement('button');
   bt.className = 'tab' + (shopTab === RESEARCH ? ' on' : '');
@@ -820,8 +845,12 @@ function renderOverview(host) {
     el.className = 'empCard';
     el.style.setProperty('--tab', G.col);
 
+    /* The portrait draws in a fixed 420x190 space, so the canvas has to *be*
+       420x190 — it was 260x110, which drew the art at full size into a smaller
+       bitmap and showed the top-left corner of each gun. CSS scales it down to
+       the card; the backing store keeps the drawing's own coordinates. */
     const pc = document.createElement('canvas');
-    pc.width = 260; pc.height = 110;
+    pc.width = 420; pc.height = 190;
     el.appendChild(pc);
 
     const depth = E.BRANCHES.reduce((a, b) => a + (gun.upgrades[b] || 0), 0);
@@ -851,6 +880,37 @@ function renderOverview(host) {
     });
     host.appendChild(add);
   }
+}
+
+/* What this emplacement actually is, in numbers.
+
+   Every one of these already existed and none of them were visible: a player
+   buying Damage tier 4 had no way to see what it bought, and no way to compare
+   two mounts except by remembering what they had spent. Resolved through
+   `stats` and `gunStats`, so what is shown is exactly what fires. */
+function renderGunStats(gun) {
+  const S = E.stats(world, gun);
+  const G = E.gunStats(world, gun.type);
+  const T = E.OD_TIERS[0];                    // base tier, so the numbers are comparable
+  const n = E.barrelsOf(gun);
+
+  const rows = [
+    ['Damage', (T.dmg * S.dmg * G.dmg).toFixed(1) + (n > 1 ? ` ×${n}` : '')],
+    ['Reload', (T.rate * G.rate).toFixed(2) + 's'],
+    ['Round speed', Math.round(S.shotSpeed)],
+    ['Pierce', T.pierce + S.pierce + G.pierce],
+    ['Bounces', S.bounces],
+    ['Heat/shot', (S.heatPerShot * n).toFixed(2)],
+    ['Cooling', '×' + S.cool.toFixed(2)],
+    ['Lockout', '×' + S.lock.toFixed(2)],
+    ['Convergence', S.converge ? Math.round(S.converge * 100) + '%' : '—'],
+  ];
+
+  const el = document.createElement('div');
+  el.className = 'branch statBlock';
+  el.innerHTML = `<h3>Stats</h3>` +
+    `<dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+  return el;
 }
 
 /** The retrofit row for one mount: swap it to any researched type, for a fee.
@@ -893,7 +953,7 @@ function renderBattery() {
 
   /* Research points, stated first and large. This is a different currency from
      the scrap in the shop header, and the two must never be confused for one
-     another — so it gets its own line, its own colour, and says outright where
+     another — so it gets its own line, its own color, and says outright where
      more comes from. */
   const head = document.createElement('div');
   head.className = 'rpHead';
@@ -1180,7 +1240,7 @@ function drawCannonPortrait(g, type, barrels = 1) {
    and railgun lines were both describing the v24 design: ion used to resist
    hardened hulls and no longer does (it bypasses shielded plating instead —
    v25), and the railgun is what actually beats a hardened hull now, via
-   `railBonus`. Two guns were sold on behaviour they had not had for two
+   `railBonus`. Two guns were sold on behavior they had not had for two
    builds. */
 function gunBlurb(type) {
   const G = E.GUN_TYPES[type];
@@ -1270,7 +1330,7 @@ function perspScale(y) {
 
 /* ---------- segment rendering ---------- */
 
-// a rounded rect path, centred on origin
+// a rounded rect path, centerd on origin
 function roundRectPath(w, h, r) {
   const x = -w / 2, y = -h / 2;
   ctx.beginPath();
@@ -1282,7 +1342,7 @@ function roundRectPath(w, h, r) {
   ctx.closePath();
 }
 
-// lighten/darken a hex colour by a signed amount
+// lighten/darken a hex color by a signed amount
 function shade(hex, amt) {
   const n = parseInt(hex.slice(1), 16);
   let r = (n >> 16) + amt, g = ((n >> 8) & 255) + amt, b = (n & 255) + amt;
@@ -1293,7 +1353,7 @@ function shade(hex, amt) {
 }
 
 // draw one segment as an oriented, lit plate. `idx` gives each plate a slight
-// size cadence so a run of them reads as overlapping armour.
+// size cadence so a run of them reads as overlapping armor.
 function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
   const K = E.KIND[seg.kind];
   const dmgT = 1 - seg.hp / seg.maxhp;
@@ -1301,11 +1361,11 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
   const now = performance.now();
 
   // plate dimensions: longer than the spacing so consecutive plates overlap
-  // into a continuous armoured body, and clearly longer than wide so each
+  // into a continuous armored body, and clearly longer than wide so each
   // points forward
   /* Square, and square on purpose: the invaders are cubes and the defenders are
      spheres, everywhere, without exception. These were elongated plates, which
-     read as a single armoured body — but the fiction is a column of individual
+     read as a single armored body — but the fiction is a column of individual
      craft, and a chain of cubes says that better as well as matching the other
      games. Kept slightly long so the direction of travel still reads. */
   /* Square, and sized to sit *inside* `SEGMENT_SPACING` (42) so consecutive
@@ -1347,7 +1407,7 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
   const dx = depth * 0.55, dy = depth;
   const hx = long / 2, hy = wide / 2;
 
-  /* Both faces are lifted well above the board colour, exactly as Choke
+  /* Both faces are lifted well above the board color, exactly as Choke
      Point's towers are: at a near-black fill the body vanished into the
      background and the craft read as a hollow outline rather than a solid
      object. The back face stays darker than the front so the offset reads
@@ -1401,7 +1461,7 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
 
   ctx.restore();
 
-  // The head's body-armour, made visible. Without this the mechanic is a
+  // The head's body-armor, made visible. Without this the mechanic is a
   // mystery: shots land on the head and simply do nothing, with no hint that
   // the body behind it is the reason. The ring tightens and fades as the body
   // is cleared, so "keep chewing and the head opens up" is readable at a glance.
@@ -1413,7 +1473,7 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
     const col = hit ? '#ffffff' : '#c9a227';
     const lw = hit ? 2.6 : 1 + prot * 1.6;
     const alpha = hit ? 1 : 0.35 + prot * 0.6;
-    // four corner brackets, not a full halo — an armour-plating cue on the
+    // four corner brackets, not a full halo — an armor-plating cue on the
     // command ship rather than a target reticle drawn around a "head"
     const half = Math.PI / 5;
     for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
@@ -1432,10 +1492,10 @@ function drawSegment(seg, sp, heading, idx, bodyLeft = 0) {
 // local rotated frame (long axis = x)
 function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
   if (seg.kind === 'head') {
-    /* A command ship, not a face. The previous version drew a centre ridge
+    /* A command ship, not a face. The previous version drew a center ridge
        and two pale discs with red pupils near the leading edge — which is a
        nose and two eyes, and read as a head no matter what the fiction said.
-       Nothing here is bilaterally paired across the centre line any more:
+       Nothing here is bilaterally paired across the center line any more:
        the structure is a hull spine with an *offset* bridge block and
        stepped deck plating, which reads as a vessel seen from above. */
     const fwd = long * 0.5, half = wide * 0.5;
@@ -1456,7 +1516,7 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
       ctx.stroke();
     }
 
-    // bridge: a raised block set off-centre, so the silhouette is asymmetric
+    // bridge: a raised block set off-center, so the silhouette is asymmetric
     ctx.fillStyle = shade(K.col, 60);
     roundRectPathAt(-fwd * 0.28, -half * 0.34, long * 0.2, wide * 0.26, 1);
     ctx.fill();
@@ -1522,7 +1582,7 @@ function drawSegmentDetail(seg, K, long, wide, dmgT, now) {
 
   if (K.railBonus) {
     // a reinforcing lattice over the whole plate, not one face — unlike
-    // `shielded`'s directional plate, this reads as "armoured all around"
+    // `shielded`'s directional plate, this reads as "armored all around"
     // rather than "block this side"
     ctx.strokeStyle = 'rgba(150,235,255,.55)';
     ctx.lineWidth = 1;
@@ -1728,15 +1788,31 @@ function draw() {
 
   // your ordnance is spherical, like everything on the defenders' side, and
   // it is the brightest thing on the board because it is the thing you aim.
-  // Colour is baked onto the shot at fire time (engine.js's fireGun) rather
+  // Color is baked onto the shot at fire time (engine.js's fireGun) rather
   // than read live off the battery here — a shot fired while cool must stay
-  // the colour it was fired at, not flip to red mid-flight the instant the
+  // the color it was fired at, not flip to red mid-flight the instant the
   // streak climbs into Critical after it already launched.
-  for (const p of world.shots) {
-    ctx.fillStyle = p.col;
-    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
-    glowDot(ctx, p.x, p.y, p.r, p.col);
-    glowDot(ctx, p.x, p.y, p.r * .5, '#ffffff');
+  /* Rounds, batched by colour. Drawn one at a time this was the single most
+     expensive thing on the board: at five upgraded guns the screen holds ~80
+     rounds, and each cost a fill plus two `glowDot`s of four arcs apiece —
+     about 650 individual fills a frame, which is what the reported choppiness
+     was. Grouped, it is a handful of draw calls whatever the count. */
+  if (world.shots.length) {
+    const byCol = new Map();
+    for (const p of world.shots) {
+      let list = byCol.get(p.col);
+      if (!list) byCol.set(p.col, list = []);
+      list.push(p);
+    }
+    for (const [col, list] of byCol) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      for (const p of list) { ctx.moveTo(p.x + p.r, p.y); ctx.arc(p.x, p.y, p.r, 0, TAU); }
+      ctx.fill();
+      glowDots(ctx, list, col);
+    }
+    // the white cores, one batch for the lot — they share a colour
+    glowDots(ctx, world.shots.map(p => ({ x: p.x, y: p.y, r: p.r * .5 })), '#ffffff');
   }
   for (const b of world.bits) {
     ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2));
@@ -1751,7 +1827,7 @@ function draw() {
     const gang = Math.atan2(tp.y - b.y, tp.x - g.x);
     const G = E.GUN_TYPES[g.type];
     ctx.save(); ctx.translate(g.x, b.y); ctx.rotate(gang);
-    // barrel, tinted by gun type; greyed while locked, reddening with heat.
+    // barrel, tinted by gun type; grayed while locked, reddening with heat.
     // Scaled up from 10px tall / full b.len — feedback wanted the battery
     // bigger alongside the column and the road.
     const barCol = g.locked > 0 ? '#4a5765' : g.heat > 0.6 ? '#e0774d' : G.col;
@@ -1774,7 +1850,7 @@ function draw() {
     ctx.restore();
 
     /* Mount base, built like a side-on Choke Point tower: an offset back face,
-       a lifted body well above the board colour, and a lit rim. Same
+       a lifted body well above the board color, and a lit rim. Same
        vocabulary, so the two games' hardware looks like it came from the same
        factory — a squat trapezoid housing under the dome, which is the bit
        that reads as "tower seen from the side" rather than "half a circle". */
@@ -1821,7 +1897,7 @@ function draw() {
     }
   }
 
-  // aim guide runs from the battery centre through the aim point
+  // aim guide runs from the battery center through the aim point
   const cx = W / 2;
   ctx.strokeStyle = 'rgba(230,233,226,.13)'; ctx.setLineDash([3, 9]); ctx.lineWidth = 1;
   ctx.beginPath();

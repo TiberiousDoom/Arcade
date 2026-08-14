@@ -276,7 +276,7 @@ test('levelling is paced in thousands of damage, not tens', () => {
   assert.ok(damageToMax < 12000, `but must stay reachable in a run, got ${Math.round(damageToMax)}`);
 });
 
-/* ---------- the armoury ---------- */
+/* ---------- the armory ---------- */
 
 test('a class buys its speciality cheaper and its opposite dearer', () => {
   for (const type of E.TOWER_KEYS) {
@@ -302,7 +302,7 @@ test('class upgrades are bought with components and cap out', () => {
 });
 
 test('each level of a track costs meaningfully more than the last', () => {
-  // The armoury never resets, so a flat curve means it fills up and stays full.
+  // The armory never resets, so a flat curve means it fills up and stays full.
   for (const type of E.TOWER_KEYS) {
     for (const track of E.CLASS_TRACKS) {
       for (let l = 1; l < E.CLASS_MAX; l++) {
@@ -344,7 +344,7 @@ test('a class upgrade lifts every tower of that class and no others', () => {
   assert.equal(E.stats(w, coil).dmg, coilBefore, 'the coil did not');
 });
 
-test('the armoury survives a reset, because that is the point of it', () => {
+test('the armory survives a reset, because that is the point of it', () => {
   const w = richWorld();
   E.buyClassUpgrade(w, 'breaker', 'splash');
   const kept = w.classUpgrades.breaker.splash;
@@ -603,6 +603,48 @@ test('a fractional bounty is not rounded away to nothing', () => {
   assert.ok(E.bountyOf(hard, 'swarm') > 0);
 });
 
+test('a Breaker levels slower per point of damage than a Node', () => {
+  /* Reported: Breakers level far too quickly. XP is credited per damage dealt
+     and a Breaker deals several times what a Node does per shot, so on a flat
+     rate the class that hits hardest also levels fastest — compounding an
+     advantage it already had. */
+  assert.ok(E.XP_RATE.breaker < E.XP_RATE.node, 'breaker earns at a discount');
+  for (const k of E.TOWER_KEYS) assert.ok(E.XP_RATE[k] > 0, `${k} still levels`);
+
+  // and it shows up in a real exchange, not just the table
+  const xpFor = (type) => {
+    const w = towerVsEnemy(type);
+    w.enemies[0].hp = 1e6; w.enemies[0].maxhp = 1e6;
+    for (let i = 0; i < 240; i++) E.step(w, 1 / 60);
+    const s = E.stats(w, w.towers[0]);
+    // XP per unit of damage output, so the comparison is fair across fire rates
+    return w.towers[0].xp / (s.dmg / s.rate);
+  };
+  assert.ok(xpFor('breaker') < xpFor('node'), 'per unit of damage output, a breaker gains less');
+});
+
+test('a harder difficulty levels towers more slowly', () => {
+  for (const k of E.DIFFICULTY_KEYS) assert.ok(E.DIFFICULTIES[k].xp > 0, `${k} has an xp dial`);
+  assert.ok(E.DIFFICULTIES.hard.xp < E.DIFFICULTIES.medium.xp);
+  assert.ok(E.DIFFICULTIES.medium.xp < E.DIFFICULTIES.easy.xp);
+
+  const gained = (difficulty) => {
+    const w = towerVsEnemy('node', { difficulty });
+    w.enemies[0].hp = 1e6; w.enemies[0].maxhp = 1e6;
+    for (let i = 0; i < 240; i++) E.step(w, 1 / 60);
+    return w.towers[0].level * 1000 + w.towers[0].xp;
+  };
+  assert.ok(gained('hard') < gained('easy'), 'the same fight teaches less on hard');
+});
+
+test('the armory is a long-term commitment, not an early purchase', () => {
+  // it is permanent, so filling it quickly means the game solves itself for
+  // good rather than for a run
+  const track = (type, k) => [0, 1, 2, 3, 4].reduce((a, l) => a + E.classCost(type, k, l), 0);
+  assert.ok(track('node', 'rate') > 1500, 'a full track is a real bill');
+  assert.ok(E.CLASS_COST_STEP > 2, 'and the last levels are the expensive ones');
+});
+
 test('difficulty scales enemy hp and the opening purse in opposite directions', () => {
   const easy = E.createWorld({ difficulty: 'easy' });
   const hard = E.createWorld({ difficulty: 'hard' });
@@ -806,8 +848,8 @@ function overlook(w, type, span = 0) {
   throw new Error(`no cell overlooks ${span}px of route within ${type}'s range`);
 }
 
-function towerVsEnemy(type) {
-  const w = richWorld();
+function towerVsEnemy(type, opts = {}) {
+  const w = richWorld(opts);
   const { c, r, d } = overlook(w, type);
   E.buildTower(w, c, r, type);
   w.enemies.push({ type: 'load', dist: d, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
@@ -917,7 +959,7 @@ test('the sleeping margin is the looser of the two', () => {
   assert.ok(E.READY_SLEEP_MARGIN > E.READY_MARGIN);
 });
 
-/* ---------- enemy abilities: making a favourite tower the wrong answer ---------- */
+/* ---------- enemy abilities: making a favorite tower the wrong answer ---------- */
 
 /** Park an enemy of `type` inside a fresh tower's range and return both. */
 function towerVsType(towerType, enemyType, hp = 500) {
@@ -930,7 +972,7 @@ function towerVsType(towerType, enemyType, hp = 500) {
   return { w, e };
 }
 
-test('armour blunts small hits far more than heavy ones', () => {
+test('armor blunts small hits far more than heavy ones', () => {
   // the point of Shell: Node's many weak shots are the wrong tool for it
   const node = towerVsType('node', 'shell');
   const nodeHp = node.e.hp; E.step(node.w, 1 / 60);
@@ -953,8 +995,8 @@ test('armour blunts small hits far more than heavy ones', () => {
   assert.ok(maxed.dmg - armor > (stats0('node').dmg - armor) * 2, 'a maxed Node gets meaningfully through');
 });
 
-test('armour never absorbs a hit completely', () => {
-  const { w, e } = towerVsType('coil', 'shell');   // coil dmg is below shell armour
+test('armor never absorbs a hit completely', () => {
+  const { w, e } = towerVsType('coil', 'shell');   // coil dmg is below shell armor
   const hp0 = e.hp;
   E.step(w, 1 / 60);
   assert.ok(e.hp < hp0, 'something still got through');
@@ -1058,7 +1100,7 @@ test('deployed swarm carry the wave hp scale, like any other spawn', () => {
   assert.equal(s.maxhp, Math.round(E.ENEMY_TYPES.swarm.hp * E.hpScale(12)));
 });
 
-test('a patch repairs its neighbours but not itself', () => {
+test('a patch repairs its neighbors but not itself', () => {
   const w = richWorld();
   const heals = E.ENEMY_TYPES.patch.heals;
   const patch = { type: 'patch', dist: 100, hp: 20, maxhp: 44, speed: 0, r: 13, slow: 0 };

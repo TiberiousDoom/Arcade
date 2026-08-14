@@ -55,7 +55,7 @@ if (grow && g.world && 'grow' in g.world) g.world.grow = grow;
 let t = 1000;
 for (let i = 0; i < frames; i++) { t += 1000 / 60; g.frame(t); }
 
-/* Composite onto the board colour before saving. Most shells clear to
+/* Composite onto the board color before saving. Most shells clear to
    transparent and let the page background show through, so a raw capture has an
    alpha channel — which renders as WHITE in most viewers and makes a dark game
    look like a blown-out negative. Feedline happens to escape this because its

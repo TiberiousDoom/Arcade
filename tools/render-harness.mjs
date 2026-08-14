@@ -2,7 +2,7 @@
    actually executes.
 
    Why this exists: the engine suites are pure logic and never touch a canvas,
-   so a typo in a draw function — a missing colour, a renamed field, an
+   so a typo in a draw function — a missing color, a renamed field, an
    undefined lookup — sails past every one of them and only shows up as a blank
    or frozen screen in a browser. Worse, verifying by eye in a headless browser
    is unreliable: requestAnimationFrame is throttled to roughly 0.1fps there, so

@@ -28,7 +28,7 @@ export const CELL = 64;
  *  Several of them because a single fixed circuit meant every run was the same
  *  board: the whole game was one puzzle, solved once. A route is picked per run
  *  (not per wave — swapping the path mid-run would strand towers), so replaying
- *  is a different defence problem rather than the same one faster.
+ *  is a different defense problem rather than the same one faster.
  *
  *  Transposing each (swap every pair) yields a valid portrait route by
  *  construction, since the grid dimensions swap too, and because cells are
@@ -94,7 +94,7 @@ export function cellAt(L, px, py) {
 
 /* ---------- path geometry (same arc-length model as Flak Battery) ---------- */
 
-/** Build the polyline through the route's cell centres, tagging each vertex
+/** Build the polyline through the route's cell centers, tagging each vertex
  *  with cumulative arc-length `s`. Returns the points and the total length. */
 export function buildPath(L, routeIndex = 0) {
   const pts = routeAt(L, routeIndex).map(([c, r]) => cellCenter(L, c, r));
@@ -143,7 +143,7 @@ export function pathCells(L, routeIndex = 0) {
  *  from that, not these tables directly. Ranges are in pixels; rate is seconds
  *  between shots; slow is a fraction and duration in seconds. */
 /* Each type is a base stat line plus two words: the track it is *good* at
-   buying (`spec`, discounted in the armoury) and the one it is bad at (`weak`,
+   buying (`spec`, discounted in the armory) and the one it is bad at (`weak`,
    surcharged). That pairing is what keeps the three classes from converging on
    the same build — you can push a Node's fire rate cheaply and its splash only
    at a painful price, so a Node stays a Node however much you spend on it. */
@@ -152,7 +152,7 @@ export const TOWER_TYPES = {
      stays well under half of one, so a Node never becomes a cut-price Breaker.
      It is not zero because zero made the whole splash track inert: `stats`
      grows splash multiplicatively, so a base of 0 stayed 0 however much was
-     spent, and splash is Node's `weak` track — meaning the armoury charged a
+     spent, and splash is Node's `weak` track — meaning the armory charged a
      surcharge for an upgrade that did nothing whatsoever. A dear option is a
      judgement call; a dear option that does nothing is a trap. */
   node: {
@@ -167,7 +167,7 @@ export const TOWER_TYPES = {
   breaker: {
     name: 'Breaker', cost: 48, col: '#e0503c', blurb: 'Heavy splash, long reach',
     base: { range: 120, rate: 1.4, dmg: 24, splash: 44, slow: 0, slowDur: 0 },
-    spec: 'splash', weak: 'rate',
+    spec: 'range', weak: 'rate',
   },
   /* Coil chills a small cluster rather than a single enemy, and buys splash
      cheap. Its splash used to be 0 with `spec: 'range'` — and because `stats`
@@ -181,7 +181,7 @@ export const TOWER_TYPES = {
   coil: {
     name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Chills a cluster; slowed takes more',
     base: { range: 84, rate: 0.8, dmg: 2, splash: 24, slow: 0.4, slowDur: 1.2 },
-    spec: 'splash', weak: 'range',
+    spec: 'splash', weak: 'dmg',
   },
 };
 export const TOWER_KEYS = Object.keys(TOWER_TYPES);
@@ -194,7 +194,7 @@ export const TOWER_KEYS = Object.keys(TOWER_TYPES);
 
    Now a tower levels itself by fighting: XP for damage dealt, a bonus for the
    killing blow. What you *spend* money on is the class as a whole, in the
-   armoury, and that carries between runs. So the two currencies of progress
+   armory, and that carries between runs. So the two currencies of progress
    are separated — placement earns, purchase compounds. */
 export const MAX_LEVEL = 10;
 
@@ -211,6 +211,12 @@ export const MAX_LEVEL = 10;
 
 /** XP credited per point of damage that actually lands. */
 export const XP_PER_DAMAGE = 0.1;
+/** Per-class XP multiplier. XP is credited per point of damage *dealt*, and a
+ *  Breaker deals several times what a Node does per shot — so on a flat rate the
+ *  class that hits hardest also levels fastest, compounding an advantage it
+ *  already had. Breaker earns at a discount to put the three classes on
+ *  comparable footing per unit of work rather than per unit of damage. */
+export const XP_RATE = { node: 1, breaker: 0.45, coil: 1.15 };
 /** Flat XP for landing a kill, on top of the damage credited. Small on
  *  purpose: the bulk of a tower's XP should come from steady work, not from
  *  whoever happens to land the last hit on a Load. */
@@ -242,7 +248,7 @@ export function addXp(tower, amount) {
   return gained;
 }
 
-/* ---------- the armoury: per-class upgrades, bought and kept ---------- */
+/* ---------- the armory: per-class upgrades, bought and kept ---------- */
 
 export const CLASS_TRACKS = ['dmg', 'rate', 'range', 'splash'];
 export const CLASS_MAX = 5;
@@ -251,7 +257,10 @@ export const CLASS_MAX = 5;
  *  +1/3 — see the Breaker reach note on `stats`. */
 export const CLASS_GAIN = { dmg: 0.12, rate: 0.1, range: 1 / 15, splash: 0.15 };
 
-const CLASS_BASE_COST = { dmg: 60, rate: 55, range: 50, splash: 55 };
+/* Raised across the board in v31: the armory is permanent, so it is the one
+   economy where being able to fill it quickly means the game solves itself for
+   good rather than for a run. */
+const CLASS_BASE_COST = { dmg: 95, rate: 88, range: 80, splash: 88 };
 /** A class buys its speciality at a discount and its opposite at a surcharge. */
 export const SPEC_DISCOUNT = 0.6;
 export const WEAK_PENALTY = 1.8;
@@ -259,12 +268,12 @@ export const WEAK_PENALTY = 1.8;
  *
  *  The curve used to be linear (`base * (1 + level * 0.8)`), so the fifth level
  *  cost only four times the first and a full track was cheap enough that the
- *  armoury filled up quickly — which matters more here than anywhere else,
- *  because the armoury never resets. Geometric now, matching every other cost
+ *  armory filled up quickly — which matters more here than anywhere else,
+ *  because the armory never resets. Geometric now, matching every other cost
  *  curve in the repo (Flak Battery's branches run about 1.75x a tier, its
  *  mounts about 1.6x a step): the last level costs twelve times the first, and
  *  a full track runs roughly double what it did. */
-export const CLASS_COST_STEP = 1.85;
+export const CLASS_COST_STEP = 2.15;
 
 export function newClassUpgrades() {
   const out = {};
@@ -303,7 +312,7 @@ export function sellValue(tower) {
   return Math.floor(TOWER_TYPES[tower.type].cost * 0.5);
 }
 
-/** Effective stats: base × level × whatever the armoury has bought for the
+/** Effective stats: base × level × whatever the armory has bought for the
  *  class. The one place stats come from — never read `base` directly.
  *
  *  Two numbers here are requirements rather than taste, and both are pinned by
@@ -335,7 +344,7 @@ export function stats(w, tower) {
 /*  Enemies used to differ only in hp, speed and bounty, which meant there was
  *  never a reason to build a *mix* of towers — more of whatever was strongest
  *  was always correct. These traits exist to make specific towers the wrong
- *  answer, so a defence has to cover several cases:
+ *  answer, so a defense has to cover several cases:
  *
  *    armor        flat reduction on every hit, so many weak shots (Node) are
  *                 wasted and few heavy ones (Breaker) are right
@@ -361,7 +370,7 @@ export const ENEMY_TYPES = {
   // insulated against splash, and quick — punish leaning on Breaker
   phase: { name: 'Phase', hp: 34, speed: 104, bounty: 4, r: 10, col: '#b58fd0',
            splashResist: 0.8, slowImmune: true },
-  // repairs its neighbours. Towers shoot the furthest-along enemy, so a patch
+  // repairs its neighbors. Towers shoot the furthest-along enemy, so a patch
   // trailing the pack is safe unless you build to reach it. Heal rate/radius
   // raised and unlock pulled earlier so it's a real nuisance, not a no-op —
   // at wave 11 with a 96px/7hp-per-sec heal it was over before it mattered.
@@ -385,7 +394,7 @@ export function bountyOf(w, type) {
 
 /** How far a Patch's repair reaches, in pixels. */
 export const HEAL_RADIUS = 140;
-/** No hit is ever fully absorbed — armour caps out at leaving this through. */
+/** No hit is ever fully absorbed — armor caps out at leaving this through. */
 export const MIN_DAMAGE = 1;
 /** A slowed enemy takes this much extra damage. This is what makes Coil worth
  *  building: on its own it barely scratches anything, but it sets targets up
@@ -394,10 +403,10 @@ export const SLOW_BRITTLE = 1.4;
 
 /* ---------- waves ---------- */
 
-/* The armoury persists between runs, so without a counterweight every run
+/* The armory persists between runs, so without a counterweight every run
    after the first is easier than the last and the game quietly solves itself.
    Difficulty is that counterweight, and it is the player's dial rather than an
-   automatic scaling: pick the level that makes your current armoury interesting.
+   automatic scaling: pick the level that makes your current armory interesting.
    Recorded alongside the score, so an easy run is never compared to a hard one. */
 /* `winWave` is the wave that ends a run in victory rather than in a breach. A
    tower defense with no finish line is a game you can only ever lose, and the
@@ -410,15 +419,19 @@ export const SLOW_BRITTLE = 1.4;
    relabelling, since simply renaming would have left the top of the game where
    it already was.
 
+   Harder settings also slow *levelling* (`xp`): a longer run at a higher
+   difficulty would otherwise hand out more total damage and so more levels,
+   which is the opposite of what raising the difficulty should do.
+
    Hard also scales `bounty`, which the other two do not touch. Past a point,
    more enemy health alone stops being difficulty and becomes waiting: your
    towers still win every exchange, each one just takes longer. Cutting the
    income as well is what makes a hard board a question about what you can
    afford rather than about your patience. */
 export const DIFFICULTIES = {
-  easy:   { name: 'Easy',   hp: 1.0,  components: 55, integrity: 20, bounty: 1,    winWave: 50 },
-  medium: { name: 'Medium', hp: 1.35, components: 40, integrity: 14, bounty: 1,    winWave: 100 },
-  hard:   { name: 'Hard',   hp: 1.9,  components: 30, integrity: 10, bounty: 0.75, winWave: 150 },
+  easy:   { name: 'Easy',   hp: 1.0,  components: 55, integrity: 20, bounty: 1,    xp: 1,    winWave: 50 },
+  medium: { name: 'Medium', hp: 1.35, components: 40, integrity: 14, bounty: 1,    xp: 0.7,  winWave: 100 },
+  hard:   { name: 'Hard',   hp: 1.9,  components: 30, integrity: 10, bounty: 0.75, xp: 0.45, winWave: 150 },
 };
 export const DIFFICULTY_KEYS = Object.keys(DIFFICULTIES);
 /* Easy is the default now, not medium: it is the only difficulty a new player
@@ -436,7 +449,7 @@ export const winWave = (difficulty) => diffOf(difficulty).winWave;
    who could not beat the easiest board was handed a worse one. Routes are
    earned now: you keep replaying the one you are on until you win it.
 
-   Same division of labour as the armoury: these are pure functions over a
+   Same division of labour as the armory: these are pure functions over a
    plain object, and the *shell* is what loads and saves it. */
 
 export function newProgress() {
@@ -558,7 +571,7 @@ export function wavePlan(wave) {
 /** How far into a group the next one starts. Groups used to run strictly end
  *  to end with a breath between, so a wave was a sequence of single-type
  *  problems solved one at a time — the Sparks were gone before the Loads
- *  arrived. Overlapping them is what forces a defence to cover several cases
+ *  arrived. Overlapping them is what forces a defense to cover several cases
  *  at once, which is the entire point of having enemy traits. */
 export const GROUP_OVERLAP = 0.55;
 
@@ -603,7 +616,7 @@ export function createWorld(opts = {}) {
     difficulty,
     components: D.components,
     integrity: D.integrity,
-    /* The armoury. Lives on the world so the engine stays the only thing that
+    /* The armory. Lives on the world so the engine stays the only thing that
        resolves stats, but it is the *shell* that loads and saves it — the
        engine touches no storage, same rule as every other engine here. */
     classUpgrades: opts.classUpgrades || newClassUpgrades(),
@@ -640,7 +653,7 @@ export function resetGame(w, opts = {}) {
   w.score = 0; w.over = false;
   w.won = false; w.justWon = false; w.wavesCleared = 0;
   w.seed = 20260722;
-  // classUpgrades deliberately survives: the armoury is the thing that carries
+  // classUpgrades deliberately survives: the armory is the thing that carries
   // between runs. Clearing it is a separate, explicit action in the menu.
 }
 
@@ -697,7 +710,7 @@ export function sellTower(w, i) {
  *  Exactly `sellValue` — the money a sell-and-rebuild would have burned. So
  *  moving is never a worse deal than the workaround it replaces, and it is
  *  never free either: without a fee the right play would be to drag the whole
- *  defence along behind every wave, which is busywork rather than a decision.
+ *  defense along behind every wave, which is busywork rather than a decision.
  *
  *  The tower keeps its level and XP. Those were earned by fighting, not bought,
  *  and making a move cost them would mean a well-sited veteran can never be
@@ -891,7 +904,7 @@ function fireTower(w, tower, target) {
  *  shrug off. Order matters and is deliberate: the brittle bonus is read from
  *  the slow that was *already* on the target, so a Coil sets a target up for
  *  the next tower rather than for its own shot; splash resistance scales the
- *  incoming damage; and armour is flat, so it comes off last. */
+ *  incoming damage; and armor is flat, so it comes off last. */
 function damageEnemy(w, e, dmg, s, isSplash = false, src = null) {
   if (e.hp <= 0) return;
   const T = ENEMY_TYPES[e.type];
@@ -909,7 +922,8 @@ function damageEnemy(w, e, dmg, s, isSplash = false, src = null) {
      spawn would level on wasted splash. */
   if (src) {
     const dealt = Math.max(0, before - Math.max(0, e.hp));
-    if (addXp(src, dealt * XP_PER_DAMAGE + (e.hp <= 0 ? XP_KILL_BONUS : 0))) {
+    const rate = (XP_RATE[src.type] ?? 1) * (diffOf(w.difficulty).xp ?? 1);
+    if (addXp(src, (dealt * XP_PER_DAMAGE + (e.hp <= 0 ? XP_KILL_BONUS : 0)) * rate)) {
       const c = cellCenter(w.L, src.c, src.r);
       w.fx.level?.(c.x, c.y, src);
     }
@@ -1007,13 +1021,13 @@ export function step(w, dt) {
     if (e.hp <= 0) {
       /* Income is scaled by difficulty, score is not. Score has to stay
          comparable across a run's own history; what the difficulty changes is
-         how much defence that run can afford, not what a kill was worth. */
+         how much defense that run can afford, not what a kill was worth. */
       w.components += bountyOf(w, e.type);
       w.score += ENEMY_TYPES[e.type].bounty;
       const p = enemyPos(w, e);
       w.fx.kill(p.x, p.y, e.type);
       /* A deployer spills half a batch where it dies, so destroying one is
-         never simply free — killing it deep in your defences hands you the
+         never simply free — killing it deep in your defenses hands you the
          cargo somewhere awkward. Safe inside this backward loop: pushes land
          past `i`, which has already been visited. */
       const T = ENEMY_TYPES[e.type];

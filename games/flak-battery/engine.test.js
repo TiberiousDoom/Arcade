@@ -152,12 +152,23 @@ test('kind assignment is still deterministic for a given wave', () => {
   assert.ok(a.includes('volatile'));
 });
 
-test('segment hp climbs with the wave and then caps', () => {
+test('segment hp climbs with the wave and never stops climbing', () => {
   assert.equal(E.hpScale(1), 1, 'wave 1 is the published KIND numbers');
   assert.ok(E.hpScale(5) > E.hpScale(1), 'and it climbs');
   assert.ok(E.hpScale(10) > E.hpScale(5));
-  assert.equal(E.hpScale(999), E.HP_SCALE_MAX, 'capped, so segments never outlast the wave');
-  assert.ok(E.hpScale(999) >= E.hpScale(50), 'monotonic up to the cap');
+  // Up to HP_SCALE_MAX it climbs on the steep early slope...
+  assert.ok(E.hpScale(17) >= E.HP_SCALE_MAX * 0.95, 'the early ramp reaches the knee by ~17');
+  // ...and past it on a gentler endless one, rather than going flat. A flat
+  // ceiling meant every wave past 17 was identical while the player kept
+  // upgrading, which is what "too easy by wave 30" actually was.
+  assert.ok(E.hpScale(30) > E.hpScale(20), 'still climbing past the knee');
+  assert.ok(E.hpScale(50) > E.hpScale(30));
+  const knee = E.hpScale(30) - E.hpScale(20);
+  const early = E.hpScale(15) - E.hpScale(5);
+  assert.ok(knee < early, 'but on a gentler slope than the early game');
+  for (let wv = 1; wv < 200; wv++) {
+    assert.ok(E.hpScale(wv + 1) >= E.hpScale(wv), `monotonic at wave ${wv}`);
+  }
 });
 
 test('a later wave really is tougher per segment, not just longer', () => {
@@ -198,7 +209,7 @@ test('the hp cap does not make late waves unwinnable', () => {
     let best = null, bd = Infinity;
     for (const ch of w.chains) {
       for (let i = 0; i < ch.segs.length; i++) {
-        if (i === 0 && ch.segs.length > 1) continue;   // head is body-armoured
+        if (i === 0 && ch.segs.length > 1) continue;   // head is body-armored
         const p = E.segPos(w.path, w.pathLen, ch, i);
         if (p.off) continue;
         const d = Math.hypot(p.x - w.cannon.x, p.y - w.cannon.y);
@@ -412,16 +423,16 @@ test('a segment survives partial damage and dies on lethal', () => {
   assert.equal(w.chains[0].segs.length, before - 1);
 });
 
-test('volatile segments splash their neighbours', () => {
+test('volatile segments splash their neighbors', () => {
   const w = E.createWorld();
   w.chains = [chain(20, 0, 600)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'volatile');
   assert.ok(idx > 0, 'fixture contains a volatile segment');
 
-  const neighbourHpBefore = w.chains[0].segs[idx + 1].hp;
+  const neighborHpBefore = w.chains[0].segs[idx + 1].hp;
   E.damageSeg(w, 0, idx, E.KIND.volatile.hp);
   // after the splice, the old idx+1 sits at idx
-  assert.ok(w.chains[0].segs[idx].hp < neighbourHpBefore, 'neighbour took splash');
+  assert.ok(w.chains[0].segs[idx].hp < neighborHpBefore, 'neighbor took splash');
 });
 
 test('kills award score and scrap', () => {
@@ -553,7 +564,7 @@ test('a corrupt or foreign snapshot is refused rather than half-applied', () => 
   }
 });
 
-/* ---------- the head: armoured by its body, lethal when it falls ---------- */
+/* ---------- the head: armored by its body, lethal when it falls ---------- */
 
 test('the head takes a fraction of normal damage while a body remains', () => {
   assert.equal(E.headDamageFactor(0), 1, 'exposed head takes full damage');
@@ -634,7 +645,7 @@ test('an early decapitation is possible but costs far more damage', () => {
   assert.ok(straightAway > bodyFirst, `head-first cost ${straightAway}, body-first ${bodyFirst}`);
 });
 
-test('a head grown by a split is armoured by its own new body', () => {
+test('a head grown by a split is armored by its own new body', () => {
   const w = E.createWorld();
   w.wave = ALL_KINDS;
   E.spawnWave(w);
@@ -762,7 +773,7 @@ test('traverse caps how fast the battery can swing', () => {
   assert.ok(span > 0);
 });
 
-test('traverse honours the arc clamp and small moves land exactly', () => {
+test('traverse honors the arc clamp and small moves land exactly', () => {
   assert.equal(E.slewAim(E.AIM_MAX, 99, 1), E.AIM_MAX, 'cannot climb past the top of the arc');
   assert.equal(E.slewAim(E.AIM_MIN, -99, 1), E.AIM_MIN, 'nor below the bottom');
   const near = E.AIM_MIN + 0.01;
@@ -1487,12 +1498,14 @@ test('the focal point never collapses onto the battery', () => {
 });
 
 test('convergence is what makes a close command ship killable', () => {
-  /* The reported problem, pinned as a behavioural claim rather than as a
+  /* The reported problem, pinned as a behavioral claim rather than as a
      constant: at higher waves a command ship that reached the last stretch was
      very nearly unkillable. Five mounts converging at a fixed 620px throw their
      rounds either side of something at 137px. */
   const build = (conv) => {
-    const w = E.createWorld();
+    // drops off: this times how fast convergence kills a command ship, and a
+    // stray Rapid or Bomb would be measuring something else
+    const w = E.createWorld({ drops: false });
     w.research.points = 1e6;
     for (const b of E.BRANCHES) while (E.researchDepth(w, b));
     w.scrap = 1e9; w.lives = 999;
@@ -2054,7 +2067,7 @@ test('every drop-table entry is a real power-up', () => {
   }
 });
 
-test('the drop table favours situational effects over strong ones', () => {
+test('the drop table favors situational effects over strong ones', () => {
   const count = (k) => E.DROP_TABLE.filter(x => x === k).length;
   assert.ok(count('freeze') < count('spread'), 'freeze is rarer than spread');
   assert.ok(count('shield') < count('rapid'), 'shield is rarer than rapid');
@@ -2091,6 +2104,57 @@ test('most carriers come up empty, so a power-up is an event', () => {
   assert.ok(rate < 0.5, 'and well under the every-carrier rate it replaced');
 });
 
+test('a mortar round bursts, so the rank behind takes some too', () => {
+  /* The gun's selling point is reaching over the front rank. Landing there and
+     killing exactly one craft made it a slower cannon with extra rules. */
+  const w = E.createWorld();
+  w.scrap = 1e9; w.research.points = 1e6;
+  learn(w, 'mortar');
+  E.setGunType(w, 0, 'mortar');
+
+  // three craft in a row, and a mortar round put onto the middle one
+  w.chains = [chain(3, 0, 700)];
+  const ch = w.chains[0];
+  for (const seg of ch.segs) { seg.hp = 999; seg.maxhp = 999; seg.kind = 'std'; }
+  const mid = E.segPos(w.path, w.pathLen, ch, 1);
+  const before = ch.segs.map(s => s.hp);
+
+  w.shots = [{
+    x: mid.x, y: mid.y - 1, vx: 0, vy: 120, dmg: 40, pierce: 0, r: 4,
+    bounces: 2, bounced: 0, gun: 'mortar', travelled: E.MORTAR_ARM + 10, arc: true,
+  }];
+  E.stepShots(w, 1 / 60);
+
+  assert.ok(ch.segs[1].hp < before[1], 'the craft it struck took the round');
+  const neighbours = [0, 2].filter(i => ch.segs[i].hp < before[i]).length;
+  assert.ok(neighbours > 0, 'and at least one neighbour caught the burst');
+  assert.ok(before[1] - ch.segs[1].hp > before[0] - ch.segs[0].hp,
+    'the direct hit still hurts most');
+});
+
+test('only a mortar bursts', () => {
+  const w = E.createWorld();
+  w.chains = [chain(3, 0, 700)];
+  const ch = w.chains[0];
+  for (const seg of ch.segs) { seg.hp = 999; seg.maxhp = 999; seg.kind = 'std'; }
+  const mid = E.segPos(w.path, w.pathLen, ch, 1);
+  const before = ch.segs.map(s => s.hp);
+  w.shots = [{
+    x: mid.x, y: mid.y - 1, vx: 0, vy: 120, dmg: 40, pierce: 0, r: 4,
+    bounces: 2, bounced: 0, gun: 'standard', travelled: 999,
+  }];
+  E.stepShots(w, 1 / 60);
+  assert.equal(ch.segs[0].hp, before[0], 'a cannon round touches nothing else');
+  assert.equal(ch.segs[2].hp, before[2]);
+});
+
+test('shields stack only so far', () => {
+  const w = E.createWorld();
+  for (let i = 0; i < 10; i++) E.applyPowerup(w, 'shield');
+  assert.equal(w.shieldCharges, E.MAX_SHIELDS, 'a cushion, not an insurance policy');
+  assert.ok(E.MAX_SHIELDS >= 1 && E.MAX_SHIELDS <= 5, 'and a sane number of them');
+});
+
 test('a seeded run still drops identically', () => {
   const a = E.createWorld({ drops: true });
   const b = E.createWorld({ drops: true });
@@ -2098,9 +2162,12 @@ test('a seeded run still drops identically', () => {
   assert.deepEqual(seq(a), seq(b), 'same seed, same drops — including the misses');
 });
 
-test('with drops off — the default — a carrier drops nothing', () => {
-  const w = E.createWorld();
-  assert.equal(w.drops, false, 'off unless asked for');
+test('with drops off, a carrier drops nothing', () => {
+  // on by default since v31 — they are a fun part of the game and were hidden
+  // behind a settings switch nobody had reason to find
+  assert.equal(E.createWorld().drops, true, 'on unless turned off');
+  const w = E.createWorld({ drops: false });
+  assert.equal(w.drops, false);
   w.chains = [chain(16, 0, 700)];
   const idx = w.chains[0].segs.findIndex(s => s.kind === 'carrier');
   E.damageSeg(w, 0, idx, 99);
@@ -2169,7 +2236,7 @@ test('spread fires a three-shot fan', () => {
   const w = E.createWorld();
   E.applyPowerup(w, 'spread', 0);
   E.fire(w);
-  assert.equal(w.shots.length, 3, 'centre plus two flankers');  // one gun, fan of 3
+  assert.equal(w.shots.length, 3, 'center plus two flankers');  // one gun, fan of 3
   const angles = w.shots.map(s => Math.atan2(s.vy, s.vx));
   assert.equal(new Set(angles.map(a => a.toFixed(3))).size, 3, 'all at different angles');
 });
@@ -2209,9 +2276,9 @@ test('a round that claims a pickup hands it to the mount that fired it', () => {
 });
 
 test('a pickup caught rather than shot still lands on one mount', () => {
-  /* The catch band sits at the battery centre, not on each mount, so a caught
+  /* The catch band sits at the battery center, not on each mount, so a caught
      pickup has no gun that "earned" it. It goes to the mount nearest where it
-     landed — which for a centre catch is the centre gun. The point being
+     landed — which for a center catch is the center gun. The point being
      asserted is that it is still *one* mount and not the whole battery. */
   const w = E.createWorld({ drops: true });
   w.scrap = 1e6;
@@ -2641,7 +2708,7 @@ test('a pre-v28 save resumes with its barrels on every mount', () => {
   for (const g of fresh.battery.guns) assert.equal(g.barrels, 3);
 });
 
-test('a shot keeps the colour it was fired at, even if the streak changes after', () => {
+test('a shot keeps the color it was fired at, even if the streak changes after', () => {
   const w = E.createWorld();
   w.cannon.od = 0;
   E.fire(w);

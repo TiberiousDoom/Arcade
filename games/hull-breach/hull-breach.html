@@ -120,13 +120,14 @@ const audio = makeAudio();
 
 /* the engine never sees these — cosmetic particles, plus sound */
 const fx = {
-  brick(x, y, row) {
-    gfx.burst(x, y, BRICK_COL[Math.min(row, BRICK_COL.length - 1)] || '#e6e9e2');
+  brick(x, y, row, maxhp = 1) {
+    // the shards match the brick that made them, so color keeps meaning hits
+    gfx.burst(x, y, BRICK_COL[Math.min(maxhp, BRICK_COL.length) - 1] || '#e6e9e2');
     audio.brick(row);
   },
   bounce() { audio.bounce(); },
   lose() { gfx.hit(.5); audio.lose(); },
-  // a caught capsule: burst in its own colour, and reuse the pickup blip
+  // a caught capsule: burst in its own color, and reuse the pickup blip
   power(kind) {
     const p = world.paddle;
     gfx.burst(p.x, world.L.PADDLE_Y, E.POWERUPS[kind].col, 14);
@@ -159,9 +160,16 @@ function adoptLayout() {
 }
 adoptLayout();
 
-/* brick colour by grid row: back rows (tougher) skew brass, front rows green */
-const BRICK_COL = ['#c9a227', '#c9a227', '#3fae8f', '#3fae8f', '#5fc9a4', '#5fc9a4', '#8dbf4a'];
-const brickFace = (b) => BRICK_COL[Math.min(b.row, BRICK_COL.length - 1)] || '#3fae8f';
+/* brick color by grid row: back rows (tougher) skew brass, front rows green */
+/* Color says how many hits, and nothing else.
+
+   It used to be indexed by *row*, while `brickHp` was separately computed from
+   row — so the two correlated by accident and a player reading the colors as
+   difficulty was right by luck and wrong in principle. Keyed off `maxhp` they
+   cannot disagree: one hit is always yellow-green, four is always yellow,
+   wherever the brick happens to sit. */
+const BRICK_COL = ['#8dbf4a', '#5fc9a4', '#3fae8f', '#c9a227'];
+const brickFace = (b) => BRICK_COL[Math.min(b.maxhp, BRICK_COL.length) - 1] || BRICK_COL[0];
 
 /* ---------- input ---------- */
 let keys = {};
@@ -471,7 +479,7 @@ function draw() {
      going out, not like it is becoming transparent.
 
      Deliberately NOT `extrudeRect`: at this size, with a full field of them
-     tiled edge to edge, the offset back faces overlap their neighbours and the
+     tiled edge to edge, the offset back faces overlap their neighbors and the
      grid turns to mush. Extrusion needs space around an object to read. */
   for (const b of world.bricks) {
     if (!b.alive) continue;
@@ -544,7 +552,7 @@ function ball(x, y, r) {
   glowDot(ctx, x, y, r * .45, '#ffffff');
 }
 
-/* A capsule: a rounded pill in the powerup's colour with a one-letter glyph.
+/* A capsule: a rounded pill in the powerup's color with a one-letter glyph.
    Letters rather than icons because they stay legible at ~22px on a phone. */
 const DROP_GLYPH = { multi: '3', wide: '↔', slow: '▼', life: '+' };
 

@@ -60,12 +60,12 @@ body{
   background:var(--void);
   color:var(--bone);
   font-family:'Chivo Mono',ui-monospace,monospace;
-  /* `align-items:flex-start`, not `center`, and that matters. A centred flex
+  /* `align-items:flex-start`, not `center`, and that matters. A centerd flex
      item that ends up TALLER than its container overflows equally in both
      directions — and with `overflow:hidden` the top half is simply clipped
      and unreachable, which is what put the header off the top of the screen.
      Starting at the top can never clip it; `makeFit` sizes the board to the
-     space that's actually left, so there is little slack to centre anyway. */
+     space that's actually left, so there is little slack to center anyway. */
   display:flex;align-items:flex-start;justify-content:center;
   padding:16px;overflow:hidden;
   /* clear the home indicator, any notch/dynamic-island, and rounded corners —
@@ -200,10 +200,10 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 .menuSettings label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--bone)}
 .menuSettings input[type=range]{flex:1}
 .menuSettings .settingNote{font-size:10px;color:var(--dim);line-height:1.5}
-/* Destructive settings buttons — Choke Point's "Reset armoury", Flak Battery's
+/* Destructive settings buttons — Choke Point's "Reset armory", Flak Battery's
    "Reset research". Both throw away every run's worth of permanent progress, so
    they get a thumb-sized target and a look that is plainly not the accent
-   colour used by things you are meant to press. */
+   color used by things you are meant to press. */
 .menuSettings button{
   min-height:42px;padding:10px 14px;font-size:11px;letter-spacing:.08em;
   text-transform:uppercase;background:#2a1a17;color:#e0a89c;
