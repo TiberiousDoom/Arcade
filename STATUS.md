@@ -1,10 +1,12 @@
 # STATUS
 
-Last updated: 2026-08-13 (v31 — round 9 feedback: four reports whose causes were not what they looked like)
+Last updated: 2026-08-14 (v31 — round 9 feedback: four reports whose causes were not what they looked like)
 
 ## Read this first
 
 This is the "pick back up" file — check here before touching code. See [CLAUDE.md](CLAUDE.md) for architecture (and for how this file is meant to be maintained), and [docs/DECISIONS.md](docs/DECISIONS.md) for why past choices were made.
+
+**The feedback rounds are the playtesting, and they come from a phone.** Every "V*n* Feedback" list in the history below is someone playing these games on a device — so touch, portrait and the safe-area fit work are the *primary* path, not an untested one, and a report about how something feels is a report about glass. It also sets the performance target: a frame time measured in this container or in a desktop browser is a direction, not a verdict.
 
 ## What's playable
 
@@ -14,9 +16,9 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **The cabinet** ([index.html](index.html)) — the front door, listing all four games. Each game links back to it.
 
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). Per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run, buying gun types and the deepest two tiers of each branch). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
-- **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance).
-- **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render).
-- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute).
+- **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance), and played on a phone each round.
+- **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
+- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **502 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **47 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
@@ -78,7 +80,12 @@ which migrates the old one forward so nobody loses purchases.
 - Mortar splash is new and its radius/damage are untuned by play.
 - Choke Point's raised Armory prices move the whole economy; nothing has been
   played end to end at the new numbers.
-- Still no device play — four rounds running now.
+- **Whether the shot-glow fix actually lands on a phone.** The 16.36 ms → 8.19 ms
+  measurement is desktop-class hardware through node-canvas, spot-checked in
+  desktop Chromium. The glow is fill-rate bound — many overlapping translucent
+  arcs under `lighter` — and a phone at DPR 3 pushes several times the pixels, so
+  that number is a direction, not a verdict. Five mounts at deep tiers is the case
+  to re-check on the device the report came from.
 
 ## Round 8 feedback — the unreachable win, and a tree cut into nine (v30, 2026-08-08)
 
@@ -138,7 +145,8 @@ trade sweep for reach. Both properties have tests.
   right number is a play question.
 - Flak Battery's nine branches have not been played as an economy — the costs
   sum correctly to the old tree, which is not the same as being right.
-- Still no device play, on this round or the last two.
+- ~~Still no device play, on this round or the last two.~~ **Wrong** — corrected
+  2026-08-14. Every round has been played, on a phone; see DECISIONS.
 
 ## Round 7 feedback — a campaign, and less to read (v29, 2026-08-07)
 
@@ -191,7 +199,8 @@ one-line lore per game stayed — it was a deliberate call in the naming pass.
   campaign starts far stronger than a Hard run early. Whether that wants a
   counterweight is a question for after some play.
 - `DROP_CHANCE` (0.26) is a first pass at "an event, not wallpaper".
-- Still no device play, on this round or the last.
+- ~~Still no device play, on this round or the last.~~ **Wrong** — corrected
+  2026-08-14. Every round has been played, on a phone; see DECISIONS.
 
 ## Round 6 feedback — research, relocation, and a gentler opener (v28, 2026-08-06)
 
@@ -251,9 +260,10 @@ the shop's tab strip rather than a card buried on another tab.
   actually softens it is unmeasured. Play it first. `researchEarned`'s constants
   (`(wave-1) + floor(wave/5)*2`), `DEPTH_RP`, `GUN_RP` and `FREE_TIER` are all
   first drafts.
-- **Nothing in this round has had device play.** The move gesture in particular
-  wants a real thumb: `DRAG_ARM` is 8px, and the tap-versus-drag split on a tower
-  is the kind of thing that feels different on glass.
+- ~~**Nothing in this round has had device play.**~~ **Wrong** — corrected
+  2026-08-14; it was played on a phone like every other round. The open part was
+  real, though, and the feedback answered it: `DRAG_ARM` at 8px and the
+  tap-versus-drag split on a tower do feel different on glass.
 - Choke Point's `CLASS_COST_STEP` (1.85) roughly doubles a full track's bill.
   Untuned against the new XP rate, and the two interact.
 - Coil is a different class now — short-reach area support rather than long-reach
@@ -488,7 +498,7 @@ Two stated requirements are pinned by tests rather than left to drift: a **level
 
 ### Still open after this round
 
-- The armory has had no device play yet. The costs (`CLASS_BASE_COST`, `SPEC_DISCOUNT`/`WEAK_PENALTY`) and the XP curve (`xpForNext`) are first drafts and will want a pass once there is a feel for how fast a class actually climbs.
+- ~~The armory has had no device play yet.~~ **Wrong** — corrected 2026-08-14; it was played on a phone. The costs (`CLASS_BASE_COST`, `SPEC_DISCOUNT`/`WEAK_PENALTY`) and the XP curve (`xpForNext`) were first drafts, and later rounds did ask for exactly the pass this predicted.
 - Flak Battery's per-emplacement economy is untuned on purpose — the five-fold bill *is* the balance, but nobody has yet played a run deep enough to say whether a wide-and-shallow battery is genuinely competitive with a narrow-and-deep one.
 - `fillWidth` is Choke Point only. If another game ever wants it, the `body.scrolls` pairing is the part to remember.
 

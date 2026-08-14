@@ -1065,3 +1065,17 @@ Two reports from the same round: the game should pause while the Armory is open,
 Fixing the first caused the second. The frame loop gated its whole body — `sync()` included — on the shop being closed, and `sync()` is what repaints affordability. So the Armory froze the instant it opened: a row you could now afford stayed grey until some other purchase forced a re-render. The fix that made the pause work is the fix that would have caused the refresh bug, and only one of the two symptoms had been reported before.
 
 `sync()` now sits outside the simulation gate. It is DOM writes over engine state and idempotent, so running it while paused costs nothing. The regression test asserts **both properties in one test**, on purpose: either one alone passes on the broken build, and it was passing separately that let this ship.
+
+## 2026-08-14 — The project has been playtested on a phone the whole time
+
+STATUS.md carried "still no device play" for four rounds. It was never true. The feedback rounds *are* the playtesting, and they come from a phone. Every root cause in v31 — the unreachable checkpoints, the wave-17 difficulty plateau, the shot-glow choppiness, the frozen Armory — was found by someone playing on a device I had recorded as never having been used.
+
+The cost was not the sentence. It was the inversion behind it: I treated touch, portrait and safe-area as unexercised risk, and treated my own desktop measurements as the real evidence. It is the other way round. Every "feels choppy", "too easy by wave 30", "didn't get implemented" in this history is a device report, and the only thing that has *never* been verified on the target is the numbers I have been most confident about.
+
+Where it bites is performance. The v31 glow work is measured at 16.36 ms → 8.19 ms — through node-canvas on desktop-class hardware, spot-checked in desktop Chromium. That workload is fill-rate bound (many overlapping translucent arcs under `lighter`), it scales with device pixels, and a phone at DPR 3 pushes several times what the 460×820 backing canvas I benchmarked does. The choppiness was reported from the phone and has so far only been answered on the desktop. Halving the frame time is real and directionally right; "fixed" is not something this evidence can say.
+
+Two things follow, and both are standing rules rather than one-off corrections:
+
+**A performance number is about the device it was measured on.** Numbers from this container are for comparing two implementations against each other, which is exactly what they were good for here — batched versus hoisted, 8.31 against 8.19. They are not a budget check.
+
+**Do not record an absence of testing without checking who is testing.** The claim survived four rounds because it was only ever copied forward from the previous round's list. A line in the open-questions block is a claim like any other, and this one was refuted by the very messages that prompted each rewrite.
