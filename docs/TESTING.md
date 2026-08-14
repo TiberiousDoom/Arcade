@@ -105,7 +105,7 @@ Still never reported on. Aim is settled.
 - [ ] Kinds arrive one at a time: carrier 2, armored 3, volatile 4, shielded 5,
       regen 7, splitter 9. Does each get a beat to be understood?
 - [ ] Late waves should feel *chewy*, not merely *long*.
-- [ ] Shots on a protected head barely scratch it. Does that read as **armoured**
+- [ ] Shots on a protected head barely scratch it. Does that read as **armored**
       or as **broken**?
 - [ ] **Killing the head kills the whole column.** Does it land as a payoff?
 - [ ] Try an early decapitation with overdrive or a rail gun — tempting, or

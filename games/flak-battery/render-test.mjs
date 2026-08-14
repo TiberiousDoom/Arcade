@@ -21,6 +21,17 @@ import { bootAndStart } from '../../tools/render-harness.mjs';
 // and percent-encoded spaces, which fs rejects.
 const SHELL = fileURLToPath(new URL('./flak-battery.html', import.meta.url));
 
+/** Open mount `i`'s detail view. The shop opens on the emplacement overview,
+ *  whose cards are the gun picker — the per-gun tabs only exist once you are
+ *  already looking at a gun. */
+function openMount(doc, w, i) {
+  const card = doc.querySelectorAll('.empCard')[i];
+  if (card) { card.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); return; }
+  // already in a detail view: tab 0 is "All", so mount i is tab i+1
+  doc.querySelectorAll('#shopTabs .tab')[i + 1]
+    ?.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+}
+
 test('the shell boots without throwing', async () => {
   const g = await bootAndStart(SHELL);
   assert.deepEqual(g.errors, [], 'boot threw');
@@ -97,19 +108,41 @@ test('every cannon portrait draws something', async () => {
   g.frame(1000);
   assert.ok(doc.getElementById('shop').classList.contains('on'), 'the shop opened');
 
+  const lit = (canvas) => {
+    const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let n = 0;
+    for (let p = 3; p < d.length; p += 4) if (d[p] > 8) n++;
+    return n;
+  };
+
+  /* The overview's cards carry the same portraits. Their canvases must be the
+     drawing's own 420x190 — they were 260x110, which drew the art at full size
+     into a smaller bitmap and showed only the top-left corner of each gun. */
+  const cards = doc.querySelectorAll('.empCard canvas');
+  assert.equal(cards.length, world.battery.guns.length, 'a card per emplacement');
+  for (const [i, cv] of [...cards].entries()) {
+    assert.equal(cv.width, 420, `card ${i} canvas is the portrait's own width`);
+    assert.equal(cv.height, 190, `card ${i} canvas is the portrait's own height`);
+    assert.ok(lit(cv) > 400, `card ${i} portrait is blank (${lit(cv)} px)`);
+    // and the art reaches the right-hand side, which is what cropping ate
+    const d = cv.getContext('2d').getImageData(cv.width - 60, 0, 60, cv.height).data;
+    let right = 0;
+    for (let p = 3; p < d.length; p += 4) if (d[p] > 8) right++;
+    assert.ok(right > 0, `card ${i} portrait is cut off before its right edge`);
+  }
+
   for (let barrels = 1; barrels <= E.MAX_BARRELS; barrels++) {
     for (const g2 of world.battery.guns) g2.barrels = barrels;
     for (let i = 0; i < world.battery.guns.length; i++) {
-      // the strip leads with the "All" overview tab, so mount i is tab i+1
-      doc.querySelectorAll('#shopTabs .tab')[i + 1]?.dispatchEvent(
-        new w.MouseEvent('click', { bubbles: true }));
+      // in a detail view the strip is: All, one per mount, +, Research
+      openMount(doc, w, i);
       const canvas = doc.querySelector('#branches .portrait canvas');
-      assert.ok(canvas, `tab ${i} rendered no portrait`);
-      const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
-      let lit = 0;
-      for (let p = 3; p < d.length; p += 4) if (d[p] > 8) lit++;
-      assert.ok(lit > 400, `portrait for mount ${i} at ${barrels} barrels is blank (${lit} px)`);
+      assert.ok(canvas, `mount ${i} rendered no portrait`);
+      assert.ok(lit(canvas) > 400,
+        `portrait for mount ${i} at ${barrels} barrels is blank (${lit(canvas)} px)`);
     }
+    // back to the overview for the next pass
+    doc.querySelector('#shopTabs .tab').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   }
   assert.deepEqual(g.errors, [], 'drawing the portraits threw');
 });
@@ -161,11 +194,20 @@ test('the research tab renders alongside the mount tabs and the add slot', async
   world.scrap = 1e6;
   world.shopOpen = true;
   g.frame(1000);
-  const tabs = doc.querySelectorAll('#shopTabs .tab');
-  assert.equal(tabs.length, world.battery.guns.length + 3,
-    'the overview, a tab per mount, the add slot, and research');
-  tabs[tabs.length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  /* On the overview the only tab is Research — the gun buttons were a second
+     copy of the cards below them. Research is not a gun, so it stays. */
+  let tabs = doc.querySelectorAll('#shopTabs .tab');
+  assert.equal(tabs.length, 1, 'the overview offers Research and nothing else');
+  assert.match(tabs[0].textContent, /research/i);
+
+  tabs[0].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   assert.ok(doc.querySelectorAll('#battery .branch').length > 0, 'the research tab has cards');
+
+  // in a mount's detail view the gun tabs are back: All, per mount, +, Research
+  openMount(doc, w, 0);
+  tabs = doc.querySelectorAll('#shopTabs .tab');
+  assert.equal(tabs.length, world.battery.guns.length + 3,
+    'All, a tab per mount, the add slot, and research');
   assert.deepEqual(g.errors, [], 'the research tab threw');
 });
 
@@ -180,8 +222,7 @@ test('research is bought on the research tab and gates the deep tiers', async ()
   /* Tier 4 must read as "go and research this", not as "maxed" — those are a
      signpost and a dead end, and the whole feature fails if they look alike. */
   const tabs = () => doc.querySelectorAll('#shopTabs .tab');
-  // tab 0 is the emplacement overview the shop now opens on; mount 1 is tab 1
-  const renderTab = (i) => tabs()[i + 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const renderTab = (i) => openMount(doc, w, i);
 
   for (let i = 0; i < E.FREE_TIER; i++) E.buyUpgrade(world, 0, 'damage');
   renderTab(0);
@@ -245,6 +286,8 @@ test('the + tab builds an emplacement and lands you on it', async () => {
   g.frame(1000);
   const before = world.battery.guns.length;
 
+  // the add slot lives in a mount's detail view; the overview offers a card
+  openMount(doc, w, 0);
   const add = doc.querySelector('#shopTabs .tab.add');
   assert.ok(add, 'the add slot exists');
   assert.equal(add.disabled, false, 'and is live when it is affordable');
@@ -268,8 +311,7 @@ test('barrels are bought on the mount they belong to', async () => {
   world.shopOpen = true;
   g.frame(1000);
 
-  // into mount 1's own tab — the shop opens on the overview now
-  doc.querySelectorAll('#shopTabs .tab')[1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  openMount(doc, w, 0);       // the shop opens on the overview; its cards go in
   const card = [...doc.querySelectorAll('#branches .branch')]
     .find(el => /Barrels/.test(el.querySelector('h3')?.textContent || ''));
   assert.ok(card, 'the mount tab carries a Barrels card');

@@ -42,6 +42,13 @@
   #dpad .left{grid-column:1;grid-row:2}
   #dpad .right{grid-column:3;grid-row:2}
   #dpad .down{grid-column:2;grid-row:3}
+
+  /* Progress to the next checkpoint. A bar rather than a number: the exact
+     percentage is not actionable, "nearly there" is. */
+  #uiBank{display:inline-block;width:34px;height:6px;background:#1b3038;
+    border-radius:1px;overflow:hidden;vertical-align:middle}
+  #uiBank i{display:block;height:100%;width:0%;background:var(--brass);
+    transition:width .2s linear}
 </style>
 
 <div id="shell">
@@ -53,6 +60,10 @@
     <div class="meta">
       <div>Score <b id="uiScore">0</b></div>
       <div>Length <b id="uiLen">4</b></div>
+      <!-- Progress toward the next bank. The checkpoints were invisible until
+           they fired, which is half of why they read as absent — you cannot
+           aim at a milestone you cannot see coming. -->
+      <div>Bank <b id="uiBank" class="bank"><i></i></b></div>
       <div>Best <b id="uiBest">—</b></div>
     </div>
   </header>
@@ -468,6 +479,19 @@ function syncBest() {
 function sync() {
   $('uiScore').textContent = world.score;
   $('uiLen').textContent = world.wire.length;
+
+  /* How close the next bank is, as a filling bar. `checkpoint` is the last one
+     crossed, so the next is the one after it — and once they are all crossed
+     the bar sits full rather than disappearing, since the board itself is the
+     last milestone. */
+  const next = E.CHECKPOINTS[world.checkpoint + 1];
+  const bar = $('uiBank').firstElementChild;
+  if (!bar) return;
+  if (next === undefined) { bar.style.width = '100%'; return; }
+  const cells = world.L.COLS * world.L.ROWS;
+  const from = world.checkpoint < 0 ? 0 : E.CHECKPOINTS[world.checkpoint];
+  const at = E.lengthAt(world.eaten) / cells;
+  bar.style.width = Math.round(Math.max(0, Math.min(1, (at - from) / (next - from))) * 100) + '%';
 }
 
 /* ---------- draw ---------- */
@@ -615,11 +639,11 @@ function drawWire() {
 }
 
 /* The food has to hold its own against a very bright wire. It gets a warm halo,
-   a solid gold body, and a near-white centre — the hot core is what makes a
+   a solid gold body, and a near-white center — the hot core is what makes a
    small object read as "there" rather than as a smudge, and this is the one
    thing on the board you are actually looking for. */
 /* The food is a world you are about to take, so it is drawn as one: a solid
-   sphere with a hot centre and an orbital ring.
+   sphere with a hot center and an orbital ring.
 
    The ring is not decoration. Reported twice as "the food is gone" — and both
    times it was provably rendering, at full brightness, in every environment I

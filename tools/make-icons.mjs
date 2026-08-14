@@ -50,7 +50,7 @@ function drawMark(ctx) {
 }
 
 /** @param scale fraction of the canvas the mark occupies. Maskable icons need
- *  their content inside the centre ~80%, since launchers crop the rest. */
+ *  their content inside the center ~80%, since launchers crop the rest. */
 function render(size, scale) {
   const cv = createCanvas(size, size);
   const ctx = cv.getContext('2d');

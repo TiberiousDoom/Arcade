@@ -143,7 +143,17 @@ function startWire(L) {
    at the moment of a checkpoint are not worth restoring even if they could be —
    they are usually the shape that just killed you. `eaten` carries both the
    length and the speed, since both derive from it. */
-export const CHECKPOINTS = [0.25, 0.5, 0.75];
+/* Quarters were the first attempt and they failed on their own terms. The first
+   bank sat at 25% of the board — 70 meals, length 144, about eighty seconds of
+   *clean* play — so an ordinary run died long before reaching one. The feature
+   shipped, was tested, and was reported as never implemented, which is the
+   correct thing to conclude when you have never seen it fire.
+
+   A mini win has to arrive early enough to be met. This ladder banks first at
+   5% (13 meals, roughly twenty-five seconds), then spaces out as the run gets
+   genuinely hard, so a short run still gets one or two and a deep run still has
+   something ahead of it. */
+export const CHECKPOINTS = [0.05, 0.09, 0.14, 0.20, 0.28, 0.38, 0.50, 0.64, 0.80];
 
 /** Cells the wire occupies at a given meal count. */
 export const lengthAt = (eaten) => START_LEN + eaten * GROW_PER_FOOD;
@@ -201,13 +211,28 @@ export function resumeFromCheckpoint(w, bank) {
   const along = next ? { x: Math.sign(head.x - next.x), y: Math.sign(head.y - next.y) }
                      : { x: 1, y: 0 };
   const body = new Set(w.wire.map(c => c.x + ',' + c.y));
+  /* Pick the direction with the most room, not merely the first legal one.
+     A short resumed wire lies along one row: at 30 cells on a 32-wide board the
+     head sits at column 29, so "carry on the way the fold was running" is legal
+     for exactly two ticks and then hits the wall. Scoring by how far each
+     option can actually run picks the open board instead. */
+  const runLength = (d) => {
+    let n = 0, x = head.x, y = head.y;
+    for (;;) {
+      x += d.x; y += d.y;
+      if (!inBounds(w.L, x, y) || body.has(x + ',' + y)) return n;
+      n++;
+    }
+  };
   const options = [along, { x: along.y, y: along.x }, { x: -along.y, y: -along.x },
-                   { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
-  w.dir = options.find(d => {
-    if (!d.x && !d.y) return false;
-    const nx = head.x + d.x, ny = head.y + d.y;
-    return inBounds(w.L, nx, ny) && !body.has(nx + ',' + ny);
-  }) || { x: 1, y: 0 };
+                   { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }]
+    .filter(d => d.x || d.y);
+  let bestDir = { x: 1, y: 0 }, bestRun = -1;
+  for (const d of options) {
+    const n = runLength(d);
+    if (n > bestRun) { bestRun = n; bestDir = d; }
+  }
+  w.dir = bestDir;
   w.queue = [];
   w.food = null; w.bonus = null;
   spawnFood(w);

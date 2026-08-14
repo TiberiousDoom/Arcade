@@ -93,7 +93,7 @@ export function moveTower(w, i, c, r)   // keeps type/level/xp/priority, resets 
 **Rules to settle, with recommendations:**
 
 - **Cost**: free moves make placement decisions weightless — a player would just
-  drag the whole defence to follow the wave. Charge a **relocation fee** equal to
+  drag the whole defense to follow the wave. Charge a **relocation fee** equal to
   `sellValue(tower)` (half build cost), which is exactly the money a sell-and-rebuild
   would have burned. So moving is never worse than the workaround, and never free.
 - **Legality**: same `canBuild` predicate for the destination (on-grid, not path,
@@ -140,7 +140,7 @@ rate, Coil cheap splash / dear range.
 
 Note this changes what a Coil is: from a long-reach single-target debuffer to a
 short-reach area debuffer. That is a real design shift and belongs in DECISIONS.md.
-The armoury is persistent, so **existing saves carry Coil range levels bought at
+The armory is persistent, so **existing saves carry Coil range levels bought at
 the old discount** — harmless (they still apply) but worth knowing.
 
 ### 5. Make higher upgrades more expensive
@@ -161,16 +161,16 @@ c = CLASS_BASE_COST[track] * Math.pow(CLASS_COST_STEP, level);
 That gives 50 / 93 / 171 / 317 / 586, total 1,217 — roughly double the current
 full-track bill, with the *last* level costing 12× the first. Combined with the
 XP change above (which removes level-10 towers as a free power source), this is
-what keeps a persistent armoury from solving the game; `DIFFICULTIES` remains the
+what keeps a persistent armory from solving the game; `DIFFICULTIES` remains the
 other counterweight.
 
 `SPEC_DISCOUNT`/`WEAK_PENALTY` still multiply on top, unchanged. `CLASS_MAX` stays 5.
 
-**Tests.** Existing armoury tests assert affordability at specific amounts and
+**Tests.** Existing armory tests assert affordability at specific amounts and
 will need their numbers moved; add one asserting cost is strictly increasing per
 level and that spec < base < weak at every level.
 
-### 6. Make the tower's centre hub glow like the outer ring
+### 6. Make the tower's center hub glow like the outer ring
 
 `drawTower` ([choke-point.html:962](../games/choke-point/choke-point.html)) draws the
 hub with a plain `ctx.fill()` while the ring goes through `extrudeDisc` and the
@@ -202,7 +202,7 @@ board gets taller for free, but verify at 375×812 **with simulated safe-area
 insets**, since Choke Point is the one game on `fillWidth` + `body.scrolls` and a
 desktop browser reports insets as 0. That mistake has been made twice.
 
-The render test drives the armoury through real DOM clicks, so it will catch a
+The render test drives the armory through real DOM clicks, so it will catch a
 broken selector.
 
 ---
@@ -318,7 +318,7 @@ that tab for research (see below).
 ### 12. A persistent research tree
 
 The largest item in the round, and the one with a working precedent: **Choke
-Point's armoury** — persistent progression owned by the shell, stored on the world
+Point's armory** — persistent progression owned by the shell, stored on the world
 so the engine stays the only thing that resolves numbers, and touching no storage
 from the engine.
 
@@ -350,21 +350,21 @@ shows "+N research" on the game-over banner.
    argument (or reads `w.research`) and returns `null` above the researched cap, so
    the shop's existing "Maxed" path renders a locked tier with no new UI state.
 
-**Shape, mirroring the armoury exactly:**
+**Shape, mirroring the armory exactly:**
 
 - `w.research = opts.research || newResearch()` on `createWorld`; `resetGame`
   deliberately leaves it alone.
 - A new `shared/research.js`? **No** — keep the storage key local to
-  `flak-battery.html`, the way `ARMOURY_KEY` is local to `choke-point.html`,
+  `flak-battery.html`, the way `ARMORY_KEY` is local to `choke-point.html`,
   for the stated reason that only one game has one. Revisit if a second game ever
   wants it. **This means no new file, so no `PRECACHE` change.**
 - Guarded `readResearch`/`writeResearch` with the same defensive clamping the
-  armoury uses (an out-of-range stored value must not hand out stats no shop can
+  armory uses (an out-of-range stored value must not hand out stats no shop can
   sell).
 - `snapshot`/`hydrate`: research is **not** run state — exclude it, exactly as
   `classUpgrades` is excluded. A resumed run reads current research from storage.
 - A **"Reset research"** control in the settings menu, armed-then-confirm, copying
-  `wipeArmoury` ([choke-point.html:602](../games/choke-point/choke-point.html)).
+  `wipeArmory` ([choke-point.html:602](../games/choke-point/choke-point.html)).
 
 **UI.** The Battery tab becomes the **Research** tab (it loses the add-mount card to
 item 11 and the barrels card to item 10, so it is nearly empty otherwise): RP
@@ -401,12 +401,12 @@ Change to `brickHp(row, rows, level)`:
 
 ```js
 export const SOFT_LEVELS = 2;      // levels that are all single-hit
-export const ARMOUR_FROM = 4;      // full 1-3 banding from here on
+export const ARMOR_FROM = 4;      // full 1-3 banding from here on
 ```
 
 - Levels 1..`SOFT_LEVELS`: always 1.
-- Level 3: cap at 2 (a middle step, so the jump to armour isn't a cliff).
-- Level `ARMOUR_FROM`+: current formula, unchanged.
+- Level 3: cap at 2 (a middle step, so the jump to armor isn't a cliff).
+- Level `ARMOR_FROM`+: current formula, unchanged.
 
 **Callers to update** — `brickHp` is called from `buildBricks`
 ([engine.js:259](../games/hull-breach/engine.js)), which has `level` in hand, so
@@ -416,11 +416,11 @@ render at full brightness. `hydrate` rebuilds via `buildBricks(w.level, w.L)`, s
 save restores correctly by construction.
 
 **Knock-on to watch:** `brickScore(maxhp)` and `brickSalvage(maxhp)` both scale with
-armour, so easier openers also pay less — level 1's salvage drops by roughly half.
+armor, so easier openers also pay less — level 1's salvage drops by roughly half.
 Since the shop opens on the first level clear, that's a slower start to upgrades.
 Recommend compensating with the level-clear bonus (`100 + level * 50` at
 [engine.js:746](../games/hull-breach/engine.js)) rather than by inflating
-`brickSalvage`, which would decouple pay from armour everywhere.
+`brickSalvage`, which would decouple pay from armor everywhere.
 
 **Tests.** Existing `brickHp` tests are row-based and will need a level; add
 assertions that every brick on levels 1–2 has `maxhp === 1`, that level 4 still

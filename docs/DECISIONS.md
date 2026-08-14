@@ -49,7 +49,7 @@ Deleted the monolithic five-game cabinet rather than fixing it in place. On clos
 
 Built Breakout fresh under `games/breakout/`. Two choices worth recording:
 
-The paddle sets the ball's *angle* from where it lands (centre → straight up, edges → ~60° out), and ball speed is constant for the ball's whole life. That mapping is the entire control scheme — a plain reflection would look more "physical" but leaves the player no way to aim, which is what makes Breakout a game rather than a waiting room.
+The paddle sets the ball's *angle* from where it lands (center → straight up, edges → ~60° out), and ball speed is constant for the ball's whole life. That mapping is the entire control scheme — a plain reflection would look more "physical" but leaves the player no way to aim, which is what makes Breakout a game rather than a waiting room.
 
 Unlike Serpent Battery's `step(w, dt, firing)`, Breakout's `step(w, dt)` takes no input at all: the shell moves the paddle via `setPaddle`/`nudgePaddle` and serves via `launch()`. Pointer and keyboard controls differ enough that folding them into the engine would drag input concerns into the pure layer. The engine/shell split is the constant; the exact seam is per-game.
 
@@ -215,7 +215,7 @@ Then reload. This is the cost of the cache-first decision, not a defect, but it 
 
 The first attempt at rotation rebuilt the wire from its length alone, because the two grids were arbitrary sizes (32x24 and 18x34) and no honest cell mapping existed. On a real phone that read as losing your place, which it was.
 
-The fix was to change the shape of the problem rather than the mapping: the grids are now exact transposes (32x18 and 18x32), so rotating maps every cell (x, y) to (y, x). The wire keeps its precise shape, direction, food and bonus. It is also the least surprising behaviour available — the player physically turned the board, and the board turned.
+The fix was to change the shape of the problem rather than the mapping: the grids are now exact transposes (32x18 and 18x32), so rotating maps every cell (x, y) to (y, x). The wire keeps its precise shape, direction, food and bonus. It is also the least surprising behavior available — the player physically turned the board, and the board turned.
 
 Worth remembering as a general move: when a migration between two states is lossy, check whether the two states can be made mirror images instead of writing a cleverer migration. The same trick had already fixed Angle Iron (shared brick grid) and then fixed Serpent Battery's reversing map (matched row counts).
 
@@ -322,15 +322,15 @@ Weighting lives in the table's repeats (`['multi','wide','slow','wide','multi','
 
 The shell draws capsules as pills with a one-letter glyph (letters, not icons — they stay legible at ~22px on a phone), tints the paddle while `wide` is up so the effect is visible on the thing it changed, and puts the effect timers bottom-left just inside the floor line. Top-left was the obvious spot and was wrong: the audio toggle and help button already own both top corners, which a screenshot caught immediately.
 
-## 2026-07-27 — Serpent Battery difficulty: what was actually missing, and why the head is armoured
+## 2026-07-27 — Serpent Battery difficulty: what was actually missing, and why the head is armored
 
 The ask was "make it harder": longer serpents, more hp per segment, killing the head kills the snake, and harder segment types unlocked over time. Three of those were straightforwardly right, and the code showed why they were needed rather than merely wanted.
 
-**Segment hp never scaled with the wave.** `KIND` hp were fixed constants and nothing multiplied them, so a wave 20 segment had exactly the health of a wave 1 segment — late waves were only longer and faster. Added `hpScale(wave)`, deliberately the same shape as Circuit Breaker's so the two games' difficulty maths read alike. Capped at ×4 so a deep run can't produce a wave whose total health simply cannot be cleared in the time it takes to cross. Two knock-on scalings that would otherwise have rotted: volatile's neighbour splash (a flat 3 against 4×-health neighbours is nothing) and the head a splitter grows.
+**Segment hp never scaled with the wave.** `KIND` hp were fixed constants and nothing multiplied them, so a wave 20 segment had exactly the health of a wave 1 segment — late waves were only longer and faster. Added `hpScale(wave)`, deliberately the same shape as Circuit Breaker's so the two games' difficulty maths read alike. Capped at ×4 so a deep run can't produce a wave whose total health simply cannot be cleared in the time it takes to cross. Two knock-on scalings that would otherwise have rotted: volatile's neighbor splash (a flat 3 against 4×-health neighbors is nothing) and the head a splitter grows.
 
 **Wave 1 was already throwing everything at once.** `kindForIndex(i, count)` had no wave parameter, so its modular placement rules fired from the first wave — wave 1 contained armored, volatile, shielded, regen, carrier *and* a splitter. That, more than the aim curve, is why "couldn't clear level 1" was the report. `KIND_UNLOCK` now introduces one kind at a time, ordered by how much new thinking each demands rather than by raw toughness: carrier (a bonus) → armored (just tougher) → volatile (chain reactions) → shielded (forces flanking) → regen (punishes chip damage) → splitter (changes the board). Note this makes the early game *easier*, which is the correct direction for an opening.
 
-**Killing the head kills the snake — but the body armours the head.** Taken literally the request would have made the game much easier, and it's worth recording why. The head is index 0, the **leading** segment: the closest target to the battery and the first thing to breach. So an instant-kill head would have been simultaneously the easiest shot available and a win button, collapsing every other mechanic — recoil, mid-chain cutting, splitters, shielded flanking — into irrelevance.
+**Killing the head kills the snake — but the body armors the head.** Taken literally the request would have made the game much easier, and it's worth recording why. The head is index 0, the **leading** segment: the closest target to the battery and the first thing to breach. So an instant-kill head would have been simultaneously the easiest shot available and a win button, collapsing every other mechanic — recoil, mid-chain cutting, splitters, shielded flanking — into irrelevance.
 
 The fix keeps the requested payoff and inverts the incentive: `headDamageFactor(bodyLeft) = 1/(1 + bodyLeft)`, so a full-length chain leaves the head taking ~3% of normal damage. Clearing the body first is the efficient route; a rail shot or overdrive burst can still buy an early decapitation, which pays out every segment still attached. That turns the head from a shortcut into a risk/reward decision, and a decapitation now genuinely feels like a finisher.
 
@@ -354,7 +354,7 @@ The one hazard is a displayed version that disagrees with the cache actually bei
 
 Took three of the five depth ideas — the ones that add *decisions* rather than content.
 
-**Three circuits instead of one.** A single fixed route meant every run was the same board: the game was one puzzle, solved once, and replaying only repeated it faster. `ROUTES` now holds three, and a run picks one from its seed so a seed still replays exactly (the route is part of what a seed means). `resetGame` advances to the next, so Play again is genuinely a different defence problem.
+**Three circuits instead of one.** A single fixed route meant every run was the same board: the game was one puzzle, solved once, and replaying only repeated it faster. `ROUTES` now holds three, and a run picks one from its seed so a seed still replays exactly (the route is part of what a seed means). `resetGame` advances to the next, so Play again is genuinely a different defense problem.
 
 Per *run*, not per wave. Swapping the path mid-run would strand every tower off the route and invalidate the whole board a player had just built — variety is not worth that.
 
@@ -367,9 +367,9 @@ The HUD names the circuit (A/B/C). Without a label, a changed board on replay re
 - `armor` — flat reduction per hit, so many weak shots (Node) are wasted and few heavy ones (Breaker) are right.
 - `splashResist` — the mirror case, where Breaker's area damage is the wrong pick.
 - `slowImmune` — Coil cannot set it up, so the synergy below is unavailable.
-- `heals` — repairs neighbours, so *which* enemy you shoot starts to matter, not just total damage.
+- `heals` — repairs neighbors, so *which* enemy you shoot starts to matter, not just total damage.
 
-Shell's armour is 3 and not higher on purpose. At 6 it exceeded Node's base damage outright, which made Node permanently useless against Shell rather than something worth *upgrading* to make viable — the difference between "wrong tool" and "dead option". A test now pins that a maxed Node gets meaningfully through.
+Shell's armor is 3 and not higher on purpose. At 6 it exceeded Node's base damage outright, which made Node permanently useless against Shell rather than something worth *upgrading* to make viable — the difference between "wrong tool" and "dead option". A test now pins that a maxed Node gets meaningfully through.
 
 Patches heal other enemies only, never themselves, and one per wave — two would mend each other and stall a wave indefinitely. Healing is applied before towers fire, so a player sees their shot land and *then* sees it undone, which is legible; the reverse order would look like the shot never registered.
 
@@ -377,7 +377,7 @@ Patches heal other enemies only, never themselves, and one per wave — two woul
 
 **Deliberately not done:** projectiles and the between-waves choice. Projectiles are worth more *after* this is played, because travel time makes leading targets and placement angles matter — it multiplies traits and routes rather than standing on its own.
 
-Readability was not optional here. When a tower stops working the player must read "wrong tool", not "broken game", so each trait gets a silhouette cue (heavy ring, dashed shell, chevron, cross) rather than colour alone, since colour is already busy naming the type. One collision was caught only by taking a screenshot: the old `slow` rendering *replaced* the fill with a blue almost identical to Shell's own colour, making "held up" and "plated" indistinguishable when the two call for opposite responses. `slow` is now a translucent frost laid over the type colour.
+Readability was not optional here. When a tower stops working the player must read "wrong tool", not "broken game", so each trait gets a silhouette cue (heavy ring, dashed shell, chevron, cross) rather than color alone, since color is already busy naming the type. One collision was caught only by taking a screenshot: the old `slow` rendering *replaced* the fill with a blue almost identical to Shell's own color, making "held up" and "plated" indistinguishable when the two call for opposite responses. `slow` is now a translucent frost laid over the type color.
 
 ## 2026-07-27 — The service worker ignores query strings, which defeats cache-busting
 
@@ -463,7 +463,7 @@ The first diagnosis was wrong and worth recording as a wrong turn. `glowDot` dre
 
 The real cause was the falloff table. `glowDot`'s passes ran `[1.9, 1.35, 0.9, 0.5]` — the only full-alpha pass was at **half** the requested radius. A caller asking for a 7px pellet got a 3px opaque core inside a soft smudge, where the flat art it replaced had been a solid 7.5px disc. It rendered correctly and simply read as haze rather than as an object, which on a phone, next to a very bright wire, meant it disappeared.
 
-`r` now means the solid core, with the glow spreading outside it, so a dot is at least as substantial as the flat shape it replaces and merely gains a halo. Live Wire's food additionally gets a near-white inner dot: a hot centre is what makes a small emissive object read as *present*, and it is the one thing on that board a player is actively hunting for.
+`r` now means the solid core, with the glow spreading outside it, so a dot is at least as substantial as the flat shape it replaces and merely gains a halo. Live Wire's food additionally gets a near-white inner dot: a hot center is what makes a small emissive object read as *present*, and it is the one thing on that board a player is actively hunting for.
 
 The general lesson for the rest of the art pass: **glow is a poor substitute for mass.** Adding a halo while shrinking the solid core makes something prettier and harder to see, and readability regressions of this kind survive every automated check — the pixels are all there, correctly, in the wrong proportions.
 
@@ -475,13 +475,13 @@ Third game onto the vector look, and the one flagged from the start as needing t
 
 **Enemies keep their solid bodies and gain a halo outside them** — the rule learned from Live Wire's food, applied pre-emptively. These are smaller than the food, there are far more of them, and they must be told apart, so the opaque disc stays exactly the size it was. The trait cues (heavy ring, dashed shell, chevron, cross) are deliberately drawn hard-edged and *unglowed*: a halo on a 3px chevron is a smudge, and distinguishing Shell from Phase from Patch is the most load-bearing readability job on that board.
 
-**Towers are what `extrude` was built for** — discrete objects on a dark board — in contrast to Live Wire's head, where the same call punched a hole in a glowing tube. One adjustment was needed: the default body colour is near-black, which against this board made towers read as hollow rings rather than solid installations. Their body is lifted well above the board colour.
+**Towers are what `extrude` was built for** — discrete objects on a dark board — in contrast to Live Wire's head, where the same call punched a hole in a glowing tube. One adjustment was needed: the default body color is near-black, which against this board made towers read as hollow rings rather than solid installations. Their body is lifted well above the board color.
 
-**The mistake worth recording: additive compositing cannot darken.** The path was meant to be a recessed channel with lit edges, so it was drawn as a wide additive band with a dark inner stroke laid over it — also additively. Additive of a dark colour still *adds*, so the "dark" inner brightened the channel and the path came out as a glowing ribbon dominating the board, exactly the opposite of the intent. The inner stroke is now painted with the normal composite, which leaves the additive band showing only as a fringe. This is the same trap as Live Wire's pupils, and is now called out in `shared/README.md`: anything meant to be *darker* than its surroundings cannot go through `glowStroke`.
+**The mistake worth recording: additive compositing cannot darken.** The path was meant to be a recessed channel with lit edges, so it was drawn as a wide additive band with a dark inner stroke laid over it — also additively. Additive of a dark color still *adds*, so the "dark" inner brightened the channel and the path came out as a glowing ribbon dominating the board, exactly the opposite of the intent. The inner stroke is now painted with the normal composite, which leaves the additive band showing only as a fringe. This is the same trap as Live Wire's pupils, and is now called out in `shared/README.md`: anything meant to be *darker* than its surroundings cannot go through `glowStroke`.
 
-Beams get the biggest payoff, unsurprisingly — a hitscan zap is literally a line of light. Tower colour with a white-hot core, plus a flare where it lands so a hit registers even when the target survives.
+Beams get the biggest payoff, unsurprisingly — a hitscan zap is literally a line of light. Tower color with a white-hot core, plus a flare where it lands so a hit registers even when the target survives.
 
-Also fixed `tools/screenshot.mjs`, which had been quietly lying: most shells clear to transparent and let the page background show through, so a raw capture carries an alpha channel that renders as white and makes a dark game look like a blown-out negative. It now paints the board colour underneath with `destination-over` — which also avoids `drawImage` rejecting a canvas from a different copy of the node-canvas module.
+Also fixed `tools/screenshot.mjs`, which had been quietly lying: most shells clear to transparent and let the page background show through, so a raw capture carries an alpha channel that renders as white and makes a dark game look like a blown-out negative. It now paints the board color underneath with `destination-over` — which also avoids `drawImage` rejecting a canvas from a different copy of the node-canvas module.
 
 ## 2026-07-30 — The four games are one story, and were renamed to match
 
@@ -491,12 +491,12 @@ The games were four unrelated toys that happened to share a look. They are now o
 |---|---|---|---|
 | 1 | Drift Net | Live Wire | the invader — a connected body that grows by taking worlds |
 | 2 | Flak Battery | Serpent Battery | planetary anti-air as the fleet descends |
-| 3 | Choke Point | Circuit Breaker | ground defence once they have landed |
+| 3 | Choke Point | Circuit Breaker | ground defense once they have landed |
 | 4 | Hull Breach | Angle Iron | the counter-attack against their hull |
 
 **The fiction was fitted to mechanics that already existed, not the reverse**, which is the whole reason it works. Drift Net already grows and wins by covering the board. Flak Battery already faces a single descending chain. Choke Point already funnels a column along a fixed route toward a core you defend. Hull Breach was already a sphere against rectangular plates. Nothing had to be built to make the story true.
 
-Two mechanics gained a meaning for free: killing Flak Battery's head ending the whole formation is now a command ship (and the body-armours-the-head rule reads as escorts screening it), and Choke Point's Patch healing its neighbours is a repair drone.
+Two mechanics gained a meaning for free: killing Flak Battery's head ending the whole formation is now a command ship (and the body-armors-the-head rule reads as escorts screening it), and Choke Point's Patch healing its neighbors is a repair drone.
 
 **Names keep the existing convention** — real compound terms that mean two things at once, as Live Wire, Angle Iron, Circuit Breaker and a *battery* of guns all did. Flak Battery is an anti-aircraft emplacement. A drift net is a long connected thing that sweeps up everything it touches. A choke point is where a small force holds a larger one. A hull breach is both the act and the result.
 
@@ -517,9 +517,9 @@ With the Choke Point trait cues confirmed readable on a device, the visual half 
 The rule is absolute on purpose. Shape alone telling you which side something is on is what keeps a busy board readable at a glance; a "sort of rounded" middle ground would throw that away for nothing. Per game:
 
 - **Drift Net** — you are the invader, so the body became a chain of cubes. The continuous glowing tube stays underneath, thinner, now reading as the tether that holds them into one body: without it a row of separate squares stops looking connected, which is the one thing that shape has to communicate. Body cubes are drawn cheaply (a fill plus a two-pass rim) rather than via the full `cube()` helper, for the same reason the body was a single polyline to begin with — eight stroke passes across sixty cells is several hundred draws a frame on a phone.
-- **Flak Battery** — segments were elongated plates, which read as one armoured body. Square now, and only slightly long so direction of travel still reads, because the fiction is a column of individual craft.
+- **Flak Battery** — segments were elongated plates, which read as one armored body. Square now, and only slightly long so direction of travel still reads, because the fiction is a column of individual craft.
 - **Choke Point** — the risky one, since its trait cues had just been confirmed working. The cue *language* was preserved exactly (heavy = plated, dashed = insulated, chevron = unslowable, cross = repairs) and only refitted from circles to squares; the towers stay round, so the defender/invader read is immediate.
-- **Hull Breach** — deliberately unchanged. Its ball was already a sphere and its bricks are hull *plating*, not craft; forcing them square would have confused armour with units. The exception that proves the rule.
+- **Hull Breach** — deliberately unchanged. Its ball was already a sphere and its bricks are hull *plating*, not craft; forcing them square would have confused armor with units. The exception that proves the rule.
 
 Still outstanding: the glow pass for Flak Battery and Hull Breach. Both now have the right shapes but are still on flat fills, so they look out of step with the two games that have been converted.
 
@@ -529,13 +529,13 @@ The last two games onto the vector look, which completes the art direction acros
 
 **Neither game gets phosphor trails.** Hull Breach's board is mostly static plating and Flak Battery's is a fixed path — anything static accumulates under a fade until it washes out, which Drift Net has to compensate for with deliberately-thin alphas. Hull Breach instead gives *the ball alone* a trail, tracked as recent positions in the shell, so exactly one thing smears and the plating stays crisp. That is a better pattern than a full-frame fade wherever most of the screen is stationary.
 
-**Hull Breach's plates are not extruded**, even though they are rectangles on a dark board, which is normally exactly the `extrudeRect` case. Tiled edge to edge at this size the offset back faces overlap their neighbours and the whole field turns to mush. Extrusion needs empty space around an object to read as depth; a dense grid does not have any.
+**Hull Breach's plates are not extruded**, even though they are rectangles on a dark board, which is normally exactly the `extrudeRect` case. Tiled edge to edge at this size the offset back faces overlap their neighbors and the whole field turns to mush. Extrusion needs empty space around an object to read as depth; a dense grid does not have any.
 
 **Damage now dims the rim rather than fading the body**, in both games. A half-broken plate should look like its lights are going out, not like it is becoming transparent — and on an emissive style, fading toward the background is indistinguishable from being destroyed.
 
-**The trap this pass sprang, again in a new form: contrast inversion.** Flak Battery's segment bodies used to be bright gradient plates, so the hp numbers, the damage cracks, the head's eye sockets and the shielded plate's rivets were all drawn *dark on top*. Making the body dark inverted every one of those, and they vanished — the numbers most visibly, since they are load-bearing information rather than decoration. Nothing failed; no test could have caught it; the pixels were all drawn exactly as instructed, in a colour now identical to what was underneath.
+**The trap this pass sprang, again in a new form: contrast inversion.** Flak Battery's segment bodies used to be bright gradient plates, so the hp numbers, the damage cracks, the head's eye sockets and the shielded plate's rivets were all drawn *dark on top*. Making the body dark inverted every one of those, and they vanished — the numbers most visibly, since they are load-bearing information rather than decoration. Nothing failed; no test could have caught it; the pixels were all drawn exactly as instructed, in a color now identical to what was underneath.
 
-That is the third distinct version of the same underlying mistake this week (glow instead of mass; additive cannot darken; now dark-on-dark after a body flip). The general rule, worth stating once: **converting to an emissive style inverts the background, so every foreground colour chosen against the old background has to be re-checked.** It is not enough to convert the shapes.
+That is the third distinct version of the same underlying mistake this week (glow instead of mass; additive cannot darken; now dark-on-dark after a body flip). The general rule, worth stating once: **converting to an emissive style inverts the background, so every foreground color chosen against the old background has to be re-checked.** It is not enough to convert the shapes.
 
 ## 2026-08-01 — Hull Breach's paddle upgrades are cached, not live, on purpose (by inheritance)
 
@@ -611,9 +611,9 @@ Feedback wanted a top-tier upgrade letting emplacements fire multiple barrels. T
 
 Barrels share the mount's existing single heat/cooldown pool rather than getting their own: firing 3 barrels costs 3x the heat per volley (`gun.heat += HEAT_PER_SHOT * S.heatPerShot * w.barrels`), which is the entire balancing mechanism and needed no new per-gun state. The angular fan for multiple barrels (`BARREL_OFFSETS`) reuses the same pattern the `spread` power-up already established for firing several shots off one aim angle.
 
-## 2026-08-02 — A shot's colour is baked in at fire time, not read live
+## 2026-08-02 — A shot's color is baked in at fire time, not read live
 
-Reported as a bug: "projectiles fired from a cool barrel will turn red when the barrel later heats up." The shell's draw loop computed every shot's colour fresh each frame from `world.cannon.od` (the battery's *current* overdrive tier) — so a shot's displayed colour reflected the state of the battery *now*, regardless of what tier was active when it was actually fired. `fireGun` already baked `dmg`/`pierce` onto the shot object at fire time (so a shot's damage doesn't change after launch); colour just hadn't gotten the same treatment. Fixed by adding `shot.col` at creation (`gun.type === 'ion' ? G.col : T.col`, preserving the ion cannon's own fixed colour) and having the shell read `p.col` instead of recomputing. Worth remembering as a category: anything about to be baked onto an object at creation time should get *all* of its presentation state baked in together, not just the fields a test happened to check.
+Reported as a bug: "projectiles fired from a cool barrel will turn red when the barrel later heats up." The shell's draw loop computed every shot's color fresh each frame from `world.cannon.od` (the battery's *current* overdrive tier) — so a shot's displayed color reflected the state of the battery *now*, regardless of what tier was active when it was actually fired. `fireGun` already baked `dmg`/`pierce` onto the shot object at fire time (so a shot's damage doesn't change after launch); color just hadn't gotten the same treatment. Fixed by adding `shot.col` at creation (`gun.type === 'ion' ? G.col : T.col`, preserving the ion cannon's own fixed color) and having the shell read `p.col` instead of recomputing. Worth remembering as a category: anything about to be baked onto an object at creation time should get *all* of its presentation state baked in together, not just the fields a test happened to check.
 
 ## 2026-08-02 — Drift Net → Feedline
 
@@ -633,7 +633,7 @@ Worth stating the general lesson, because the artifact survived three sessions o
 
 ## 2026-08-04 — "Header too high" was a flexbox overflow trap, not padding
 
-Two rounds of feedback said the header sat wrong, and the first fix (adding `env(safe-area-inset-top)`, v25) was correct but incomplete. The actual clipping came from `body { display:flex; align-items:center; overflow:hidden }`: **a centred flex item taller than its container overflows equally in both directions**, and with `overflow:hidden` the top half becomes unreachable — there is no scroll position that can reveal it. On a short phone with the shell at full height, that ate the header.
+Two rounds of feedback said the header sat wrong, and the first fix (adding `env(safe-area-inset-top)`, v25) was correct but incomplete. The actual clipping came from `body { display:flex; align-items:center; overflow:hidden }`: **a centerd flex item taller than its container overflows equally in both directions**, and with `overflow:hidden` the top half becomes unreachable — there is no scroll position that can reveal it. On a short phone with the shell at full height, that ate the header.
 
 `align-items:flex-start` fixes it permanently; content can only ever overflow downward, which `overflow:hidden` handles gracefully. Worth knowing generally: centring is safe only when the item is guaranteed smaller than the container, and `overflow:hidden` turns "slightly too tall" into "silently unreachable" rather than "scrollable".
 
@@ -655,7 +655,7 @@ This is also why the multiplier lives entirely in the shell: nothing in the engi
 
 ## 2026-08-04 — Health as brightness, and why `dim()` had to be shared
 
-Both Flak Battery (hp numbers on tough craft) and Choke Point (hp bars above every enemy) dropped their numeric readouts in favour of the thing simply going dark as it takes damage. On boards carrying 78 craft and 30+ enemies respectively, per-object numbers were competing with the thing the player is actually tracking.
+Both Flak Battery (hp numbers on tough craft) and Choke Point (hp bars above every enemy) dropped their numeric readouts in favor of the thing simply going dark as it takes damage. On boards carrying 78 craft and 30+ enemies respectively, per-object numbers were competing with the thing the player is actually tracking.
 
 The implementation forced a shared helper. `glowStroke` takes an `intensity` argument, but `extrude`/`extrudeRect`/`cube` do not — they issue several strokes *and* opaque fills internally, so one alpha could not describe "dimmer" for all of them, and a caller-side `globalAlpha` is explicitly documented as not working (each pass sets its own). So `dim(col, k)` scales the channels instead: for additive glow that is equivalent to lowering intensity, and it correctly darkens the opaque body fills too. Both games needed the identical maths, which is what made it `glow.js`'s problem rather than each caller's.
 
@@ -700,15 +700,15 @@ The grid, `CELL` and all three routes were left untouched. The plan had called f
 
 The manual three-tier upgrade is gone. It always lost the same argument: an upgrade competed for scrap with another tower, and another tower nearly always won, so the tiers were something you bought when you had run out of places to build.
 
-Splitting the two solves it. Towers earn their own levels by fighting — XP for damage dealt, up to level 10 — and money buys a **per-class armoury** that persists between runs. Placement earns, purchase compounds, and neither is spending the other's currency.
+Splitting the two solves it. Towers earn their own levels by fighting — XP for damage dealt, up to level 10 — and money buys a **per-class armory** that persists between runs. Placement earns, purchase compounds, and neither is spending the other's currency.
 
 Three details that are not obvious and are load-bearing:
 
 - **XP is capped at the target's remaining health.** Credit the full swing and a Breaker parked over the spawn levels fastest of anything on the board, on damage that killed nothing. Overkill pays what it killed.
 - **Each class buys its speciality cheap and its opposite dear** (Node rate/splash, Breaker splash/rate, Coil range/damage). Without that the four tracks are the same four tracks for everyone and the three classes converge on whichever build is strongest. The discount is what keeps a Node a Node however much goes into it.
-- **The engine holds `classUpgrades` but never touches storage.** `stats(w, tower)` has to be the only place numbers come from, so the armoury lives on the world; the shell loads and saves it. Same split as every other engine here, and the reason `resetGame` deliberately leaves it alone.
+- **The engine holds `classUpgrades` but never touches storage.** `stats(w, tower)` has to be the only place numbers come from, so the armory lives on the world; the shell loads and saves it. Same split as every other engine here, and the reason `resetGame` deliberately leaves it alone.
 
-Because the armoury only ever grows, every run after the first would otherwise be easier than the last. **Difficulty (easy/medium/hard) is the counterweight** — the player's dial rather than automatic scaling, and it rides along with the score so a Hard wave 14 is never filed against an Easy one.
+Because the armory only ever grows, every run after the first would otherwise be easier than the last. **Difficulty (easy/medium/hard) is the counterweight** — the player's dial rather than automatic scaling, and it rides along with the score so a Hard wave 14 is never filed against an Easy one.
 
 ## 2026-08-05 — Fast-forward and rush are different controls, and deleting one was a mistake
 
@@ -723,17 +723,17 @@ Restored, alongside fast-forward and auto-advance, which are three answers to th
 
 The four branches moved off the world and onto each gun; `stats(w)` became `stats(w, gun)` and every caller now has to name a mount. The mechanical part was a wide but shallow refactor. The design decision was **not rebalancing afterwards**.
 
-Under the old shared tree a new mount arrived already carrying every tier the first had bought, so more mounts was strictly more gun and the only question was how fast you could afford them. Now a mount arrives bare and the full tree costs five times as much, which is the entire point: a fifth gun competes directly against deepening the four you have. Wide-and-shallow covers the board; narrow-and-deep punches through armour; no run affords both.
+Under the old shared tree a new mount arrived already carrying every tier the first had bought, so more mounts was strictly more gun and the only question was how fast you could afford them. Now a mount arrives bare and the full tree costs five times as much, which is the entire point: a fifth gun competes directly against deepening the four you have. Wide-and-shallow covers the board; narrow-and-deep punches through armor; no run affords both.
 
 Worth flagging for whoever tunes this next: the five-fold bill is deliberate, not an oversight, and `fullBatteryCost()` exists to make the ceiling checkable.
 
 ## 2026-08-05 — The mortar's `arc` flag had never been read by anything
 
-`fireGun` set `arc: G.arc` on every mortar round and **nothing anywhere consumed it**. The gun's entire selling point — "reaches over the front rank" — described behaviour that did not exist, and had not since the mortar shipped. The tuning was fine; the feature was absent.
+`fireGun` set `arc: G.arc` on every mortar round and **nothing anywhere consumed it**. The gun's entire selling point — "reaches over the front rank" — described behavior that did not exist, and had not since the mortar shipped. The tuning was fine; the feature was absent.
 
 Rounds now carry a `travelled` distance and cannot collide inside `MORTAR_ARM`. Implemented as an arming distance rather than a real parabola because the board is top-down: there is no third axis to arc through, and "cannot hit anything for the first N pixels" is the same rule a lob actually gives you. The shell draws the height that is not in the model.
 
-The general lesson is about flags rather than mortars: **a field set at one end and read at neither is invisible to every test that does not assert on behaviour.** The unit tests all passed, the render tests all passed, and the gun was inert for months. The new tests assert that a lobbed round *misses* something a plain round hits at the same range — a behavioural claim, not a field check.
+The general lesson is about flags rather than mortars: **a field set at one end and read at neither is invisible to every test that does not assert on behavior.** The unit tests all passed, the render tests all passed, and the gun was inert for months. The new tests assert that a lobbed round *misses* something a plain round hits at the same range — a behavioral claim, not a field check.
 
 ## 2026-08-05 — Extra barrels are lateral, not angular
 
@@ -747,7 +747,7 @@ Both the mount art and the shop portrait **read the offsets from the engine** ra
 
 Reported as "after wave seven the difficulty drops too fast". The cause is exact: `waveCount` is `min(20 + wave*9, 78)`, which reaches its ceiling at wave 6.4. From wave 7 the column stops growing, and length is the escalation a player can actually *see* — speed keeps climbing to wave 12 and `hpScale` to 18, but neither reads as "more" the way a longer column does.
 
-A second and third column looks like the obvious fix, and it is recorded here as rejected so it is not retried on the same reasoning. **Splitting a wave's craft across two chains is not the neutral rearrangement it appears to be.** Each chain grows its own head; a head is both the toughest kind and body-armoured while anything trails it. Two columns of 39 therefore carry ~21% more health than one of 78, and much more of it sits behind armour. Measured against the balance guard, that step put a *perfectly played, fully maxed* battery into its first breach the moment the second column appeared — at every threshold tried, waves 13 through 16. The board got harder in a jump rather than on a curve.
+A second and third column looks like the obvious fix, and it is recorded here as rejected so it is not retried on the same reasoning. **Splitting a wave's craft across two chains is not the neutral rearrangement it appears to be.** Each chain grows its own head; a head is both the toughest kind and body-armored while anything trails it. Two columns of 39 therefore carry ~21% more health than one of 78, and much more of it sits behind armor. Measured against the balance guard, that step put a *perfectly played, fully maxed* battery into its first breach the moment the second column appeared — at every threshold tried, waves 13 through 16. The board got harder in a jump rather than on a curve.
 
 The climb comes from `hpScale` instead, which is what the note on `waveCount` had recommended all along: a `past7` term on top of the existing rate, 26% steeper at wave 14 than v26 and still rising where v26 flatlined at its cap.
 
@@ -779,11 +779,11 @@ Separately, `fire()` was the quietest entry in the library at `gain: 0.12` again
 
 ## 2026-08-05 — Test helpers that assume the map
 
-Reordering Choke Point's routes by difficulty broke a dozen tests at once — tests about armour, splash resistance, slow immunity and target re-acquisition, none of which have anything to do with route order.
+Reordering Choke Point's routes by difficulty broke a dozen tests at once — tests about armor, splash resistance, slow immunity and target re-acquisition, none of which have anything to do with route order.
 
 The cause was two helpers that took `firstBuildable(w)` (the first non-path cell, scanning from the top-left) and then looked for a path point within range of it. That only ever worked because route 0 happened to start in the top-left corner and run along the second row. The helpers now search for a cell that genuinely overlooks a stretch of route, with a `span` argument for tests that need two enemies near each other.
 
-The pattern is worth naming: **a fixture that depends on incidental map geometry fails far from its cause.** Nothing in "armour blunts small hits" hints that it is coupled to where route A starts. Searching for what the test actually needs is barely more code and does not care what shape the board is.
+The pattern is worth naming: **a fixture that depends on incidental map geometry fails far from its cause.** Nothing in "armor blunts small hits" hints that it is coupled to where route A starts. Searching for what the test actually needs is barely more code and does not care what shape the board is.
 
 A second instance of the same class, in Hull Breach: a new pierce test set up a ball and a brick but left `w.running` false, so `step` returned immediately and the ball never moved. The assertion was on the velocity the ball *started* with — so it passed, for entirely the wrong reason. Assertions about "did this change" want a before-and-after, not a state that a no-op also satisfies.
 
@@ -799,7 +799,7 @@ The margin lives in the engine (it is a number about the simulation's geometry) 
 
 "Coil's cheap upgrade is splash" turned out not to be a one-line swap. Coil's base splash was **0**, and `stats` grows splash multiplicatively — so the splash track changed nothing on a Coil at any price. Making it the discounted track would have been advertising a bargain on an upgrade that does not exist.
 
-Worse, the same bug was already live on **Node**, where splash is the `weak` track: the armoury charged a *surcharge* for an upgrade that did nothing whatsoever. A dear option is a judgement call the player gets to make; a dear option that does nothing is a trap.
+Worse, the same bug was already live on **Node**, where splash is the `weak` track: the armory charged a *surcharge* for an upgrade that did nothing whatsoever. A dear option is a judgement call the player gets to make; a dear option that does nothing is a trap.
 
 Both classes got a real base splash — Coil 24px (about a third of a cell, so it chills a small cluster, which is what `SLOW_BRITTLE` wants since setting up three targets is worth three times setting up one) and Node a token 12px that stays under half a cell even maxed, so a Node never becomes a cut-price Breaker. Coil's `weak` moved to range in exchange, making it short-reach area support rather than a long-reach single-target debuff.
 
@@ -819,7 +819,7 @@ Knock-on worth noting: the popup printed `Math.floor(t.xp)`, which at a tenth th
 
 Choke Point gained a move verb. The design question was the fee, and there are only really three answers: free, full price, or the sell-and-rebuild cost.
 
-**Free** makes placement weightless — the right play becomes dragging the whole defence along behind every wave, which is busywork, not a decision. **Full price** leaves the sell-and-rebuild workaround strictly cheaper, so the button would be a trap. `sellValue` (half the build cost) is exactly the money the workaround burns: moving is never a worse deal than what players would do anyway, and never free either.
+**Free** makes placement weightless — the right play becomes dragging the whole defense along behind every wave, which is busywork, not a decision. **Full price** leaves the sell-and-rebuild workaround strictly cheaper, so the button would be a trap. `sellValue` (half the build cost) is exactly the money the workaround burns: moving is never a worse deal than what players would do anyway, and never free either.
 
 Level and XP survive the move. They were earned by fighting rather than bought, and a veteran tower you can never re-site is the exact situation the verb exists for. The cooldown resets on arrival so a move cannot double as a free reload, and moving is allowed mid-wave — the fee is the brake, and the moment you learn a placement is wrong is the moment it is being tested.
 
@@ -843,12 +843,12 @@ Scrap stays the run economy. Research points are what a whole run was *worth*, a
 
 Points are paid **at the end of a run, from the wave reached**. End-of-run so a strong opening cannot be farmed by restarting; from the wave reached so the thing that earns progression is the thing the player is already trying to do. `awardResearch` is idempotent, because a game-over screen can re-render.
 
-Shape copied wholesale from the armoury: the engine holds it on the world so `upgradeCost`/`canAfford` stay the only things that decide what is buyable, and the *shell* does the storage. The key stayed local to the shell rather than going into `shared/` — same call as `ARMOURY_KEY`, since one game having a feature is not yet a shared abstraction.
+Shape copied wholesale from the armory: the engine holds it on the world so `upgradeCost`/`canAfford` stay the only things that decide what is buyable, and the *shell* does the storage. The key stayed local to the shell rather than going into `shared/` — same call as `ARMORY_KEY`, since one game having a feature is not yet a shared abstraction.
 
 Two consequences that were not obvious going in:
 
 - **`gunUnlocks` had to leave the snapshot.** It is a projection of permanent research now, not run state. Storing it would let a save carry a gun the current research has not bought, and — the case that actually matters — would pin a resumed run to whatever was known at save time, even after more had been researched since. It is re-derived on `hydrate` instead.
-- **A locked tier must not read as "Maxed".** Both are disabled buttons, but one is the end of the road and the other is a signpost to the Research tab. Same pixel, opposite meanings; it says "Needs research" and is tinted toward the research colour.
+- **A locked tier must not read as "Maxed".** Both are disabled buttons, but one is the end of the road and the other is a signpost to the Research tab. Same pixel, opposite meanings; it says "Needs research" and is tinted toward the research color.
 
 The counterweight problem is **open, deliberately**. Persistent progression makes each run easier than the last, and the current difficulty was explicitly praised ("I like the difficulty. The ramp up after level seven is challenging"). Choke Point answered this with `DIFFICULTIES`; Flak Battery has no such dial and is not getting one this round, because it should be tuned against evidence of how soft the curve actually goes rather than pre-emptively. `researchEarned`'s constants and the RP prices are first drafts.
 
@@ -856,9 +856,9 @@ The counterweight problem is **open, deliberately**. Persistent progression make
 
 Levels 1-2 are single-hit plating now and level 3 caps at two hits, because level 1 shipped three-hit bricks in its back rows — repeat hits on one cell, asked of a player who does not yet have the paddle-angle control to aim them.
 
-The catch: salvage is `brickSalvage(maxhp)` per brick, so softening the opening also roughly halved what it pays — and the **shop opens on the first clear**, so an easier opener would have bought a slower one. `softClearBonus(level)` pays back exactly the difference, computed from the same `brickPresent`/`brickHp` the field is built from so it cannot drift, and returning zero from `ARMOUR_FROM` on where nothing was taken away.
+The catch: salvage is `brickSalvage(maxhp)` per brick, so softening the opening also roughly halved what it pays — and the **shop opens on the first clear**, so an easier opener would have bought a slower one. `softClearBonus(level)` pays back exactly the difference, computed from the same `brickPresent`/`brickHp` the field is built from so it cannot drift, and returning zero from `ARMOR_FROM` on where nothing was taken away.
 
-The alternative — raising `brickSalvage` — was rejected because it would decouple pay from armour on *every* level to fix three, and pay-scales-with-armour is the property that makes digging out a back row worth doing.
+The alternative — raising `brickSalvage` — was rejected because it would decouple pay from armor on *every* level to fix three, and pay-scales-with-armor is the property that makes digging out a back row worth doing.
 
 Worth generalising: **changing a difficulty knob that also feeds an economy changes the economy.** Nothing in "make the early levels easier" says "and halve the opening income", but that is what it did.
 
@@ -874,7 +874,7 @@ Choke Point was endless, so the best possible run ended exactly like the worst: 
 
 Each difficulty now has a win wave — 50 / 100 / 150 — and higher difficulties ask for longer runs as well as harder ones, so the three are not interchangeable ways to play the same length of game. Winning banks the circuit and opens the next, and opens the difficulty above on the first win.
 
-**The banner offers both doors**, at the owner's call: "Next circuit" and "Keep going". The unlock is banked either way. Somebody who has just built a defence that survives 50 waves has a reasonable question about how far it actually goes, and there is no reason to make them trade the reward for the answer.
+**The banner offers both doors**, at the owner's call: "Next circuit" and "Keep going". The unlock is banked either way. Somebody who has just built a defense that survives 50 waves has a reasonable question about how far it actually goes, and there is no reason to make them trade the reward for the answer.
 
 `won` is in the snapshot and `justWon` is not, and the split matters: `won` is a fact about the run (so a resumed one is not congratulated twice), while `justWon` is a one-frame edge for the shell, and restoring it would fire the victory banner again on the first frame back.
 
@@ -882,7 +882,7 @@ Each difficulty now has a win wave — 50 / 100 / 150 — and higher difficultie
 
 Medium unlocks on any Easy win, Hard on any Medium win. **One win, not a clean sweep** — requiring every circuit at a difficulty before the next appeared would put three full runs of gate between a player and the thing they are ready for.
 
-Two consequences worth writing down. `DEFAULT_DIFFICULTY` moved from `medium` to `easy`, because the default has to be something a new player actually has; that in turn meant `START_COMPONENTS`/`START_INTEGRITY` had to stop hardcoding `DIFFICULTIES.medium` and derive from the default instead, or a constant would name one difficulty while `createWorld` used another. And `readDifficulty` re-checks the gate on the way out: a stored difficulty from before it was earned must not be honoured, or the whole thing is one edited storage key deep.
+Two consequences worth writing down. `DEFAULT_DIFFICULTY` moved from `medium` to `easy`, because the default has to be something a new player actually has; that in turn meant `START_COMPONENTS`/`START_INTEGRITY` had to stop hardcoding `DIFFICULTIES.medium` and derive from the default instead, or a constant would name one difficulty while `createWorld` used another. And `readDifficulty` re-checks the gate on the way out: a stored difficulty from before it was earned must not be honored, or the whole thing is one edited storage key deep.
 
 ## 2026-08-07 — "Continuous" was waiting for the board to empty
 
@@ -898,7 +898,7 @@ Aim is presentation state now, kept in the shell beside the barrel extension —
 
 The general note: **a fix that extends how long a state is visible will expose whatever that state's fallback rendering is.** The hold timer was correct; it just made a pre-existing hole in the draw path last long enough to see.
 
-## 2026-08-07 — The armoury became a table because the pricing is a comparison
+## 2026-08-07 — The armory became a table because the pricing is a comparison
 
 Three stacked per-class cards meant comparing what a track costs *across* classes needed scrolling between boxes — and that comparison is the entire point of `SPEC_DISCOUNT`/`WEAK_PENALTY`. Side by side in a grid, "cheap here, dear there" is just the row you are looking at.
 
@@ -922,7 +922,7 @@ Worth generalising: **an element with no CSS is not neutral, it is in flow** —
 
 The instruction was to remove descriptions wherever possible and shorten the rest, and the useful principle turned out to be: **delete anything the interface already says.**
 
-The cabinet's cards carried a lore line *and* a rules paragraph, above a `.how` line naming the control — the paragraph restated what the card obviously was, so it went and the lore stands alone. The armoury's note explained spec/weak pricing that the table's own tinting now shows. Choke Point's help lost its whole enemy-roster paragraph: colour and size carry that, and a player meets one new type at a time anyway. Flak Battery's Refit card explained where research is bought, on a screen with a Research tab in the tab strip.
+The cabinet's cards carried a lore line *and* a rules paragraph, above a `.how` line naming the control — the paragraph restated what the card obviously was, so it went and the lore stands alone. The armory's note explained spec/weak pricing that the table's own tinting now shows. Choke Point's help lost its whole enemy-roster paragraph: color and size carry that, and a player meets one new type at a time anyway. Flak Battery's Refit card explained where research is bought, on a screen with a Research tab in the tab strip.
 
 What stayed: the one-line lore per game (a deliberate call from the naming pass), the keyboard lines, and anything naming a rule that is genuinely invisible — a Coil making slowed targets take more damage from *other* towers cannot be inferred from watching.
 
@@ -1027,3 +1027,41 @@ Everything standing on the **ground plane** now reads depth from one function: c
 Kept gentle — 22% total falloff — because `seg.r` is untouched and must stay so. A craft drawn 12% smaller at the top still has to be hit by a round passing through the same pixels; anything stronger and the drawing stops matching the hitbox in a way players feel as unfairness.
 
 The road took three attempts, and the failures are the interesting part. One stroke per leg leaves a visible step at every corner where two widths meet. Subdividing into short overlapping strokes fixes the step and introduces something worse: translucent round caps **accumulate alpha** where they overlap, and the road comes out beaded like a string of pearls. It is a single filled ribbon now — offsets computed either side of the path and filled once — because one fill blends once.
+
+## 2026-08-13 — Feedline's checkpoints shipped, worked, and were unreachable
+
+The report was "the checkpoint system didn't get implemented". It was: `CHECKPOINTS`, `checkpointReached`, `resumeFromCheckpoint` and `layoutWire` were all in the engine, tested, and browser-verified.
+
+The first checkpoint sat at 25% of the board — 70 meals, length 144, roughly 80 seconds of clean play. Almost no run gets there, so no player had ever seen one fire, and the honest conclusion from the outside is that the feature is missing. The design failed on its own terms: the point of banking was *mini wins*, and the first mini win was further away than most runs reach.
+
+The ladder now starts at 5% and spaces out — `[0.05, 0.09, 0.14, 0.20, 0.28, 0.38, 0.50, 0.64, 0.80]` — so the first bank is about 13 meals in and an ordinary run sees two or three. The HUD gained a bank bar showing progress toward the next one, because a system whose only evidence appears on the death screen is a system nobody knows they have.
+
+Making the ladder denser re-broke the serpentine wall bug from the last round in a new place: the 5% checkpoint lays out a wire with only two cells of run ahead of the head, and the direction search — which took the first legal heading — picked a wall two ticks away. It picks by **run length** now, longest clear line wins, and the test bar is `RESUME_RUN = 5` because the deepest checkpoint genuinely only has six cells of room.
+
+## 2026-08-13 — Flak Battery stopped getting harder at wave 17
+
+"Too easy once you have three guns around 15/45, about wave 30." The cause is arithmetic, not balance feel: `hpScale` was `Math.min(HP_SCALE_MAX, …)` and reached its 6.5 ceiling at wave 17, while `waveCount` capped at 78 craft by wave 7. **Every wave past 17 was identical.** The player kept upgrading; the game did not.
+
+Two changes, chosen together over "more chains" (rejected in 2026-08-05, and for the reason recorded there):
+
+Health keeps climbing past the knee on a gentler endless slope (`HP_PER_WAVE_ENDLESS`) rather than going flat — wave 50 now scales 10.5 against the old 6.5. The old ceiling still shapes the early game, so nothing before wave 17 moved.
+
+The **mix** escalates too. `kindForIndex` promotes plain craft to hardened/shielded/armored as waves deepen, deterministically by slot so a seeded run still replays. At wave 30 the plain `std` count falls from 37 to 10. This matters more than the health curve: raw hp asks only for more damage, which is the stat you were already buying, whereas a column of shielded and armored craft asks for the *right gun*. `KIND_UNLOCK` already staged introductions; this extends the same idea to proportions.
+
+The cap test was rewritten to assert the opposite of what it used to — that hp never stops climbing, that the late slope is gentler than the early one, and that it is monotonic for 200 waves.
+
+## 2026-08-13 — The Flak Battery choppiness was the shot glow, and batching it was the wrong fix
+
+Measured at five mounts, 28 tiers, max barrels: **peak 82 rounds on screen**, each drawn as a plain fill plus two `glowDot` calls, and `glowDot` is a four-pass loop carrying its own `save`/`restore` and composite change. About 650 individual arc fills a frame for the shots alone, before craft, road or effects. Mean frame: **16.36 ms** — over budget on its own.
+
+The obvious fix is to accumulate every arc into one path per pass, one fill per pass: O(passes) draw calls instead of O(dots × passes). It was implemented, and it is **not the same picture**. A single fill covers overlapping arcs once, while separate fills blend twice under `lighter`, so clustered fire came out dimmer — measured at 1772 of 160000 pixels differing, max channel delta 162. Exactly the alpha-accumulation property that beaded the road in the perspective work, met from the other side.
+
+It also turned out not to matter. Keeping the per-dot fills and hoisting only the `save`/`restore` and the composite change out of the loop measured **8.19 ms**; the batched version measured 8.31 ms. The entire win was in the state changes, not the draw calls. `glowDots` therefore ships as per-dot fills with hoisted state — same pixels, twice the speed — and `glowDot` gained a `passes` argument (matching `glowStroke`, which already had one) so hot loops can opt into a cheaper falloff.
+
+## 2026-08-13 — Pausing the Armory broke the Armory refreshing
+
+Two reports from the same round: the game should pause while the Armory is open, and the Armory doesn't always update when you can suddenly afford something.
+
+Fixing the first caused the second. The frame loop gated its whole body — `sync()` included — on the shop being closed, and `sync()` is what repaints affordability. So the Armory froze the instant it opened: a row you could now afford stayed grey until some other purchase forced a re-render. The fix that made the pause work is the fix that would have caused the refresh bug, and only one of the two symptoms had been reported before.
+
+`sync()` now sits outside the simulation gate. It is DOM writes over engine state and idempotent, so running it while paused costs nothing. The regression test asserts **both properties in one test**, on purpose: either one alone passes on the broken build, and it was passing separately that let this ship.

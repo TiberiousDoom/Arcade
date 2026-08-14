@@ -91,7 +91,7 @@ export const KIND = {
   armored:  { hp: 13, r: 15, col: '#7f8fa0', ring: '#4a5765', score: 150, scrap: 4 },
   volatile: { hp: 3, r: 13, col: '#e0503c', ring: '#7d2517', score: 110, scrap: 3 },
   // Plated on the leading face: shots from the front glance off, so you must
-  // either come at it from the side via a wall bounce or clear a neighbour
+  // either come at it from the side via a wall bounce or clear a neighbor
   // first to expose the flank.
   shielded: { hp: 6, r: 14, col: '#4d7fb3', ring: '#2b4d70', score: 200, scrap: 5, shield: true },
   // Heals while it lives. Ignore it and it undoes your chip damage; it never
@@ -104,7 +104,7 @@ export const KIND = {
   carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 4, carries: true },
   // Just plain tough — no special resistance of its own. The railgun is
   // simply the efficient tool against it (`railBonus`, checked in
-  // `damageSeg`), the same way armored favours a heavy hitter without being
+  // `damageSeg`), the same way armored favors a heavy hitter without being
   // literally immune to anything else.
   hardened: { hp: 10, r: 14, col: '#5fc9d6', ring: '#2e6b73', score: 240, scrap: 8, railBonus: 1.8 },
   head:     { hp: 24, r: 17, col: '#c9a227', ring: '#8a6f19', score: 400, scrap: 11 },
@@ -141,6 +141,22 @@ export function kindsForWave(wave) {
   return Object.keys(KIND_UNLOCK).filter(k => wave >= KIND_UNLOCK[k]);
 }
 
+/** Wave at which the column's *composition* starts hardening, and how fast.
+ *
+ *  Health alone stops being difficulty past a point — it makes a wave longer,
+ *  not harder, because the same guns still win every exchange. What actually
+ *  asks something new of a player is a column that is mostly armoured, plated
+ *  and hardened, since those are the craft that punish the wrong gun. So deep
+ *  waves thin out the plain `std` craft in favour of the awkward ones. */
+export const MIX_FROM = 14;
+export const MIX_PER_WAVE = 0.055;
+export const MIX_MAX = 0.75;
+
+/** How far the mix has hardened at `wave`, 0..MIX_MAX. */
+export function mixPressure(wave) {
+  return Math.min(MIX_MAX, Math.max(0, (wave - MIX_FROM)) * MIX_PER_WAVE);
+}
+
 export function kindForIndex(i, count = Infinity, wave = Infinity) {
   if (i === 0) return 'head';
   const has = (k) => wave >= KIND_UNLOCK[k];
@@ -152,6 +168,21 @@ export function kindForIndex(i, count = Infinity, wave = Infinity) {
   if (has('hardened') && i % 19 === 9) return 'hardened';
   if (has('regen') && i % 17 === 11) return 'regen';
   if (has('carrier') && i % 6 === 4) return 'carrier';
+
+  /* Deep waves promote some of what would have been plain craft into the
+     awkward ones, on a fixed pattern so a wave stays reproducible — the whole
+     spawn is deterministic and a random promotion here would break that.
+     The three promoted kinds each answer a different gun, so a hardened column
+     is a question about the battery rather than about patience. */
+  const p = mixPressure(wave);
+  if (p > 0) {
+    const slot = i % 20;                      // 20 slots, filled as pressure rises
+    if (slot < Math.round(p * 20)) {
+      if (has('hardened') && slot % 3 === 0) return 'hardened';
+      if (has('shielded') && slot % 3 === 1) return 'shielded';
+      if (has('armored')) return 'armored';
+    }
+  }
   return 'std';
 }
 
@@ -167,7 +198,10 @@ export function kindForIndex(i, count = Infinity, wave = Infinity) {
 // carries the rest, and is what stops a deep run flattening out once the
 // multiplier caps.
 export const HP_PER_WAVE = 0.26;
+/** Where the fast ramp stops. Not a ceiling any more — see `hpScale`. */
 export const HP_SCALE_MAX = 6.5;
+/** Fraction of the normal ramp that continues past `HP_SCALE_MAX`, forever. */
+export const HP_PER_WAVE_ENDLESS = 0.28;
 
 /* Wave 7 is where `waveCount` hits its 78-craft ceiling, so from there on the
    chain stops getting longer — and length is the dial a player can actually
@@ -184,8 +218,17 @@ const past7 = (wave) => Math.max(0, wave - 7);
 export const HP_PER_WAVE_LATE = 0.16;
 
 export function hpScale(wave) {
-  return Math.min(HP_SCALE_MAX,
-    1 + (wave - 1) * HP_PER_WAVE + past7(wave) * HP_PER_WAVE_LATE);
+  const ramp = 1 + (wave - 1) * HP_PER_WAVE + past7(wave) * HP_PER_WAVE_LATE;
+  /* Past the ceiling health keeps climbing, just far more slowly.
+     It used to stop dead at `HP_SCALE_MAX`, which it reached at **wave 17** —
+     so every wave from there on was identical while the player kept upgrading,
+     and the game got easier the longer you played. That is the reported
+     "too easy by wave 30".
+     A gentle slope rather than the old one: past this point the escalation is
+     meant to come mostly from the *mix* (see `kindForIndex`), because health
+     alone past a point is a longer wave rather than a harder one. */
+  if (ramp <= HP_SCALE_MAX) return ramp;
+  return HP_SCALE_MAX + (ramp - HP_SCALE_MAX) * HP_PER_WAVE_ENDLESS;
 }
 
 /* A second and third *column* was the obvious way to escalate once the chain
@@ -194,9 +237,9 @@ export function hpScale(wave) {
 
    Splitting a wave's craft across two chains is not the neutral rearrangement
    it looks like. Each chain grows its own head, and a head is both the
-   toughest kind and body-armoured while anything trails it, so two columns of
+   toughest kind and body-armored while anything trails it, so two columns of
    39 carry ~21% more health than one of 78 and a good deal more of it is
-   parked behind armour. Measured against the balance guard below, that step
+   parked behind armor. Measured against the balance guard below, that step
    put a *perfectly played, fully maxed* battery into its first breach the
    moment the second column appeared, at every threshold tried between waves
    13 and 16. The board got harder in a jump rather than on a curve.
@@ -549,7 +592,7 @@ export function newUpgrades() {
    five-mount battery is five times the tree, and it should be.
 
    The trade this creates is the point — a wide battery of shallow guns covers
-   the board, a narrow one of deep guns punches through armour, and no run
+   the board, a narrow one of deep guns punches through armor, and no run
    affords both. */
 
 /** Cost of the next tier in a branch for one gun, or null if it cannot be
@@ -644,7 +687,7 @@ export function createWorld(opts = {}) {
        Kept as a switch rather than deleting the machinery — the whole
        pickup/effect system is intact behind it, and the shell exposes it in
        the settings menu so it can be A/B'd on a phone without a redeploy. */
-    drops: opts.drops ?? false,
+    drops: opts.drops ?? true,
     shake: 0, hitStop: 0,
     // extra hit radius, set by the shell from the input device (see
     // AIM_ASSIST_R). Zero for mouse and keyboard, which aim precisely.
@@ -724,7 +767,7 @@ export function spawnWave(w) {
  *  left out because it describes the *device* (touch vs mouse), not the run —
  *  restoring a phone save on a desktop must not carry the touch aim assist over.
  *  `drops` is excluded for the same reason: it is a setting the player chose,
- *  so a resumed run should honour the setting that is live now, not the one
+ *  so a resumed run should honor the setting that is live now, not the one
  *  that happened to be set when the save was written.
  *
  *  `bits` and `floaters` are dropped too: they are decorative particles with a
@@ -929,7 +972,7 @@ export function buyBarrel(w, mountIndex) {
    while the busywork does not.
 
    The engine holds research on the world and touches no storage, exactly as
-   Choke Point's armoury does; the shell loads and saves it. `resetRun` leaves
+   Choke Point's armory does; the shell loads and saves it. `resetRun` leaves
    it alone — carrying over is the entire point. */
 
 /** Research points a finished run is worth.
@@ -1017,7 +1060,7 @@ export function newResearch() {
 }
 
 /** Defensive read of a stored research object — a value past the caps would
- *  quietly hand out tiers no shop could sell. Same guard shape as the armoury. */
+ *  quietly hand out tiers no shop could sell. Same guard shape as the armory. */
 export function sanitizeResearch(raw) {
   const r = newResearch();
   if (!raw || typeof raw !== 'object') return r;
@@ -1092,6 +1135,17 @@ export function awardResearch(w) {
  *  ones behind it. The whole reason to own one. */
 export const MORTAR_ARM = 96;
 
+/** Blast radius of a mortar round on impact, and the fraction of its damage the
+ *  splash carries. The gun's whole selling point is reaching over the front
+ *  rank; landing there and killing exactly one craft made it a slower cannon
+ *  with extra rules. Smaller than a bomb's radius — it is a shell, not a
+ *  power-up. */
+export const MORTAR_SPLASH_R = 62;
+export const MORTAR_SPLASH_DMG = 0.55;
+
+/** Most shields a player may hold at once. */
+export const MAX_SHIELDS = 3;
+
 /** Refitting a mount to a different type, in scrap, on top of the one-time
  *  research that made the type available at all.
  *
@@ -1139,31 +1193,40 @@ export const ENGAGE_MIN = 170;
 export const ENGAGE_MAX = 480;
 /** Width of the ease either side of that threshold, so it does not snap. */
 export const ENGAGE_BLEND = 90;
-/** How far apart, in focal range, convergence sets successive mounts. */
-export const FOCUS_STAGGER = 60;
+/** How far apart convergence sets successive mounts, **as a fraction of the
+ *  focal range**. Proportional rather than absolute on purpose: a fixed ±120px
+ *  spread is modest at 500px and larger than the target distance itself at
+ *  137px, which put two mounts on the floor clamp and two well past the ship
+ *  they were supposed to be converging on. Scaled, the battery tightens as the
+ *  target closes — which is the entire point of the branch. */
+export const FOCUS_STAGGER = 0.16;
 
-/** How far along the aim line the nearest craft sits, or null if the line is
- *  empty. Measured as a distance from the battery, not a point, because that
- *  is what the focal range is. */
+/** How far away the **leading command ship** is, or null if there is none on
+ *  the board. Measured as a distance from the battery, because that is what a
+ *  focal range is.
+ *
+ *  It used to be "the nearest craft within a corridor of the aim line", which
+ *  made the focal point jump between whatever happened to be in front of the
+ *  guns — including escort craft the player was not trying to kill. The head of
+ *  the leading chain is a single, stable, nameable thing: the focus sits on the
+ *  ship you are actually trying to bring down, and stays there as it advances.
+ *
+ *  The *leading* chain is the one furthest along the path, since that is the one
+ *  about to breach. A splitter can make several chains mid-wave, and picking the
+ *  wrong one would point the battery at the back of the board. */
 function targetRange(w) {
   const b = w.battery;
   const ox = w.L.W / 2, oy = b.y;
-  const dx = Math.cos(b.ang), dy = Math.sin(b.ang);
-  let best = null;
+  let lead = null, leadS = -Infinity;
   for (const ch of w.chains) {
-    for (let i = 0; i < ch.segs.length; i++) {
-      const p = segPos(w.path, w.pathLen, ch, i);
-      if (p.off) continue;
-      // distance along the aim line, and how far off it the craft sits
-      const along = (p.x - ox) * dx + (p.y - oy) * dy;
-      if (along <= 40) continue;                     // behind or on top of us
-      const perp = Math.abs(-(p.x - ox) * dy + (p.y - oy) * dx);
-      // a generous corridor: this is "what are we shooting toward", not a hit test
-      if (perp > 90) continue;
-      if (best === null || along < best) best = along;
-    }
+    if (!ch.segs.length) continue;
+    const p = segPos(w.path, w.pathLen, ch, 0);       // index 0 is the head
+    if (p.off) continue;
+    if (ch.s > leadS) { leadS = ch.s; lead = p; }
   }
-  return best;
+  if (!lead) return null;
+  const d = Math.hypot(lead.x - ox, lead.y - oy);
+  return d > 40 ? d : null;                           // on top of us: nothing to focus
 }
 
 /** The point the battery is aiming at. Every gun fires toward it, so it is
@@ -1225,7 +1288,7 @@ export function aimPointFor(w, gun) {
         const n = b.guns.length;
         const rank = b.guns.indexOf(gun);
         if (n > 1 && rank >= 0) {
-          range = Math.max(MIN_FOCUS, range + (rank - (n - 1) / 2) * FOCUS_STAGGER * k);
+          range = Math.max(MIN_FOCUS, range * (1 + (rank - (n - 1) / 2) * FOCUS_STAGGER * k));
         }
       }
     }
@@ -1299,11 +1362,11 @@ function fireGun(w, gun) {
     travelled: 0,
     sub: !!sub,
     gun: gun.type,      // which mount fired this — damageSeg/isDeflected check this
-    // The colour to draw this shot, baked in at fire time rather than read
+    // The color to draw this shot, baked in at fire time rather than read
     // live off the battery every frame — a shot fired while cool must stay
-    // the colour it was fired at, not flip to red mid-flight the instant the
+    // the color it was fired at, not flip to red mid-flight the instant the
     // battery's streak climbs into Critical after it launched. The ion
-    // cannon keeps its own colour regardless of tier, same as it always has.
+    // cannon keeps its own color regardless of tier, same as it always has.
     col: gun.type === 'ion' ? G.col : T.col,
   });
 
@@ -1386,7 +1449,7 @@ export const GUN_TYPES = {
 export const GUN_KEYS = Object.keys(GUN_TYPES);
 
 /** Mount x-positions across the battery, as fractions of width. Index 0 is
- *  dead centre; more mounts fan outward symmetrically. */
+ *  dead center; more mounts fan outward symmetrically. */
 export const MOUNT_X = [0.5, 0.32, 0.68, 0.18, 0.82];
 export const MAX_MOUNTS = 5;
 export const MOUNT_COST = [0, 130, 247, 416, 624];   // cost of the Nth mount
@@ -1479,7 +1542,7 @@ export function applyPowerup(w, kind, mount = null) {
   if (!P) return false;
 
   if (kind === 'bomb') {
-    // blast centred on the pickup's own position, not the cannon, so it
+    // blast centerd on the pickup's own position, not the cannon, so it
     // clears what was actually in front of you
     const bx = w.bombAt ? w.bombAt.x : w.cannon.x;
     const by = w.bombAt ? w.bombAt.y : w.cannon.y;
@@ -1502,6 +1565,10 @@ export function applyPowerup(w, kind, mount = null) {
   }
 
   if (kind === 'shield') {
+    /* Capped. Shields absorb a breach outright, so a stack of them is a stack
+       of free mistakes — and with drops on by default they accumulate faster
+       than they are spent. Three is a cushion; six was an insurance policy. */
+    if (w.shieldCharges >= MAX_SHIELDS) return false;
     w.shieldCharges++;
     w.fx.push('SHIELD', w.cannon.x, w.cannon.y - 70, P.col);
     return true;
@@ -1583,6 +1650,30 @@ export function stepPickups(w, dt) {
   }
 }
 
+/** A mortar round's blast. Everything within `MORTAR_SPLASH_R` of the impact
+ *  takes a fraction of the round's damage, the craft actually struck excepted —
+ *  it already took the full hit.
+ *
+ *  Iterated backwards over both chains and segments because `damageSeg` can
+ *  splice, and indices behind the cursor are the ones already visited. The
+ *  direct target is identified by chain *and* index rather than by position: two
+ *  craft can share a pixel while a chain is recoiling. */
+function mortarBurst(w, x, y, dmg, hitChain, hitIndex) {
+  const splash = dmg * MORTAR_SPLASH_DMG;
+  if (!(splash > 0)) return;
+  for (let ci = w.chains.length - 1; ci >= 0; ci--) {
+    const ch = w.chains[ci];
+    if (!ch) continue;
+    for (let i = ch.segs.length - 1; i >= 0; i--) {
+      if (ci === hitChain && i === hitIndex) continue;
+      const p = segPos(w.path, w.pathLen, ch, i);
+      if (p.off) continue;
+      if (Math.hypot(p.x - x, p.y - y) <= MORTAR_SPLASH_R) damageSeg(w, ci, i, splash);
+    }
+  }
+  w.fx.burst(x, y, GUN_TYPES.mortar.col, 10);
+}
+
 /** Split a chain at index `i`, which has just been removed. The head-side
  *  portion carries on; the tail-side portion grows its own head and becomes an
  *  independent snake. Returns true if the split happened. */
@@ -1623,7 +1714,7 @@ export function splitChain(w, ci, i) {
    board an instant win and left recoil, mid-chain cutting, splitters and
    shielded flanking pointless.
 
-   Instead the body armours the head. Damage to it is divided by how much body
+   Instead the body armors the head. Damage to it is divided by how much body
    is still alive, so clearing the chain first is the efficient route — but a
    rail shot or an overdrive burst can still attempt an early decapitation for
    a large payoff. That turns the head into a risk/reward decision rather than
@@ -1906,6 +1997,8 @@ export function stepShots(w, dt) {
           }
           b.lastHitAt[seg.id] = b.clock;
           damageSeg(w, ci, i, dmg, p);
+          // a mortar round bursts, so the rank it reached over takes some too
+          if (p.gun === 'mortar') mortarBurst(w, sp.x, sp.y, dmg, ci, i);
           if (p.pierce > 0) p.pierce--;
           else { w.shots.splice(k, 1); hit = true; }
           break outer;

@@ -25,7 +25,7 @@ test('every enemy type renders, slow/heal overlays included', async () => {
   const { world, E } = g;
   // one of everything, half of them slowed and one mid-repair, so the frost
   // overlay and the heal flash both execute (per-trait glyphs were dropped —
-  // colour and size carry the distinction now, matching the tower art style)
+  // color and size carry the distinction now, matching the tower art style)
   world.enemies = E.ENEMY_KEYS.map((type, i) => ({
     type, dist: 80 + i * 120, hp: 30, maxhp: 60, speed: 0, r: E.ENEMY_TYPES[type].r,
     slow: i % 2 ? 0.8 : 0, slowStrength: 0.5, healed: i === 0 ? 0.18 : 0,
@@ -94,13 +94,13 @@ test('towers draw both idle and deployed', async () => {
   assert.deepEqual(g.errors, [], 'drawing a deployed tower threw');
 });
 
-test('the armoury opens and renders every class and track', async () => {
+test('the armory opens and renders every class and track', async () => {
   const g = await bootAndStart(SHELL);
   const { world, window: w } = g;
   const doc = w.document;
   world.components = 99999;
   doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-  assert.ok(doc.getElementById('shop').classList.contains('on'), 'the armoury opened');
+  assert.ok(doc.getElementById('shop').classList.contains('on'), 'the armory opened');
   const buys = doc.querySelectorAll('#shopClasses .armTable button[data-t]');
   assert.equal(buys.length, g.E.TOWER_KEYS.length * g.E.CLASS_TRACKS.length,
     'one cell per class per track');
@@ -123,10 +123,50 @@ test('the armoury opens and renders every class and track', async () => {
     .reduce((n, tracks) => n + Object.values(tracks).reduce((a, b) => a + b, 0), 0);
   assert.equal(total, 1, 'exactly one track went up');
   g.frame(1000);
-  assert.deepEqual(g.errors, [], 'the armoury threw');
+  assert.deepEqual(g.errors, [], 'the armory threw');
 });
 
-/* The exact behaviour that got reported: pick a tower, run out of money, and
+/* Two requirements that pull against each other, which is how v31 briefly broke
+   one with the other: opening the armory pauses the wave, *and* the armory keeps
+   showing live affordability while it is open. Gating the whole frame body —
+   `sync()` included — on the shop being closed satisfies the first and silently
+   kills the second, so a row you can suddenly afford stays greyed out. Both are
+   asserted here, together, because either one alone passes on the broken build. */
+test('the armory pauses the wave but keeps repainting affordability', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  const enabled = () => [...doc.querySelectorAll('#shopClasses .armTable button[data-t]')]
+    .filter(b => !b.disabled).length;
+
+  world.components = 20;
+  g.E.startWave(world);
+  for (let i = 0; i < 40; i++) g.frame(1000 + i * 16);
+  assert.ok(world.enemies.length > 0, 'a wave is on the board');
+
+  doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const before = world.enemies.map(e => e.dist);
+  const poor = enabled();
+  for (let i = 0; i < 40; i++) g.frame(2000 + i * 16);
+  assert.equal(world.enemies.map(e => e.dist).join(','), before.join(','),
+    'nothing moved while the armory was open');
+
+  // the money changes underneath an open armory — a kill bounty, in play
+  world.components = 99999;
+  g.frame(3000);
+  assert.ok(enabled() > poor, 'newly affordable rows light up without reopening the shop');
+  world.components = 0;
+  g.frame(3020);
+  assert.equal(enabled(), 0, 'and go dark again when the money is spent');
+
+  doc.getElementById('shopClose').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  for (let i = 0; i < 20; i++) g.frame(4000 + i * 16);
+  assert.notEqual(world.enemies.map(e => e.dist).join(','), before.join(','),
+    'and the wave resumes on close');
+  assert.deepEqual(g.errors, [], 'the paused armory threw');
+});
+
+/* The exact behavior that got reported: pick a tower, run out of money, and
    v26 would quietly move the highlight to whatever was still affordable — so a
    tap you thought you had made had become a different tap. Selection is yours
    now; being broke only changes how the button looks. */
@@ -171,14 +211,14 @@ test('the tower popup opens and renders on a real DOM', async () => {
 
   const cv = w.document.getElementById('cv');
   const t = world.towers[0];
-  const centre = E.cellCenter(world.L, t.c, t.r);
+  const center = E.cellCenter(world.L, t.c, t.r);
   // press *and release*: a press on a tower is ambiguous until it either moves
   // (relocate) or lets go without moving (open the popup)
   cv.dispatchEvent(new w.PointerEvent('pointerdown', {
-    clientX: centre.x, clientY: centre.y, bubbles: true,
+    clientX: center.x, clientY: center.y, bubbles: true,
   }));
   cv.dispatchEvent(new w.PointerEvent('pointerup', {
-    clientX: centre.x, clientY: centre.y, bubbles: true,
+    clientX: center.x, clientY: center.y, bubbles: true,
   }));
   await wait(30);
   assert.ok(w.document.getElementById('tsel').classList.contains('on'), 'popup opened');

@@ -37,7 +37,7 @@
   /* Unaffordable is a *look*, not a disabled button. Palette taps must always
      select, so you can pick what you are saving up for and watch the cost —
      v26 disabled these and then silently moved the selection elsewhere when
-     the money ran out, which is the behaviour that got reported. */
+     the money ran out, which is the behavior that got reported. */
   .pick.broke{opacity:.45}
   .pick.broke .cost{color:var(--dim)}
   .pick b{font:700 13px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
@@ -83,7 +83,7 @@
 
   /* Phones: the palette drops its blurb and goes to one line per tower. The
      three blurbs cost ~28px of strip height to explain what the cost and the
-     colour already imply, and that height comes straight off the board under
+     color already imply, and that height comes straight off the board under
      `fillWidth`. The help panel still carries the full description. */
   @media (max-width:560px){
     .pick{min-height:56px;padding:8px 9px;flex-direction:row;align-items:baseline;gap:6px}
@@ -115,7 +115,7 @@
   #tsel .move:hover{background:#1d3d49}
   #tsel .move:disabled{opacity:.45}
 
-  /* The armoury. Covers the stage like Flak Battery's shop, and for the same
+  /* The armory. Covers the stage like Flak Battery's shop, and for the same
      reason: it is a place you stop and think, not an overlay you peek past. */
   #shop{position:absolute;inset:0;display:none;flex-direction:column;z-index:7;
     background:rgba(11,20,24,.96);padding:16px 14px;overflow-y:auto;gap:12px}
@@ -124,7 +124,7 @@
   #shopHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,19px);text-transform:uppercase;letter-spacing:-.02em}
   #shopComps{font-size:12px;color:var(--accent-hot);font-weight:700;letter-spacing:.08em}
   #shop .note{font-size:10px;color:var(--dim);line-height:1.5}
-  /* The armoury grid: a track-label column plus one column per class. The
+  /* The armory grid: a track-label column plus one column per class. The
      buttons are the cells, so a row is "what this track costs on each class" —
      which is the comparison the spec/weak pricing is asking you to make. */
   .armTable{display:grid;grid-template-columns:auto repeat(var(--cols),1fr);gap:5px;align-items:stretch}
@@ -190,7 +190,7 @@
     <div id="tsel"></div>
     <div id="shop">
       <div id="shopHead">
-        <h2>Armoury</h2>
+        <h2>Armory</h2>
         <div id="shopComps">Components 0</div>
       </div>
       <p class="note">Per class, kept between runs.</p>
@@ -227,20 +227,32 @@ const GAME_ID = 'choke-point';
 const gfx = makeFx({ reduce });
 const audio = makeAudio();
 
-/* ---------- the armoury and the difficulty dial, both kept between runs ----
+/* ---------- the armory and the difficulty dial, both kept between runs ----
 
    Guarded reads and writes throughout: Safari in private mode throws on any
    localStorage access rather than returning null, so an unguarded read here
    would take the whole game down on load. Same pattern as shared/levels.js;
-   it stays local because Choke Point is the only game with an armoury and
+   it stays local because Choke Point is the only game with an armory and
    CLAUDE.md is explicit about not building shared helpers on spec. */
-const ARMOURY_KEY = 'arcade:choke-point:armoury';
+const ARMORY_KEY = 'arcade:choke-point:armory';
+/* The key was `…:armoury` until v31 renamed everything to American spelling.
+   Read the old one once and carry it forward: the key changes as asked, but a
+   player's purchases are the one thing in this game that survive a run, and
+   losing them to a spelling change would be indefensible. */
+const ARMORY_KEY_OLD = 'arcade:choke-point:armoury';
 const DIFF_KEY = 'arcade:choke-point:difficulty';
 
-function readArmoury() {
+function readArmory() {
   const fresh = E.newClassUpgrades();
   let raw = null;
-  try { raw = localStorage.getItem(ARMOURY_KEY); } catch { return fresh; }
+  try {
+    raw = localStorage.getItem(ARMORY_KEY);
+    if (raw === null) {
+      // first run since the rename: adopt whatever the old key held
+      raw = localStorage.getItem(ARMORY_KEY_OLD);
+      if (raw !== null) localStorage.setItem(ARMORY_KEY, raw);
+    }
+  } catch { return fresh; }
   if (!raw) return fresh;
   try {
     const saved = JSON.parse(raw);
@@ -253,17 +265,17 @@ function readArmoury() {
         if (Number.isFinite(v)) fresh[type][track] = Math.max(0, Math.min(E.CLASS_MAX, Math.floor(v)));
       }
     }
-  } catch { /* corrupt: an empty armoury beats a broken game */ }
+  } catch { /* corrupt: an empty armory beats a broken game */ }
   return fresh;
 }
-function writeArmoury(a) {
-  try { localStorage.setItem(ARMOURY_KEY, JSON.stringify(a)); } catch { /* private mode */ }
+function writeArmory(a) {
+  try { localStorage.setItem(ARMORY_KEY, JSON.stringify(a)); } catch { /* private mode */ }
 }
 function readDifficulty() {
   try {
     const v = localStorage.getItem(DIFF_KEY);
     // a difficulty stored before it was earned (or before this build gated
-    // them) must not be honoured, or the gate is one localStorage edit deep
+    // them) must not be honored, or the gate is one localStorage edit deep
     if (E.DIFFICULTIES[v] && E.difficultyUnlocked(progress, v)) return v;
   } catch { /* fall through */ }
   return E.DEFAULT_DIFFICULTY;
@@ -273,7 +285,7 @@ function writeDifficulty(d) {
 }
 
 /* What the player has beaten: which circuits, on which difficulty. Kept beside
-   the armoury and read the same defensive way — the engine holds the rules
+   the armory and read the same defensive way — the engine holds the rules
    (`routeUnlocked`, `difficultyUnlocked`, `recordWin`), this holds the bytes. */
 const PROGRESS_KEY = 'arcade:choke-point:progress';
 
@@ -308,7 +320,7 @@ const fx = {
     audio.fire();
   },
   build() { audio.eat(); },
-  // a tower levelled: a small burst in its own colour, so the moment is
+  // a tower levelled: a small burst in its own color, so the moment is
   // visible without a banner interrupting a wave
   level(x, y, tower) {
     gfx.burst(x, y, E.TOWER_TYPES[tower.type].col, 8);
@@ -329,7 +341,7 @@ const pickLayout = () =>
 const startDifficulty = readDifficulty();
 const world = E.createWorld({
   fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff,
-  classUpgrades: readArmoury(), difficulty: startDifficulty,
+  classUpgrades: readArmory(), difficulty: startDifficulty,
   // start on the furthest circuit earned at this difficulty, not on route 1
   routeIndex: nextRoute(startDifficulty),
 });
@@ -414,11 +426,11 @@ contBtn.setAttribute('aria-label', 'Auto-start next wave');
 contBtn.addEventListener('click', () => { continuous = !continuous; syncPalette(); });
 waveRow.append(contBtn);
 
-/* The armoury. It used to have a full-width row of its own below everything,
+/* The armory. It used to have a full-width row of its own below everything,
    which cost the strip an entire button height — and under `fillWidth` that
    height comes straight off the board. It sits in the wave row now, as a glyph
    at toggle width: the row is already glyph-based for its two modes, and the
-   armoury is a destination you tap between waves rather than a decision made
+   armory is a destination you tap between waves rather than a decision made
    under pressure, so it does not need a verb-sized target. */
 const shopBtn = document.createElement('button');
 shopBtn.id = 'shopBtn';
@@ -465,7 +477,7 @@ function syncPalette() {
   contBtn.classList.toggle('on', continuous);
 }
 
-/* ---------- the armoury ---------- */
+/* ---------- the armory ---------- */
 
 const TRACK_LABEL = { dmg: 'Damage', rate: 'Fire rate', range: 'Range', splash: 'Splash' };
 
@@ -521,15 +533,21 @@ function renderShop() {
   for (const b of host.querySelectorAll('button[data-t]')) {
     b.addEventListener('click', () => {
       if (E.buyClassUpgrade(world, b.dataset.t, b.dataset.k)) {
-        writeArmoury(world.classUpgrades);
+        writeArmory(world.classUpgrades);
         renderShop(); sync();
       }
     });
   }
 }
 
-function openShop() { $('shop').classList.add('on'); renderShop(); }
-$('shopClose').addEventListener('click', () => $('shop').classList.remove('on'));
+/* The armory pauses the run. It is a place you stop and think, and reading a
+   price table while surges walk into your core is not a decision, it is a
+   penalty for looking. It also removes the stale-affordability problem at the
+   root: components cannot arrive while you are in here. */
+let shopOpen = false;
+function openShop() { shopOpen = true; $('shop').classList.add('on'); renderShop(); }
+function closeShop() { shopOpen = false; $('shop').classList.remove('on'); }
+$('shopClose').addEventListener('click', closeShop);
 
 /* ---------- tower popup (targeting / sell) ---------- */
 const tsel = $('tsel');
@@ -552,7 +570,7 @@ const PRIORITY_LABEL = { first: 'First', last: 'Last', strongest: 'Strongest' };
    the tower. Only an outside tap (or a sell, which removes the tower) closes it.
 
    There is no Upgrade button any more: towers level themselves from combat, and
-   what money buys is the whole class, in the armoury. What is left here is the
+   what money buys is the whole class, in the armory. What is left here is the
    one per-tower decision still worth making — what it shoots at first. */
 function renderPopup() {
   const t = world.towers[popupIndex];
@@ -745,16 +763,13 @@ addEventListener('keydown', e => {
    gaps and the body's padding). Passing it here as well would double-count
    the strip and shrink the board by its height twice over.
 
-   `fillWidth` because this is the one game where a smaller board is the worst
-   outcome: you are aiming taps at individual cells. Under the default fit the
-   board filled the width by 3px at 375x812 — and only on a desktop browser,
-   where the safe-area insets are 0. A real phone spends 80-90px on the notch
-   and home indicator, and every one of those pixels came off the board's
-   *width* as a gutter either side. Filling the width instead pushes the
-   controls strip down, which is exactly what was asked for; `body.scrolls`
-   is what makes the pushed-down part reachable. */
-document.body.classList.add('scrolls');
-fitStage = makeFit({ canvas: cv, stage: $('stage'), board, fillWidth: true });
+   `fillWidth` and `body.scrolls` were how v26 answered "the board is too small":
+   spend the whole width and let the page scroll when the controls strip no
+   longer fits. Reported in v31 as the wrong trade — a game you tap at should not
+   move under your thumb, and a board you have to scroll to see all of is worse
+   than a slightly smaller one you don't. Back to the default fit, which sizes
+   the board to what is actually on screen. */
+fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 
 /* ---------- rotation ---------- */
 function applyLayout() {
@@ -775,7 +790,7 @@ addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 /* Game-specific settings for the menu panel: the difficulty a new run will use,
-   and the one control that can undo the armoury. Both go through makeMenu's
+   and the one control that can undo the armory. Both go through makeMenu's
    `extra` slot, the same hook Feedline uses for its input settings. */
 const settingsEl = document.createElement('div');
 settingsEl.className = 'menuSettings';
@@ -787,13 +802,13 @@ settingsEl.innerHTML =
   ).join('') +
   `</div>` +
   `<p class="hintline" id="diffNote"></p>` +
-  `<button type="button" id="wipeArmoury">Reset armoury</button>`;
+  `<button type="button" id="wipeArmory">Reset armory</button>`;
 
 /* Everything here queries through `settingsEl`, not `document`. This element is
    detached until makeMenu mounts it into the panel, so a `getElementById` at
    this point finds nothing and the whole module dies on the first null. */
 const diffNote = settingsEl.querySelector('#diffNote');
-const wipeBtn = settingsEl.querySelector('#wipeArmoury');
+const wipeBtn = settingsEl.querySelector('#wipeArmory');
 
 function syncDifficultyUI() {
   for (const r of settingsEl.querySelectorAll('input[name=difficulty]')) {
@@ -831,12 +846,12 @@ wipeBtn.addEventListener('click', () => {
   if (wipeBtn.dataset.armed !== '1') {
     wipeBtn.dataset.armed = '1';
     wipeBtn.textContent = 'Really reset? Tap again';
-    setTimeout(() => { wipeBtn.dataset.armed = ''; wipeBtn.textContent = 'Reset armoury'; }, 4000);
+    setTimeout(() => { wipeBtn.dataset.armed = ''; wipeBtn.textContent = 'Reset armory'; }, 4000);
     return;
   }
-  wipeBtn.dataset.armed = ''; wipeBtn.textContent = 'Reset armoury';
+  wipeBtn.dataset.armed = ''; wipeBtn.textContent = 'Reset armory';
   world.classUpgrades = E.newClassUpgrades();
-  writeArmoury(world.classUpgrades);
+  writeArmory(world.classUpgrades);
   sync();
 });
 
@@ -871,7 +886,7 @@ function showBanner(h, p, btn) {
 function hideBanner() { $('banner').classList.add('hide'); }
 
 $('go').addEventListener('click', () => {
-  // a new run picks up whatever difficulty is currently selected; the armoury
+  // a new run picks up whatever difficulty is currently selected; the armory
   // carries over untouched, which is the whole point of it
   contBtnEl.remove();
   // `won` covers the victory banner, where the run is finished but the core
@@ -991,7 +1006,7 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, 1 / 30);
   last = now;
 
-  if (world.running && !world.over && !pause.paused) {
+  if (world.running && !world.over && !pause.paused && !shopOpen) {
     const wasActive = world.waveActive;
     /* Fast-forward runs the same simulation more times, rather than handing
        `step` a bigger dt. A 4x dt would push a frame to 133ms, far past the
@@ -1023,7 +1038,7 @@ function frame(now) {
     if (world.justWon) onVictory();
     if (world.over) {
       clearRun(GAME_ID);            // a finished run is not one to come back to
-      // the difficulty rides along with the score: with an armoury that grows
+      // the difficulty rides along with the score: with an armory that grows
       // between runs, "wave 14" means something different on Easy than on Hard
       const r = submit(GAME_ID, world.score,
         `Wave ${world.wave} · ${E.DIFFICULTIES[world.difficulty].name}`);
@@ -1033,8 +1048,17 @@ function frame(now) {
                  : `Score <b style="color:var(--accent-hot)">${world.score}</b> · wave ${world.wave} · best ${r.best}`,
         'Play again');
     }
-    sync();
   }
+
+  /* `sync()` is outside the simulation gate on purpose. It paints the HUD and,
+     via `syncArmory`, the affordability of every armory row — and the armory is
+     open exactly when the simulation is *not* running, since opening it pauses
+     the wave. Leaving `sync` inside the gate meant the shop froze the moment it
+     opened, so a row you could suddenly afford stayed greyed out until you
+     bought something else. That is the "armory doesn't update" report, and the
+     pause fix is what would have caused it. It is only DOM writes over engine
+     state, so calling it while paused is idempotent. */
+  sync();
 
   gfx.step(dt, 1.5);
   // barrels keep easing in and out even while paused or between waves, so the
@@ -1066,6 +1090,33 @@ function sync() {
   $('uiRoute').textContent = (world.routeIndex + 1) + '/' + E.ROUTE_COUNT;
   syncPalette();
   syncPopup();
+  syncArmory();
+}
+
+/* Re-price the armory in place while it is open.
+ *
+ * Reported as "the armory doesn't always update when enough components are
+ * earned": it only re-rendered on a purchase, so a cell that became affordable
+ * while you were looking at it stayed dead until you bought something else.
+ * Pausing on open (see `openShop`) removes most of the ways that happens, but
+ * not all of them — a sell refunds mid-view, and a resumed run can land here.
+ *
+ * Patches the disabled/broke state only, never `innerHTML`. `sync` runs every
+ * frame, and rebuilding this table that often would swallow the taps aimed at
+ * it — the same trap the tower popup documents. */
+function syncArmory() {
+  if (!shopOpen) return;
+  $('shopComps').textContent = 'Components ' + Math.floor(world.components);
+  for (const b of $('shopClasses').querySelectorAll('button[data-t]')) {
+    const have = world.classUpgrades[b.dataset.t][b.dataset.k];
+    const cost = E.classCost(b.dataset.t, b.dataset.k, have);
+    const maxed = cost === null;
+    const afford = !maxed && world.components >= cost;
+    b.disabled = maxed || !afford;
+    b.classList.toggle('broke', !afford);
+    const px = b.querySelector('.px');
+    if (px) px.textContent = maxed ? 'MAX' : String(cost);
+  }
 }
 
 /* The popup outlives the taps made in it, so the level and XP it shows have to
@@ -1196,15 +1247,15 @@ function drawPath() {
      source-over: additive compositing cannot darken, so an earlier attempt to
      lay a dark inner stroke additively brightened the channel instead and left
      the path glowing like a lit ribbon — the largest, loudest thing on a board
-     where it should be the quietest. Darker than before, so the centre reads
+     where it should be the quietest. Darker than before, so the center reads
      as genuinely black rather than dark blue. */
   ctx.globalCompositeOperation = 'source-over';
   ctx.strokeStyle = '#050a0d';
   ctx.lineWidth = C() * .6;
   ctx.beginPath(); trace(ctx); ctx.stroke();
   ctx.restore();
-  // No dashed centre line any more — the glowing borders alone read as a
-  // channel, and the dashes fought the "even darker centre" the border glow
+  // No dashed center line any more — the glowing borders alone read as a
+  // channel, and the dashes fought the "even darker center" the border glow
   // is meant to set up.
 }
 
@@ -1316,7 +1367,7 @@ function drawTower(t) {
   const rr = cell * .32;
   const out = barrelOut.get(t.c + ',' + t.r) ?? 0;
 
-  // The body is lifted well above the board colour on purpose. At the default
+  // The body is lifted well above the board color on purpose. At the default
   // near-black it vanished into the background and the tower read as a hollow
   // ring rather than as a solid object bolted to the grid.
   extrudeDisc(ctx, cx, cy, rr, col, {
@@ -1326,14 +1377,14 @@ function drawTower(t) {
 
   /* Idle, a tower is an empty ring — the extrudeDisc above and nothing else.
      As something comes within reach it fills a solid hub and slides its barrel
-     out of it. So a glance at the board says which half of your defence is
+     out of it. So a glance at the board says which half of your defense is
      about to be doing the work, and a quiet stretch of route looks quiet
      instead of looking identical to a busy one. */
   if (out > 0.01) {
     /* The hub, emissive like everything else that is meant to read as powered.
        It used to be a flat `ctx.fill()` while the ring went through extrudeDisc
        and the barrel through glowStroke, so a deployed tower had a dead spot at
-       its centre. `glowDot` plus a small hot core is the same pairing `drawCore`
+       its center. `glowDot` plus a small hot core is the same pairing `drawCore`
        uses — the established "this thing is lit" idiom in this file. */
     ctx.globalAlpha = out;
     glowDot(ctx, cx, cy, rr * .34 * out, col);
@@ -1378,9 +1429,9 @@ function drawEnemy(e) {
     ctx.setLineDash([]);
   }
 
-  /* Type colour always wins, with `slow` laid over it as a translucent frost
+  /* Type color always wins, with `slow` laid over it as a translucent frost
      rather than replacing the fill. Replacing it used to repaint a slowed enemy
-     in a flat blue that is almost exactly Shell's own colour, so "held up" and
+     in a flat blue that is almost exactly Shell's own color, so "held up" and
      "plated" were indistinguishable — and which of the two you're looking at
      changes what you should build. */
   /* A halo AROUND a full-strength body, never instead of one. Feedline's food
@@ -1402,7 +1453,7 @@ function drawEnemy(e) {
      note in glow.js, is "what say 'solid', not 'two squares'". Its default
      depth is far deeper too (0.34× the size against extrudeRect's ~0.12), and
      between them that is the whole difference between reading flat and
-     reading like a box. Centre-origin, unlike extrudeRect's top-left.
+     reading like a box. Center-origin, unlike extrudeRect's top-left.
 
      `rot` stays 0: these march in formation on the ground and must not tumble.
 
@@ -1437,7 +1488,7 @@ function drawEnemy(e) {
 
 /* The beams are where this style pays off most: a hitscan zap is a line of
    light, which is precisely what an emissive stroke is. A white-hot core inside
-   the tower's own colour sells it as discharge rather than as a drawn line. */
+   the tower's own color sells it as discharge rather than as a drawn line. */
 function drawBeams() {
   for (const b of beams) {
     const fade = Math.min(1, b.life * 12);
