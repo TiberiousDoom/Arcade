@@ -200,8 +200,14 @@ export function kindForIndex(i, count = Infinity, wave = Infinity) {
 export const HP_PER_WAVE = 0.26;
 /** Where the fast ramp stops. Not a ceiling any more — see `hpScale`. */
 export const HP_SCALE_MAX = 6.5;
-/** Fraction of the normal ramp that continues past `HP_SCALE_MAX`, forever. */
-export const HP_PER_WAVE_ENDLESS = 0.28;
+/** Fraction of the normal ramp that continues past `HP_SCALE_MAX`, forever.
+ *  Raised 0.28 → 0.45 in v32 alongside `HP_PER_WAVE_LATE` (0.16 → 0.24): the
+ *  report was that a battery of three guns around 15/45 tiers had the game
+ *  solved by wave 30. Wave 30 is ~22% tougher and wave 50 ~38%, while **waves
+ *  1-7 are bit-identical** — `HP_PER_WAVE` was deliberately not touched, since
+ *  losing lives already made an early mistake fatal and taxing the opening
+ *  twice for one change is how a ramp turns into a wall. */
+export const HP_PER_WAVE_ENDLESS = 0.45;
 
 /* Wave 7 is where `waveCount` hits its 78-craft ceiling, so from there on the
    chain stops getting longer — and length is the dial a player can actually
@@ -215,7 +221,7 @@ export const HP_PER_WAVE_ENDLESS = 0.28;
    don't tilt it" shape Choke Point's `past5` uses — waves 1-6 were confirmed
    fine on device and are left exactly as they were. */
 const past7 = (wave) => Math.max(0, wave - 7);
-export const HP_PER_WAVE_LATE = 0.16;
+export const HP_PER_WAVE_LATE = 0.24;
 
 export function hpScale(wave) {
   const ramp = 1 + (wave - 1) * HP_PER_WAVE + past7(wave) * HP_PER_WAVE_LATE;
@@ -349,9 +355,32 @@ export function isDeflected(seg, heading, vx, vy) {
  *  laid on them. Past a certain size it stops reading as "I bought time" and
  *  starts reading as "the game moved my shot". Smaller is better here even
  *  though it is strictly less generous. */
-export function recoilGain(spacing, headSide, remaining) {
+export const BASE_SHOT_R = 3.0;      // Calibre tier 0, the round everyone starts with
+export const KNOCK_BASE = 0.3;       // how much of the old shove an unupgraded round gives
+export const KNOCK_POW = 3;          // how sharply Calibre buys it back
+
+/** How hard a round of radius `shotR` shoves the column. Splash has no radius
+ *  to speak of and takes the baseline.
+ *
+ *  Knockback is Calibre's, and it is derived from `shotR` rather than added to
+ *  the branch as a second tier value — so Calibre stays a one-stat branch and
+ *  the invariant the tree is tested against still holds. A fatter round hits
+ *  harder because it *is* fatter, which is also the only version of this that
+ *  needs no explanation in the shop.
+ *
+ *  Cubed, because a 1.53x radius over the whole branch is not a satisfying
+ *  spread on its own: an unupgraded round now shoves about a third as hard as
+ *  every round used to, and a maxed one about 8% harder than the old flat
+ *  value. That is the "default is little or no knock-back" the branch needs in
+ *  order to have something to sell. */
+export function knockScale(shotR) {
+  if (!shotR) return KNOCK_BASE;
+  return KNOCK_BASE * Math.pow(shotR / BASE_SHOT_R, KNOCK_POW);
+}
+
+export function recoilGain(spacing, headSide, remaining, shotR) {
   if (headSide <= 0 || remaining <= 0) return 0;
-  return spacing * (0.12 + (headSide / remaining) * 0.5);
+  return spacing * (0.12 + (headSide / remaining) * 0.5) * knockScale(shotR);
 }
 
 /** How fast a chain pays its recoil back, as a multiple of its forward speed.
@@ -528,12 +557,24 @@ export const UPGRADES = {
     tiers: [{ shotSpeed: 520 }, { shotSpeed: 585 }, { shotSpeed: 650 },
             { shotSpeed: 720 }, { shotSpeed: 800 }, { shotSpeed: 890 }],
   },
+  /* Optics used to buy `predict` — how many seconds ahead the shell's aim
+     marker led its target — and nothing else. No simulation code read it. It
+     was the only branch in the tree that bought no combat effect at all, at
+     prices comparable to Calibre, which is exactly why it drew the question
+     "what does Optics do?". The marker lead is now free to everyone at a fixed
+     `AIM_LEAD`, and the branch buys effective range instead: rounds lose
+     damage past a point, and Optics pushes that point outward until, maxed, it
+     is past the far edge of the board and the falloff is gone entirely.
+
+     Fire control is the one thing on a gun that plausibly governs how well it
+     shoots at distance, so the branch keeps its name and its identity — and it
+     is the only branch that answers "the column is still far away". */
   optics: {
-    name: 'Optics', stat: 'predict',
-    blurb: 'The aim marker leads further ahead',
+    name: 'Optics', stat: 'reach',
+    blurb: 'Rounds keep their punch further out',
     costs: [19, 41, 72, 116, 175],
-    tiers: [{ predict: 1.6 }, { predict: 1.8 }, { predict: 2.0 },
-            { predict: 2.3 }, { predict: 2.6 }, { predict: 3.0 }],
+    tiers: [{ reach: 1.0 }, { reach: 1.18 }, { reach: 1.36 },
+            { reach: 1.54 }, { reach: 1.70 }, { reach: 1.85 }],
   },
   munitions: {
     name: 'Munitions', stat: 'pierce',
@@ -661,9 +702,6 @@ export function fullBatteryCost() {
 
 /* ---------- world ---------- */
 
-/** Breaches a run survives. Named because the header now draws one pip per
- *  life and needs to know how many slots to show even after they are spent. */
-export const START_LIVES = 3;
 
 export function createWorld(opts = {}) {
   const L = { ...LAYOUT, ...(opts.layout || {}) };
@@ -671,7 +709,7 @@ export function createWorld(opts = {}) {
   const w = {
     L, path, pathLen,
     chains: [], shots: [], bits: [], floaters: [],
-    wave: 1, score: 0, scrap: 0, lives: START_LIVES,
+    wave: 1, score: 0, scrap: 0,
     /* What this run may fit. Derived from `research.guns` below rather than
        owned: research is permanent, this is the run's view of it. */
     gunUnlocks: { auto: false, rail: false, mortar: false, ion: false },
@@ -688,11 +726,11 @@ export function createWorld(opts = {}) {
        pickup/effect system is intact behind it, and the shell exposes it in
        the settings menu so it can be A/B'd on a phone without a redeploy. */
     drops: opts.drops ?? true,
-    shake: 0, hitStop: 0,
+    shake: 0, hitStop: 0, hitStopCool: 0,
     // extra hit radius, set by the shell from the input device (see
     // AIM_ASSIST_R). Zero for mouse and keyboard, which aim precisely.
     assistR: opts.assist ? AIM_ASSIST_R : 0,
-    shopOpen: false, retry: false,
+    shopOpen: false,
     running: false, over: false,
     waveClear: false, clearTimer: 0,
     breaches: 0,
@@ -720,7 +758,7 @@ export function syncGunUnlocks(w) {
 /** Move an in-progress run onto a different board, as when the phone is
  *  rotated. Essentially lossless: chains are positioned by arc-length along the
  *  path, so scaling `s` by the ratio of path lengths puts every segment at the
- *  same fraction of its journey on the new board. Wave, score, scrap, lives,
+ *  same fraction of its journey on the new board. Wave, score, scrap,
  *  upgrades and the whole battery carry over untouched.
  *
  *  Shots and falling pickups are dropped — they are in flight, and there is no
@@ -745,7 +783,7 @@ export function relayout(w, L2) {
   // the battery sits on the new floor line, keeping its aim and heat
   const b = w.battery;
   b.y = L2.CANNON_Y;
-  for (let i = 0; i < b.guns.length; i++) b.guns[i].x = L2.W * MOUNT_X[i];
+  spreadMounts(b, L2.W);
   w.cannon.x = L2.W / 2;
   return w;
 }
@@ -776,10 +814,10 @@ export function spawnWave(w) {
 export function snapshot(w) {
   const b = w.battery;
   return {
-    wave: w.wave, score: w.score, scrap: w.scrap, lives: w.lives,
+    wave: w.wave, score: w.score, scrap: w.scrap,
     breaches: w.breaches,
     over: w.over, waveClear: w.waveClear, clearTimer: w.clearTimer,
-    shopOpen: w.shopOpen, retry: !!w.retry,
+    shopOpen: w.shopOpen,
     /* `gunUnlocks` is deliberately NOT stored. It stopped being run state in
        v28: it is a projection of permanent research, which the shell reads from
        storage. Storing it would let a save carry a gun the current research has
@@ -821,12 +859,10 @@ export function hydrate(w, snap) {
   if (snap.chains.length > MAX_CHAINS) return false;
 
   w.wave = snap.wave; w.score = snap.score ?? 0; w.scrap = snap.scrap ?? 0;
-  w.lives = snap.lives ?? START_LIVES;
   w.breaches = snap.breaches ?? 0;
   w.over = !!snap.over;
   w.waveClear = !!snap.waveClear; w.clearTimer = snap.clearTimer ?? 0;
   w.shopOpen = !!snap.shopOpen;
-  w.retry = !!snap.retry;
   // re-derived from research below, not read from the save — see `snapshot`
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false };
   w.effects = { ...(snap.effects || {}) };
@@ -845,7 +881,7 @@ export function hydrate(w, snap) {
   // in-flight shots and decorative particles do not survive; they mean nothing
   // once the run has been away, and shots would resume mid-trajectory
   w.shots = []; w.bits = []; w.floaters = [];
-  w.shake = 0; w.hitStop = 0;
+  w.shake = 0; w.hitStop = 0; w.hitStopCool = 0;
 
   const sb = snap.battery;
   const b = makeBattery(w.L, 1);
@@ -857,7 +893,7 @@ export function hydrate(w, snap) {
   // mounts are positioned from the *current* layout, not the saved one, so a
   // run saved in one orientation restores correctly in another
   b.guns = sb.guns.slice(0, MAX_MOUNTS).map((g, i) => ({
-    x: w.L.W * MOUNT_X[i], type: g.type, heat: g.heat ?? 0, cool: g.cool ?? 0, locked: g.locked ?? 0,
+    x: 0, type: g.type, heat: g.heat ?? 0, cool: g.cool ?? 0, locked: g.locked ?? 0,
     /* Per-gun tiers, falling back to the pre-v27 battery-wide set. A run saved
        on the old build had one shared tree, and the fair reading of it is that
        every mount had those tiers — dropping them instead would silently strip
@@ -870,6 +906,8 @@ export function hydrate(w, snap) {
        one, silently deleting the most expensive thing the player had bought. */
     barrels: clamp(Math.floor(g.barrels ?? snap.barrels ?? 1), 1, MAX_BARRELS),
   }));
+  // positions come from the count, so they are assigned once the guns are all in
+  spreadMounts(b, w.L.W);
   w.battery = b;
   w.cannon = b;              // the alias every call site uses
   w.cannon.x = w.L.W / 2;
@@ -881,12 +919,12 @@ export function hydrate(w, snap) {
 }
 
 export function resetRun(w) {
-  w.wave = 1; w.score = 0; w.scrap = 0; w.lives = START_LIVES;
+  w.wave = 1; w.score = 0; w.scrap = 0;
   w.over = false; w.breaches = 0;
   // upgrades live on the guns, and makeBattery below builds fresh ones
   w.pickups = []; w.effects = {}; w.shieldCharges = 0; w.dropSeed = 987654321;
-  w.shake = 0; w.hitStop = 0;
-  w.shopOpen = false; w.retry = false;
+  w.shake = 0; w.hitStop = 0; w.hitStopCool = 0;
+  w.shopOpen = false;
   w.gunUnlocks = { auto: false, rail: false, mortar: false, ion: false };
   // research deliberately survives: it is the thing that carries between runs.
   // Its unlocks come straight back, so a researched gun is fittable from wave 1.
@@ -905,7 +943,10 @@ export function buyMount(w) {
   const cost = MOUNT_COST[n];
   if (w.scrap < cost) return false;
   w.scrap -= cost;
-  w.battery.guns.push(makeGun(w.L.W * MOUNT_X[n], 'standard'));
+  w.battery.guns.push(makeGun(0, 'standard'));
+  // every mount's position depends on how many there are, so the whole line
+  // re-spaces rather than the new gun simply appearing at a free slot
+  spreadMounts(w.battery, w.L.W);
   return true;
 }
 
@@ -975,15 +1016,31 @@ export function buyBarrel(w, mountIndex) {
    Choke Point's armory does; the shell loads and saves it. `resetRun` leaves
    it alone — carrying over is the entire point. */
 
-/** Research points a finished run is worth.
+/** Research points a finished run is worth. Superlinear in the wave reached.
  *
- *  A function of the wave reached, so what earns progression is the thing the
- *  player is already trying to do, and paid at the *end* of a run so it cannot
- *  be farmed by restarting a good opening over and over. The bonus every fifth
- *  wave is what makes pushing one wave deeper worth more than a safe retreat. */
+ *  Paying at the end of a run was supposed to stop a good opening being farmed
+ *  by restarting, and it did not: the old payout was *linear* (`(wave-1)` plus
+ *  2 every fifth wave), so four runs to wave 5 paid 24 against 27 for one run
+ *  to wave 20 — the same points for a fraction of the effort, and quicker.
+ *  Restarting was the efficient strategy, which is the opposite of the intent.
+ *
+ *  The `n^1.5` term is what inverts that: one run to wave 20 now pays 31
+ *  against 16 for four runs to wave 5, and one run to 40 pays 84 against 62 for
+ *  two runs to 20. Every wave is worth more than the one before it, so there is
+ *  never a point where stopping and restarting is the better trade.
+ *
+ *  The linear term is deliberate too. A pure power curve paid 2 at wave 5, and
+ *  with a breach now ending the run outright the early waves are where most
+ *  runs *end* — a new player would have ground several runs for a single point.
+ *  Together they keep wave 5 near what it used to pay while wave 40 pays half
+ *  as much again. Waves 1 and 2 pay literally nothing, so an instant restart is
+ *  worth exactly zero. */
+export const RP_LINEAR = 0.55;
+export const RP_CURVE = 0.26;
+
 export function researchEarned(w) {
   const reached = Math.max(0, (w.wave || 1) - 1);
-  return reached + Math.floor((w.wave || 1) / 5) * 2;
+  return Math.floor(RP_LINEAR * reached + RP_CURVE * Math.pow(reached, 1.5));
 }
 
 /** Branch tiers available without research. Tiers 1-3 of every branch are free
@@ -1134,6 +1191,39 @@ export function awardResearch(w) {
  *  craft-spacings, so a mortar clears the leading rank and lands among the
  *  ones behind it. The whole reason to own one. */
 export const MORTAR_ARM = 96;
+
+/* How far ahead the aim marker leads, in seconds. A flat value for everyone
+   now: it used to be what the Optics branch bought, which made the one branch
+   with no combat effect also the one you had to buy to aim comfortably. */
+export const AIM_LEAD = 2.4;
+
+/* Damage falloff with distance, and the reason it is expressed as *fractions of
+   the board* rather than pixels: the two layouts are not the same size. The
+   battery is ~506px from the top row in landscape and ~1020px in portrait, so
+   an absolute falloff distance would make the phone board play twice as harsh
+   as the desktop one. Same principle as Hull Breach deriving ball speed from
+   FLOOR — the layouts must play alike.
+
+   `FALLOFF_FROM` is where the decay starts, as a fraction of the battery-to-top
+   distance, scaled by the gun's `reach`. At reach 1.0 the near half of the
+   board is untouched and only the far half bites; at the maxed 1.85 the start
+   is past the top of the board, so there is no falloff anywhere. */
+export const FALLOFF_FROM = 0.55;
+export const FALLOFF_FLOOR = 0.62;   // damage multiplier at the very top of the board
+
+/** How far the battery is from the far row — the distance falloff is scaled by. */
+export function boardDepth(L) {
+  return Math.max(1, L.CANNON_Y - L.ROW_TOP);
+}
+
+/** Damage multiplier for a round that has flown `travelled` px, given the reach
+ *  its gun was firing with and the board it was fired on. */
+export function falloff(travelled, reach, depth) {
+  const start = FALLOFF_FROM * (reach || 1) * depth;
+  if (travelled <= start || start >= depth) return 1;
+  const t = clamp((travelled - start) / (depth - start), 0, 1);
+  return 1 - (1 - FALLOFF_FLOOR) * t;
+}
 
 /** Blast radius of a mortar round on impact, and the fraction of its damage the
  *  splash carries. The gun's whole selling point is reaching over the front
@@ -1360,6 +1450,10 @@ function fireGun(w, gun) {
     // until it passes MORTAR_ARM, which is what carries it over the front rank
     arc: G.arc ? true : false,
     travelled: 0,
+    // baked at fire time like `dmg` and `col`: what this round can reach is a
+    // property of the gun that fired it, not of whatever is fitted later
+    reach: S.reach,
+    depth: boardDepth(w.L),
     sub: !!sub,
     gun: gun.type,      // which mount fired this — damageSeg/isDeflected check this
     // The color to draw this shot, baked in at fire time rather than read
@@ -1448,11 +1542,48 @@ export const GUN_TYPES = {
 };
 export const GUN_KEYS = Object.keys(GUN_TYPES);
 
-/** Mount x-positions across the battery, as fractions of width. Index 0 is
- *  dead center; more mounts fan outward symmetrically. */
-export const MOUNT_X = [0.5, 0.32, 0.68, 0.18, 0.82];
-export const MAX_MOUNTS = 5;
-export const MOUNT_COST = [0, 130, 247, 416, 624];   // cost of the Nth mount
+export const MAX_MOUNTS = 6;
+export const MOUNT_COST = [0, 130, 247, 416, 624, 880];   // cost of the Nth mount
+
+/* Mount x-positions across the battery, as fractions of width, indexed by how
+   many mounts the battery has. Index 0 is always dead centre.
+
+   **Six mounts cannot be both symmetric and centred, and centred wins.** The
+   obvious layout for a sixth gun is to re-space the line evenly, which is
+   symmetric at any count and looks deliberate. Measured, it is a trap: with an
+   even number of guns nothing sits on the centre line, and the centre gun is
+   the one with a straight shot at something directly overhead. A close command
+   ship at wave 14 went from 15.2s to kill with five mounts to **over three
+   minutes** with six evenly-spaced ones, and even with convergence maxed the
+   sixth mount made things *worse* (5.4s against 3.5s). An upgrade that makes
+   you worse is the one outcome worth rejecting a layout over.
+
+   Keeping centre and hanging the sixth off a flank measures as a strict
+   improvement on both counts (11.0s bare, 3.2s converged). Positions for one to
+   five mounts are exactly what they have always been, so nothing an existing
+   run owns moves. A tight symmetric straddle (0.48/0.52) was also tried and
+   splits the difference badly: it fixes the bare case and still leaves the
+   converged one slower than five guns. */
+const MOUNT_LINE = [
+  [0.5],
+  [0.5, 0.32],
+  [0.5, 0.32, 0.68],
+  [0.5, 0.32, 0.68, 0.18],
+  [0.5, 0.32, 0.68, 0.18, 0.82],
+  [0.5, 0.32, 0.68, 0.18, 0.82, 0.06],
+];
+
+/** X position of mount `i` in a battery of `count`, as a fraction of width. */
+export function mountFrac(i, count) {
+  const n = clamp(Math.floor(count), 1, MAX_MOUNTS);
+  return MOUNT_LINE[n - 1][clamp(Math.floor(i), 0, n - 1)];
+}
+
+/** Put every gun where a battery of this size says it belongs. Called whenever
+ *  the count changes, since each mount's position depends on how many there are. */
+export function spreadMounts(b, W) {
+  for (let i = 0; i < b.guns.length; i++) b.guns[i].x = W * mountFrac(i, b.guns.length);
+}
 
 /** How close two hits must land in time to count as convergence. */
 export const CONVERGE_WINDOW = 0.12;
@@ -1470,7 +1601,7 @@ export function makeGun(x, type = 'standard') {
 export function makeBattery(L, mounts = 1, types = null) {
   const guns = [];
   for (let i = 0; i < mounts; i++) {
-    guns.push(makeGun(L.W * MOUNT_X[i], types ? types[i] : 'standard'));
+    guns.push(makeGun(L.W * mountFrac(i, mounts), types ? types[i] : 'standard'));
   }
   return {
     y: L.CANNON_Y, ang: -Math.PI / 2, len: 34,
@@ -1726,24 +1857,56 @@ export function headDamageFactor(bodyLeft) {
   return 1 / (1 + Math.max(0, bodyLeft));
 }
 
+/* ---------- hit-stop ----------
+
+   Freezing the world for a few frames on a kill is good juice on *one* kill and
+   ruinous on twenty. `step` returns early while `hitStop` is live, so every
+   grant is ~3 frames at 60Hz in which nothing moves while `draw` keeps running.
+   Each kill used to re-arm it, and sustained fire into a dense column kills
+   several times a second — measured at **19.2% of all frames frozen** over a
+   25s wave-20 engagement, arriving as a stall/run stutter. That is the reported
+   "choppy when squares are destroyed in mass", and note that merely *firing*
+   never sets it at all, which is exactly what the report said too.
+
+   So a grant now has a refractory period: a volley that kills eight craft gets
+   one freeze, not eight. A major stop (a command ship) ignores the refractory,
+   because that is the one kill in the game worth interrupting for. */
+export const HITSTOP_SMALL = 0.028;
+export const HITSTOP_BIG = 0.055;
+export const HITSTOP_MAJOR = 0.12;
+export const HITSTOP_REFRACTORY = 0.45;
+
+/** Ask for a freeze. Minor requests are dropped while one is still cooling. */
+export function requestHitStop(w, dur) {
+  if (dur < HITSTOP_MAJOR && w.hitStopCool > 0) return false;
+  w.hitStop = Math.max(w.hitStop, dur);
+  w.hitStopCool = HITSTOP_REFRACTORY + dur;
+  return true;
+}
+
 /** Destroy a whole chain at once, paying out every segment still on it. Used
  *  when the head dies: the body dies with it, and it all scores. */
 function decapitate(w, ci) {
   const ch = w.chains[ci];
   if (!ch) return false;
   let score = 0, scrap = 0;
+  /* One burst per *surviving segment* at 10 bits each meant a full 78-craft
+     chain threw ~780 particles from a single kill, in one synchronous loop.
+     None of that reads as detail at 3px a bit — it reads as one big flash
+     either way — so the chain bursts thinly and the head gets the fat one. */
   for (let j = 0; j < ch.segs.length; j++) {
     const s = ch.segs[j];
     const K = KIND[s.kind];
     score += K.score; scrap += K.scrap;
     const p = segPos(w.path, w.pathLen, ch, j);
-    if (!p.off) w.fx.burst(p.x, p.y, K.col, 10);
+    if (!p.off) w.fx.burst(p.x, p.y, K.col, 3);
   }
   const hp = segPos(w.path, w.pathLen, ch, 0);
+  if (!hp.off) w.fx.burst(hp.x, hp.y, KIND.head.col, 26);
   w.score += score;
   w.scrap += scrap;
   w.fx.push('COMMAND SHIP DOWN +' + score, hp.x, hp.y, KIND.head.col);
-  w.hitStop = Math.max(w.hitStop, 0.12);
+  requestHitStop(w, HITSTOP_MAJOR);
   w.shake = Math.max(w.shake, 0.6);
   w.chains.splice(ci, 1);
   return true;
@@ -1764,6 +1927,13 @@ export function damageSeg(w, ci, i, dmg, shot) {
   // the ion cannon bypasses entirely at the collision-loop call site instead.
   const K0 = KIND[seg.kind];
   if (K0.railBonus && shot?.gun === 'rail') dmg *= K0.railBonus;
+
+  /* Range falloff, applied at impact rather than at fire time — `shot.dmg` is
+     fixed when the round leaves the barrel, and how far it then flew is only
+     known here. Splash (bomb, mortar burst) passes no shot and is unaffected:
+     it detonates where it lands, so distance from the battery is not a property
+     it has. This is what the Optics branch buys back. */
+  if (shot && shot.depth) dmg *= falloff(shot.travelled || 0, shot.reach, shot.depth);
 
   // the head is shielded by whatever body is still behind it
   if (seg.kind === 'head') {
@@ -1791,7 +1961,7 @@ export function damageSeg(w, ci, i, dmg, shot) {
   w.fx.push('+' + K.score, pos.x, pos.y, K.col);
 
   // juice: bigger targets stop the world for longer
-  w.hitStop = Math.max(w.hitStop, seg.maxhp >= 6 ? 0.055 : 0.028);
+  requestHitStop(w, seg.maxhp >= 6 ? HITSTOP_BIG : HITSTOP_SMALL);
   w.shake = Math.max(w.shake, seg.maxhp >= 6 ? 0.32 : 0.16);
 
   if (seg.kind === 'volatile') {
@@ -1814,7 +1984,16 @@ export function damageSeg(w, ci, i, dmg, shot) {
   }
 
   ch.segs.splice(i, 1);
-  ch._pos = null;   // stale after the splice — stepShots rebuilds it lazily
+  /* Stale after the splice — stepShots rebuilds it lazily.
+
+     Do not "optimise" this into `ch._pos.splice(i, 1)`. It looks equivalent and
+     is not: a segment's position is derived from its *index* (`s - i*spacing`),
+     so removing a middle segment shifts every segment behind it forward by one
+     spacing. Measured on a 47-segment chain, splicing the cache left 19 of the
+     46 survivors at the wrong position. That closing-up is real motion — it is
+     what `recoilGain` below is compensating for — so the rebuild is doing work,
+     not wasting it. */
+  ch._pos = null;
 
   /* A splitter pays no recoil — instead the chain comes apart and the tail
      grows its own head. That is the trade: you lose the time a normal cut
@@ -1823,7 +2002,7 @@ export function damageSeg(w, ci, i, dmg, shot) {
     w.fx.push('SPLIT', pos.x, pos.y, K.col);
     w.fx.burst(pos.x, pos.y, K.col, 22);
   } else {
-    ch.recoil += recoilGain(ch.spacing, i, ch.segs.length);
+    ch.recoil += recoilGain(ch.spacing, i, ch.segs.length, shot?.r);
   }
 
   if (ch.segs.length === 0) w.chains.splice(ci, 1);
@@ -2031,25 +2210,32 @@ export function breach(w) {
     spawnWave(w);
     return;
   }
+  /* One breach ends the run. There are no lives any more: what a run is worth
+     is banked as research and you start again, which makes this a roguelike
+     loop rather than a three-strikes one.
+
+     This reverses 2026-08-05 ("a breach opens the shop, and the same wave comes
+     back") and takes the `retry` flag with it. That decision existed to solve
+     "scrap earned off the column that broke through has nowhere to go" — which
+     stops being a problem when the breach ends the run, since the scrap dies
+     with it and what carries forward is research instead.
+
+     Shield charges still eat a breach above, and that is now the only thing
+     that can: they are the run-saver, which is most of why they are worth
+     catching and why they cap at three. */
   w.shake = Math.max(w.shake, 0.7);
-  w.lives--;
   w.breaches++;
   w.battery.streak = 0; w.battery.od = 0; w.battery.queued = false;
   for (const g of w.battery.guns) g.heat = 0;
-  if (w.lives <= 0) { w.running = false; w.over = true; return; }
-
-  /* Losing a life opens the shop, rather than throwing the same wave straight
-     back at you. You have just earned scrap off the column that broke through
-     and had nowhere to spend it — the wave restarted immediately and the only
-     chance to buy anything was a clean clear, which is exactly the run you did
-     not have. `retry` tells `nextWave` not to advance the counter: this is the
-     same wave again, not the next one. */
-  w.shopOpen = true;
-  w.retry = true;
   w.running = false;
+  w.over = true;
 }
 
 export function step(w, dt, firing = false) {
+  /* The refractory timer runs on wall time, frozen frames included — otherwise
+     a freeze would hold its own cooldown open and the next kill would always
+     be granted, which is the behaviour this exists to stop. */
+  if (w.hitStopCool > 0) w.hitStopCool = Math.max(0, w.hitStopCool - dt);
   // hit-stop: freeze the world briefly on a kill for impact
   if (w.hitStop > 0) {
     w.hitStop = Math.max(0, w.hitStop - dt);
@@ -2092,15 +2278,11 @@ export function step(w, dt, firing = false) {
   }
 }
 
-/** Leave the shop and put a wave on the board. Advances the counter unless the
- *  shop was opened by a breach, in which case this is a retry of the wave you
- *  just lost rather than the next one. */
+/** Leave the shop and put the next wave on the board. Always an advance now —
+ *  the shop can only be reached by clearing, since a breach ends the run. */
 export function nextWave(w) {
   w.shopOpen = false;
-  // read the flag before clearing it, or every visit reads as a fresh wave
-  const retrying = !!w.retry;
-  w.retry = false;
-  if (!retrying) w.wave++;
+  w.wave++;
   spawnWave(w);
   w.running = true;
 }

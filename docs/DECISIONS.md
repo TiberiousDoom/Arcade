@@ -1079,3 +1079,45 @@ Two things follow, and both are standing rules rather than one-off corrections:
 **A performance number is about the device it was measured on.** Numbers from this container are for comparing two implementations against each other, which is exactly what they were good for here — batched versus hoisted, 8.31 against 8.19. They are not a budget check.
 
 **Do not record an absence of testing without checking who is testing.** The claim survived four rounds because it was only ever copied forward from the previous round's list. A line in the open-questions block is a claim like any other, and this one was refuted by the very messages that prompted each rewrite.
+
+## 2026-08-15 — The choppiness was hit-stop, not a frame budget
+
+"Still a little choppy, but only when squares are being destroyed in mass. Just firing five guns doesn't slow it down." That second sentence is the whole diagnosis, and it points away from rendering entirely: **firing never sets `hitStop`; killing does.**
+
+`damageSeg` froze the world for 0.028-0.055s on every kill and `step` returns early for the duration — about three frames at 60Hz in which nothing moves while `draw` keeps running. Sustained fire into a dense column kills several times a second, so each freeze was re-armed before the last had been forgotten. Measured over a 25-second wave-20 engagement with five upgraded mounts: **19.2% of all frames were frozen**. That is not a game dropping frames, it is a game deliberately not simulating one frame in five, and no amount of draw-path optimisation would have touched it. Last round's glow work was aimed at the wrong thing — correct on its own terms, and not the reported bug.
+
+A grant now takes a refractory period (0.45s): a volley that kills eight craft gets one freeze rather than eight, and the frozen share falls to **4.8%**. A major stop — a command ship — ignores the refractory, because that is the one kill worth interrupting for. The cooldown deliberately ticks during the freeze it created; if it only ran on unfrozen frames, a freeze would hold its own window open and the next kill would always be granted.
+
+Three real costs sat in the same path and were worth fixing regardless. `fx.burst` called `audio.hit()` **before** its reduced-motion early-return, and that call builds five Web Audio nodes — decapitating a 40-segment chain constructed 200 of them in one frame, for a sound that is one thud either way; it is coalesced to one per frame now. `decapitate` burst ten particles *per surviving segment*, so a full 78-craft chain threw ~780 debris bits from one kill; the chain bursts thinly and the head gets the fat one. And `bits` had no cap anywhere, which it does now.
+
+**One thing that looked like a fourth fix and was not.** Every kill nulls `ch._pos`, the per-frame position cache, so `stepShots` rebuilds it — K kills on an n-chain costs K rebuilds of n `segPos` calls, each an O(log n) path search. Splicing the dead index out of the cache instead looks exactly equivalent. It is not: a segment's position is derived from its *index* (`s - i*spacing`), so removing a middle segment shifts every segment behind it forward by one spacing. Measured on a 47-segment chain, the splice left 19 of the 46 survivors at the wrong position. That closing-up is real motion — it is what `recoilGain` exists to compensate for — so the rebuild is doing work rather than wasting it. The comment now says so, because the optimisation is inviting and wrong.
+
+## 2026-08-15 — Optics bought nothing, so it became range
+
+"What does Optics do?" is a fair question with an embarrassing answer: nothing that fires. Its `predict` stat was read in exactly one place — how many seconds ahead the shell's aim marker led its target — and no simulation code touched it. It was the only branch in a nine-branch tree with no combat effect at all, priced alongside Calibre.
+
+Worse than useless, it was a tax: aiming comfort is not a fair thing to sell, and it was the one branch you had to buy to see what you were doing. The marker lead is a flat `AIM_LEAD` for everyone now.
+
+The branch buys **effective range**. Rounds lose damage with distance flown, and Optics pushes the onset outward until, maxed, it is past the far edge of the board and there is no falloff anywhere. Fire control is the one thing on a gun that plausibly governs how well it shoots at distance, so the branch keeps its name, and it is the only branch that answers "they are still far away" — every other one answers "they are close".
+
+The falloff is expressed as a **fraction of the board, never in pixels**. The two layouts are not the same size: the battery is ~506px from the top row in landscape and ~1020px in portrait, so an absolute distance would have made the phone board play twice as harsh as the desktop one. Same principle as Hull Breach deriving ball speed from `FLOOR`, and there is a test asserting both boards agree at every fraction of their depth.
+
+## 2026-08-15 — Six mounts can be symmetric or centred, and centred wins
+
+A sixth emplacement needs a position, and the obvious answer — re-space the line evenly, so any battery size is symmetric — was chosen deliberately and then measured, which is the only reason it did not ship.
+
+With an even number of guns, **nothing sits on the centre line**, and the centre gun is the one with a straight shot at something directly overhead. A close command ship at wave 14 took 15.2s to kill with five mounts and **over three minutes** with six evenly-spaced ones. Even with convergence maxed the sixth mount made things worse: 5.4s against 3.5s. Buying an upgrade made you strictly worse at the exact scenario convergence was rebuilt over two rounds to fix.
+
+Keeping a gun at dead centre and hanging the sixth off a flank measures as a strict improvement on both counts — 11.1s bare, 3.2s converged. It is visibly lopsided and that is the price. A tight symmetric straddle (0.48/0.52) was tried as a compromise and splits the difference badly: it fixes the bare case and still leaves the converged one slower than five guns.
+
+Positions for one to five mounts are exactly what they have always been, so nothing an existing run owns moves. There is now a test asserting every battery size keeps a gun at 0.5, which is the property that was silently load-bearing all along.
+
+## 2026-08-15 — No more lives, and research had to stop paying for restarts
+
+Three lives became none: one breach ends the run, banks its research, and starts you over. This reverses 2026-08-05 ("a breach opens the shop, and the same wave comes back"), whose reasoning was that scrap earned off the column that broke through had nowhere to go — which stops being true when the run is over, since the scrap dies with it and research is what carries forward. Shield charges still eat a breach and are now the *only* thing that can, which is most of why they are worth catching.
+
+That change made a latent bug in the research payout urgent. RP was linear in the wave reached — `(wave-1)` plus 2 every fifth wave — and the payout was end-of-run specifically so a good opening could not be farmed by restarting. It did not work: four runs to wave 5 paid **24**, one run to wave 20 paid **27**. Nearly the same points for a fraction of the effort and far less time, so restarting was the efficient strategy, which is the exact opposite of the intent. Nobody noticed because the mechanism (pay at the end) looked like it obviously implied the property (deep runs pay better).
+
+The curve is superlinear now — a linear term plus `n^1.5`. One run to 20 pays 31 against 16 for four runs to 5; one run to 40 pays 84 against 62 for two runs to 20. The linear term is deliberate: a pure power curve paid 2 at wave 5, and with a breach ending the run outright the early waves are where most runs *end*, so a new player would have ground several runs for a single point. Waves 1 and 2 pay literally zero, so an instant restart is worth exactly nothing.
+
+The test now asserts the *property* — deeper beats shallower, at several depths — rather than only that the function increases, which the old one did while the game was farmable.

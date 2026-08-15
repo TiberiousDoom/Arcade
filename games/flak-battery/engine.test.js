@@ -187,7 +187,8 @@ test('the hp cap does not make late waves unwinnable', () => {
   // chewed through before it crosses, no matter how upgraded you are. A fully
   // maxed battery with perfect aim must still clear deep waves untouched.
   const w = openTree(E.createWorld());
-  w.lives = 999; w.scrap = 1e9;
+  w.shieldCharges = 1e6;   // survive breaches: shields are the only thing that does now
+  w.scrap = 1e9;
   // Mounts first, *then* max every branch on every one of them. Upgrades are
   // per-emplacement since v27, so buying the tree before the mounts leaves the
   // new arrivals bare — which is the intended balance, but it is not what this
@@ -384,6 +385,77 @@ test('recoil is zero when nothing remains to link up', () => {
   assert.equal(E.recoilGain(30, 5, 0), 0);
 });
 
+/* ---------- knockback is what Calibre buys ---------- */
+
+test('a fatter round shoves the column harder', () => {
+  const base = E.recoilGain(30, 5, 10, E.BASE_SHOT_R);
+  const maxed = E.recoilGain(30, 5, 10, 4.6);      // Calibre tier 5
+  assert.ok(maxed > base * 3, `maxed calibre shoves far harder (${maxed.toFixed(1)} vs ${base.toFixed(1)})`);
+  // and it is monotonic across the branch, so no tier is a downgrade
+  const tiers = E.UPGRADES.calibre.tiers.map(t => E.recoilGain(30, 5, 10, t.shotR));
+  for (let i = 1; i < tiers.length; i++) {
+    assert.ok(tiers[i] > tiers[i - 1], `calibre tier ${i} shoves harder than ${i - 1}`);
+  }
+});
+
+test('an unupgraded round barely pushes at all', () => {
+  // the stated default: little or no knockback until you buy some
+  const before = 30 * (0.12 + 0.5 * 0.5);          // what every round used to give
+  assert.ok(E.recoilGain(30, 5, 10, E.BASE_SHOT_R) < before * 0.4,
+    'a starting round shoves a fraction of what it used to');
+});
+
+test('splash knockback does not depend on a round that was never fired', () => {
+  // bomb and mortar-burst kills reach damageSeg with no shot at all
+  assert.equal(E.recoilGain(30, 5, 10, undefined), E.recoilGain(30, 5, 10, null));
+  assert.ok(E.recoilGain(30, 5, 10, undefined) > 0, 'but they still shove');
+});
+
+/* ---------- range falloff is what Optics buys ---------- */
+
+test('rounds keep full damage near the battery and fade far out', () => {
+  const d = E.boardDepth(E.LAYOUT);
+  assert.equal(E.falloff(0, 1, d), 1, 'point blank is full damage');
+  assert.equal(E.falloff(d * 0.5, 1, d), 1, 'the near half is untouched');
+  assert.ok(E.falloff(d, 1, d) < 1, 'the far edge is not');
+  assert.equal(E.falloff(d, 1, d), E.FALLOFF_FLOOR, 'and it bottoms out at the floor');
+});
+
+test('optics pushes the falloff outward, and maxed removes it', () => {
+  const d = E.boardDepth(E.LAYOUT);
+  const tiers = E.UPGRADES.optics.tiers.map(t => E.falloff(d * 0.85, t.reach, d));
+  for (let i = 1; i < tiers.length; i++) {
+    assert.ok(tiers[i] >= tiers[i - 1], `optics tier ${i} is no worse than ${i - 1}`);
+  }
+  assert.ok(tiers[tiers.length - 1] > tiers[0], 'and the branch as a whole buys something');
+  const maxReach = E.UPGRADES.optics.tiers[E.MAX_TIER].reach;
+  assert.equal(E.falloff(d, maxReach, d), 1, 'maxed, there is no falloff anywhere on the board');
+});
+
+/* The layouts are very different sizes — the battery is ~506px from the top row
+   in landscape and ~1020px in portrait. An absolute falloff distance would make
+   the phone board play twice as harsh, so it is a fraction of the board. Same
+   principle as Hull Breach scaling ball speed by FLOOR. */
+test('falloff is the same on both boards', () => {
+  for (const f of [0, 0.25, 0.5, 0.75, 1]) {
+    const wide = E.falloff(f * E.boardDepth(E.LAYOUT), 1, E.boardDepth(E.LAYOUT));
+    const tall = E.falloff(f * E.boardDepth(E.LAYOUT_TALL), 1, E.boardDepth(E.LAYOUT_TALL));
+    assert.ok(Math.abs(wide - tall) < 1e-9,
+      `at ${f * 100}% of the board both layouts agree (${wide} vs ${tall})`);
+  }
+});
+
+test('splash damage is not subject to falloff', () => {
+  // a bomb detonates where it lands; how far it is from the battery is not a
+  // property it has, and `damageSeg` gets no shot to read one from
+  const w = E.createWorld();
+  w.chains = [chain(10, 40, 500)];
+  const seg = w.chains[0].segs[3];
+  const hp0 = seg.hp;
+  E.damageSeg(w, 0, 3, 1);
+  assert.equal(seg.hp, hp0 - 1, 'the full point landed');
+});
+
 test('destroying a mid segment pushes the chain backward', () => {
   const w = E.createWorld();
   w.chains = [chain(10, 40, 500)];
@@ -456,7 +528,7 @@ test('a snapshot round-trips a run exactly', () => {
   const w = E.createWorld();
   w.running = true;
   w.wave = 4; E.spawnWave(w);
-  w.score = 7700; w.scrap = 55; w.lives = 2; w.breaches = 1;
+  w.score = 7700; w.scrap = 55; w.breaches = 1;
   E.buyUpgrade(w, 0, 'damage');
   learn(w, 'rail');
   E.setGunType(w, 0, 'rail', true);      // free: this is about the save, not the economy
@@ -471,7 +543,6 @@ test('a snapshot round-trips a run exactly', () => {
   assert.equal(fresh.wave, w.wave);
   assert.equal(fresh.score, w.score);
   assert.equal(fresh.scrap, w.scrap);
-  assert.equal(fresh.lives, w.lives);
   assert.equal(fresh.breaches, w.breaches);
   assert.deepEqual(fresh.battery.guns.map(g => g.upgrades),
                    w.battery.guns.map(g => g.upgrades),
@@ -501,7 +572,7 @@ test('a restored run keeps playing identically', () => {
   E.hydrate(resumed, JSON.parse(JSON.stringify(E.snapshot(w))));
   for (let i = 0; i < 400; i++) { E.step(w, 1 / 60, true); E.step(resumed, 1 / 60, true); }
   assert.equal(resumed.score, w.score, 'same score after playing on');
-  assert.equal(resumed.lives, w.lives, 'same lives');
+  assert.equal(resumed.breaches, w.breaches, 'same breaches');
   assert.equal(resumed.wave, w.wave, 'same wave');
 });
 
@@ -1269,9 +1340,39 @@ test('a run pays research for how far it got, once', () => {
 test('getting further is worth more research', () => {
   const at = (wave) => E.researchEarned({ wave });
   assert.equal(at(1), 0, 'dying on wave 1 teaches nothing');
-  for (let wv = 2; wv <= 30; wv++) {
-    assert.ok(at(wv) > at(wv - 1), `wave ${wv} should out-earn ${wv - 1}`);
+  assert.equal(at(2), 0, 'nor does dying on wave 2 — an instant restart pays zero');
+  for (let wv = 2; wv <= 60; wv++) {
+    assert.ok(at(wv) >= at(wv - 1), `wave ${wv} must never pay less than ${wv - 1}`);
   }
+  for (let wv = 4; wv <= 60; wv++) {
+    assert.ok(at(wv) > at(wv - 1), `past the opening, wave ${wv} should out-earn ${wv - 1}`);
+  }
+});
+
+/* The property the payout actually exists for, and the one the old linear
+   formula quietly failed: pushing deeper must beat restarting. Four runs to
+   wave 5 used to pay 24 against 27 for a single run to wave 20 — the same
+   points for a fraction of the effort, so farming a good opening was the
+   efficient play despite the payout being deliberately end-of-run. */
+test('one deep run beats several shallow ones', () => {
+  const at = (wave) => E.researchEarned({ wave });
+  assert.ok(at(20) > 4 * at(5), `one run to 20 (${at(20)}) beats four to 5 (${4 * at(5)})`);
+  assert.ok(at(20) > 2 * at(10), `one run to 20 (${at(20)}) beats two to 10 (${2 * at(10)})`);
+  assert.ok(at(40) > 2 * at(20), `one run to 40 (${at(40)}) beats two to 20 (${2 * at(20)})`);
+  /* Stated generally: the payout accelerates, so there is no wave at which
+     cutting the run short is the better trade. Measured over five-wave blocks
+     rather than single waves — the payout is floored to an integer, so
+     consecutive steps jitter by ±1 around a curve that is genuinely convex. */
+  for (let wv = 10; wv <= 60; wv += 5) {
+    const block = at(wv) - at(wv - 5);
+    const prev = at(wv - 5) - at(wv - 10);
+    assert.ok(block >= prev,
+      `waves ${wv - 5}-${wv} (+${block}) must not pay less than ${wv - 10}-${wv - 5} (+${prev})`);
+  }
+  // and over a long enough span the acceleration is unmistakable: five waves
+  // deep in the run are worth several times five waves at the start of it
+  assert.ok(at(50) - at(45) > 2 * (at(10) - at(5)),
+    `waves 45-50 (+${at(50) - at(45)}) should dwarf waves 5-10 (+${at(10) - at(5)})`);
 });
 
 test('research survives a reset, and its guns come straight back', () => {
@@ -1508,7 +1609,7 @@ test('convergence is what makes a close command ship killable', () => {
     const w = E.createWorld({ drops: false });
     w.research.points = 1e6;
     for (const b of E.BRANCHES) while (E.researchDepth(w, b));
-    w.scrap = 1e9; w.lives = 999;
+    w.scrap = 1e9; w.shieldCharges = 1e6;
     while (E.buyMount(w));
     for (let m = 0; m < w.battery.guns.length; m++) {
       for (const b of E.BRANCHES) {
@@ -1887,43 +1988,44 @@ test('a retrofit you cannot afford leaves the mount alone', () => {
   assert.equal(w.scrap, 1, 'and did not take the money');
 });
 
-/* ---------- a breach sends you to the shop ---------- */
+/* ---------- a breach ends the run ---------- */
 
-test('losing a life opens the shop instead of restarting the wave', () => {
+/* There are no lives as of v32: one column reaching the line is the end of it,
+   and what a run was worth is banked as research. This reverses the v30 rule
+   where a breach opened the shop and put the same wave back (DECISIONS
+   2026-08-05) — the scrap-with-nowhere-to-go problem that solved does not exist
+   when the run is over. */
+test('a breach ends the run outright', () => {
   const w = E.createWorld();
   w.wave = 5;
   E.spawnWave(w);
   w.running = true;
-  const lives = w.lives;
   E.breach(w);
-  assert.equal(w.lives, lives - 1);
-  assert.equal(w.shopOpen, true, 'the shop opened');
-  assert.equal(w.running, false, 'and the board is on hold');
+  assert.equal(w.over, true, 'the run is over');
+  assert.equal(w.running, false, 'and the board is stopped');
+  assert.equal(w.shopOpen, false, 'the shop is not offered — there is no next wave');
 });
 
-test('leaving the shop after a breach retries the same wave, not the next', () => {
+test('leaving the shop always advances the wave', () => {
   const w = E.createWorld();
   w.wave = 5;
   E.spawnWave(w);
   w.running = true;
-  E.breach(w);
   E.nextWave(w);
-  assert.equal(w.wave, 5, 'still wave 5 — this was a retry');
+  assert.equal(w.wave, 6, 'the shop can only be reached by clearing, so this advances');
   assert.equal(w.running, true);
-  assert.equal(w.retry, false, 'and the flag was consumed');
 
-  // whereas clearing a wave normally does advance
+  // and clearing a wave gets you there
   w.chains = [];
   E.step(w, 0.01);
   E.step(w, 2);
   assert.equal(w.shopOpen, true, 'a clear opens the shop too');
   E.nextWave(w);
-  assert.equal(w.wave, 6, 'and that one moves on');
+  assert.equal(w.wave, 7, 'and that one moves on');
 });
 
-test('the last life ends the run rather than opening the shop', () => {
+test('a breach ends the run rather than opening the shop', () => {
   const w = E.createWorld();
-  w.lives = 1;
   E.spawnWave(w);
   E.breach(w);
   assert.equal(w.over, true);
@@ -1931,6 +2033,42 @@ test('the last life ends the run rather than opening the shop', () => {
 });
 
 /* ---------- upgrades are per emplacement ---------- */
+
+test('every battery size keeps a gun on the centre line', () => {
+  /* The property that makes a point-blank target killable: something has to
+     have a straight shot at what is directly overhead. An evenly-spaced six was
+     tried and rejected for breaking exactly this — with an even count nothing
+     sits at 0.5, and a close command ship went from 15s to over three minutes. */
+  for (let n = 1; n <= E.MAX_MOUNTS; n++) {
+    const fracs = Array.from({ length: n }, (_, i) => E.mountFrac(i, n));
+    assert.ok(fracs.some(f => Math.abs(f - 0.5) < 1e-9), `${n} mounts has a centre gun`);
+    assert.equal(fracs[0], 0.5, 'and it is the one you start with');
+    for (const f of fracs) assert.ok(Number.isFinite(f) && f > 0 && f < 1, `${f} is on the board`);
+    assert.equal(new Set(fracs).size, n, 'no two mounts share a position');
+  }
+});
+
+test('the mount line only ever grows outward', () => {
+  // buying a mount must not shuffle the guns you already own
+  for (let n = 2; n <= E.MAX_MOUNTS; n++) {
+    for (let i = 0; i < n - 1; i++) {
+      assert.equal(E.mountFrac(i, n), E.mountFrac(i, n - 1),
+        `mount ${i} stays put when the battery grows to ${n}`);
+    }
+  }
+});
+
+test('a sixth mount is buildable and lands on the board', () => {
+  const w = E.createWorld();
+  w.scrap = 1e9;
+  while (E.buyMount(w));
+  assert.equal(w.battery.guns.length, 6, 'six emplacements');
+  for (const g of w.battery.guns) {
+    assert.ok(Number.isFinite(g.x), 'every mount has a real x');
+    assert.ok(g.x > 0 && g.x < w.L.W, 'and it is on the board');
+  }
+  assert.equal(E.mountCost(w), null, 'and that is the cap');
+});
 
 test('buying on one mount leaves the others untouched', () => {
   const w = openTree(E.createWorld());
@@ -2016,8 +2154,9 @@ test('a bigger battery measurably improves survival', () => {
 
   const run = (mounts) => {
     const w = E.createWorld();
-    w.lives = 99;
-    for (let m = 1; m < mounts; m++) w.battery.guns.push(E.makeGun(w.L.W * E.MOUNT_X[m]));
+    w.shieldCharges = 1e6;
+    for (let m = 1; m < mounts; m++) w.battery.guns.push(E.makeGun(0));
+    E.spreadMounts(w.battery, w.L.W);
     E.spawnWave(w);
     let waves = 0;
     for (let i = 0; i < 60 * 400 && waves < 4; i++) {
@@ -2025,21 +2164,26 @@ test('a bigger battery measurably improves survival', () => {
       E.step(w, 1 / 60, true);
       if (w.shopOpen) { E.nextWave(w); waves++; }
     }
-    return { waves, breaches: w.breaches };
+    /* Leaks are counted as shield charges spent, not `w.breaches`. A breach ends
+       the run outright now, so the only way to keep a comparison running past
+       the first leak is to absorb it — and the absorbing path deliberately
+       returns before the breach counter. */
+    return { waves, leaks: 1e6 - w.shieldCharges };
   };
 
   const solo = run(1);
   const battery = run(3);
   assert.ok(battery.waves >= solo.waves, 'more guns clears at least as far');
-  assert.ok(battery.breaches < solo.breaches, `3 guns leaked ${battery.breaches} vs ${solo.breaches} solo`);
+  assert.ok(battery.leaks < solo.leaks, `3 guns leaked ${battery.leaks} vs ${solo.leaks} solo`);
 });
 
 test('the shop is reachable in ordinary play', () => {
   // guards against a regression where the wave never clears and the whole
   // progression loop is dead
   const w = E.createWorld();
-  w.lives = 99;
-  for (let m = 1; m < 3; m++) w.battery.guns.push(E.makeGun(w.L.W * E.MOUNT_X[m]));
+  w.shieldCharges = 1e6;   // survive breaches: shields are the only thing that does now
+  for (let m = 1; m < 3; m++) w.battery.guns.push(E.makeGun(0));
+  E.spreadMounts(w.battery, w.L.W);
   E.spawnWave(w);
   let opened = false;
   for (let i = 0; i < 60 * 300 && !opened; i++) {
@@ -2378,13 +2522,14 @@ test('a shield charge absorbs one breach', () => {
   E.applyPowerup(w, 'shield');
   assert.equal(w.shieldCharges, 1);
 
-  const lives = w.lives;
   E.breach(w);
-  assert.equal(w.lives, lives, 'no life lost');
+  assert.equal(w.over, false, 'the run survives');
   assert.equal(w.shieldCharges, 0, 'charge spent');
 
+  // and with the charge gone, the next one is the end — shields are the only
+  // thing standing between a breach and a finished run now
   E.breach(w);
-  assert.equal(w.lives, lives - 1, 'the next one costs a life');
+  assert.equal(w.over, true, 'the next one ends it');
 });
 
 test('shield charges stack', () => {
@@ -2455,6 +2600,64 @@ test('hit-stop pauses the simulation but always resolves', () => {
   assert.ok(w.chains[0].s > s0, 'motion resumed');
 });
 
+/* The reported "choppy when squares are destroyed in mass" was this, and the
+   tester's own control isolated it: firing five guns never stuttered, because
+   firing never sets hit-stop — only killing does. Each kill re-armed a ~3-frame
+   freeze, and sustained fire into a dense column kills several times a second,
+   so the world spent measured 19.2% of a wave-20 engagement motionless while
+   `draw` kept running. Not a frame budget; a juice feature with no floor on how
+   often it could fire. */
+test('a burst of kills gets one freeze, not one freeze each', () => {
+  const w = E.createWorld();
+  w.chains = [chain(16, 0, 700)];
+  const idx = w.chains[0].segs.findIndex(s => s.kind === 'std');
+  E.damageSeg(w, 0, idx, 99);
+  const first = w.hitStop;
+  assert.ok(first > 0, 'the first kill freezes');
+
+  // three more kills in the same frame must not extend or re-arm it
+  for (let n = 0; n < 3; n++) {
+    const j = w.chains[0].segs.findIndex(s => s.kind === 'std');
+    if (j >= 0) E.damageSeg(w, 0, j, 99);
+  }
+  assert.equal(w.hitStop, first, 'later kills in the volley add nothing');
+});
+
+test('a kill after the refractory window freezes again', () => {
+  const w = E.createWorld();
+  w.chains = [chain(24, 0, 900)];
+  E.damageSeg(w, 0, w.chains[0].segs.findIndex(s => s.kind === 'std'), 99);
+  // run past the freeze *and* its cooldown
+  for (let i = 0; i < Math.ceil((E.HITSTOP_REFRACTORY + 0.2) * 60); i++) E.step(w, 1 / 60);
+  assert.equal(w.hitStop, 0, 'the first freeze is long over');
+  E.damageSeg(w, 0, w.chains[0].segs.findIndex(s => s.kind === 'std'), 99);
+  assert.ok(w.hitStop > 0, 'a kill that stands alone still gets its punctuation');
+});
+
+/* A command ship is the one kill worth interrupting for, so it ignores the
+   refractory — otherwise the biggest moment in a run could be swallowed by a
+   trash kill that happened a tenth of a second earlier. */
+test('a command ship overrides the refractory', () => {
+  const w = E.createWorld();
+  w.chains = [chain(20, 0, 800)];
+  E.damageSeg(w, 0, w.chains[0].segs.findIndex(s => s.kind === 'std'), 99);
+  const small = w.hitStop;
+  assert.ok(E.requestHitStop(w, E.HITSTOP_MAJOR), 'a major stop is granted anyway');
+  assert.ok(w.hitStop > small, 'and it is the longer freeze');
+});
+
+test('the refractory timer runs during the freeze it created', () => {
+  // If the cooldown only ticked on unfrozen frames, a freeze would hold its own
+  // window open and the very next kill would always be granted again.
+  const w = E.createWorld();
+  w.chains = [chain(8, 0, 400)];
+  E.requestHitStop(w, E.HITSTOP_BIG);
+  const cool0 = w.hitStopCool;
+  E.step(w, 1 / 60);
+  assert.ok(w.hitStop > 0, 'still frozen');
+  assert.ok(w.hitStopCool < cool0, 'and the cooldown advanced anyway');
+});
+
 test('shake decays to zero', () => {
   const w = E.createWorld();
   w.shake = 1;
@@ -2493,7 +2696,7 @@ test('power-ups appear and take effect during real play', () => {
   const w = E.createWorld({ drops: true });   // the point of this test is drops
   w.wave = ALL_KINDS;
   E.spawnWave(w);
-  w.lives = 99;
+  w.shieldCharges = 1e6;   // survive breaches: shields are the only thing that does now
 
   let collected = 0;
   const seen = new Set();
@@ -2534,7 +2737,7 @@ test('splits still happen once power-ups are in play', () => {
   const w = E.createWorld();
   w.wave = ALL_KINDS;
   E.spawnWave(w);
-  w.lives = 99;
+  w.shieldCharges = 1e6;   // survive breaches: shields are the only thing that does now
 
   let splits = 0;
   for (let i = 0; i < 60 * 120; i++) {
@@ -3001,22 +3204,14 @@ test('breach fires when a segment crosses the floor line', () => {
   assert.equal(E.checkBreach(w), true);
 });
 
-test('a breach costs a life and restarts the wave', () => {
+test('a breach ends the run and banks the streak', () => {
   const w = E.createWorld();
   E.spawnWave(w);
   E.breach(w);
-  assert.equal(w.lives, 2);
-  assert.equal(w.chains.length, 1, 'wave respawned');
-  assert.equal(w.cannon.od, 0, 'overdrive reset');
-});
-
-test('the run ends when the last life is spent', () => {
-  const w = E.createWorld();
-  E.spawnWave(w);
-  E.breach(w); E.breach(w); E.breach(w);
-  assert.equal(w.lives, 0);
   assert.equal(w.over, true);
   assert.equal(w.running, false);
+  assert.equal(w.cannon.od, 0, 'overdrive reset');
+  assert.equal(w.breaches, 1, 'and it is counted');
 });
 
 /* ---------- wave flow ---------- */
@@ -3059,13 +3254,13 @@ test('clearing a wave pays a bonus', () => {
 
 test('resetRun clears every run-scoped value', () => {
   const w = E.createWorld();
-  w.wave = 9; w.score = 500; w.scrap = 40; w.lives = 1;
+  w.wave = 9; w.score = 500; w.scrap = 40;
   w.over = true; w.cannon.od = 3; w.cannon.streak = 20;
 
   E.resetRun(w);
   assert.deepEqual(
-    { wave: w.wave, score: w.score, scrap: w.scrap, lives: w.lives, over: w.over },
-    { wave: 1, score: 0, scrap: 0, lives: 3, over: false },
+    { wave: w.wave, score: w.score, scrap: w.scrap, over: w.over },
+    { wave: 1, score: 0, scrap: 0, over: false },
   );
   assert.equal(w.cannon.od, 0);
   assert.equal(w.cannon.streak, 0);
@@ -3109,7 +3304,7 @@ test('splits happen during real play and stay within the cap', () => {
   for (const b of E.BRANCHES) for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, b);
   while (E.buyMount(w)) { /* fill every mount */ }
   E.spawnWave(w);
-  w.lives = 99;
+  w.shieldCharges = 1e6;   // survive breaches: shields are the only thing that does now
 
   let splits = 0, maxChains = 1;
   for (let i = 0; i < 60 * 120; i++) {

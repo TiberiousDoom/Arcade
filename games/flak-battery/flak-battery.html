@@ -18,18 +18,6 @@
     --board-max:880px;
   }
 
-  /* Lives as pips. `.pips` here is the header readout, not the shop's tier pips
-     (those are `.branch .pips`, scoped below) — same idea, bigger marks, since
-     this one is read mid-wave at arm's length. */
-  #uiLives{display:inline-flex;gap:3px;align-items:center}
-  #uiLives i{width:8px;height:8px;border-radius:50%;display:inline-block;
-    background:var(--brass);box-shadow:0 0 5px var(--brass)}
-  #uiLives i.spent{background:#1b3038;box-shadow:none}
-  /* A breach is the one HUD event worth interrupting for: the strip flashes red
-     rather than quietly decrementing a number nobody was looking at. */
-  #uiLives.hit i{background:#e0503c;box-shadow:0 0 7px #e0503c;animation:lifeflash .5s steps(2) 3}
-  @keyframes lifeflash{50%{opacity:.15}}
-  @media (prefers-reduced-motion:reduce){#uiLives.hit i{animation:none}}
 
   #uiBuild{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
   #uiBuild span{display:flex;gap:1px;align-items:center}
@@ -89,6 +77,17 @@
      point of a between-waves shop. `.buy`/`.chip` are untouched; they are
      thumb targets and are what set the card's minimum height. */
   #branches,#battery{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:7px}
+  /* A branch is a row, not a card: name and pips left, price right, nothing
+     else. Nine cards each carrying a heading, a pip strip, a blurb paragraph
+     and a full-width button was most of a screen of furniture for nine numbers.
+     Qualified with `.branch` so this wins on specificity rather than on source
+     order — `.branch` sets `flex-direction:column` and is declared after. */
+  .branch.buyRow{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px}
+  .branch.buyRow .rowHead{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 auto}
+  .branch.buyRow h3{font-size:10px;letter-spacing:.1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .branch.buyRow .pips{width:100%}
+  /* Still a thumb target — the row got shorter, the tap area did not. */
+  .branch.buyRow .buy{width:auto;flex:0 0 auto;min-width:64px;min-height:38px;padding:10px 10px;font-size:10px}
   .shopSection{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);
     border-bottom:1px solid var(--line);padding-bottom:5px;margin-top:4px}
   .assign{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
@@ -99,8 +98,13 @@
      its mount's own color, so "which of these is my railgun" is a glance. */
   /* Sticky, so moving between mounts stays possible while scrolled down a long
      tree — nine branches plus barrels and refit is taller than the panel. */
-  #shopTabs{display:flex;gap:5px;flex-wrap:wrap;position:sticky;top:-16px;z-index:2;
-    background:rgba(11,20,24,.97);padding:6px 0}
+  /* The whole bar is what sticks — tabs on top, Next Wave beneath them, one
+     background, one `top`. Sticky is on the wrapper rather than on each so the
+     two cannot overlap. */
+  #shopBar{position:sticky;top:-16px;z-index:2;background:rgba(11,20,24,.97);
+    padding:6px 0 8px;display:flex;flex-direction:column;gap:6px}
+  #shopTabs{display:flex;gap:5px;flex-wrap:wrap}
+  #shopTabs:empty{display:none}
   #shopTabs.hidden{display:none}
   .tab{flex:1 1 0;min-width:62px;min-height:46px;display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:2px;cursor:pointer;border-radius:3px;
@@ -193,14 +197,28 @@
   .markRow .pips i.on{background:#7fb6cf}
   .fitted{font-size:9px;color:var(--dim);letter-spacing:.06em}
 
-  /* the resolved stat block on a mount's own tab */
+  /* The resolved stat block on a mount's own tab. Two columns, fixed — it used
+     to be an auto-fit grid of alternating dt/dd, so the column count floated
+     with the panel width and a label could end up in one column with its value
+     in the next. Each pair is now one cell with the label above the number. */
   .statBlock{grid-column:1/-1}
-  .statBlock dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));
-    gap:3px 10px;margin-top:2px}
+  .statBlock dl{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:2px}
+  .statBlock .stat{display:flex;flex-direction:column;gap:1px;
+    border-left:2px solid transparent;padding-left:6px}
   .statBlock dt{font-size:9px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
-  .statBlock dd{font:700 12px/1.3 'Chivo Mono',monospace;color:var(--bone);margin-bottom:3px}
+  .statBlock dd{font:700 12px/1.3 'Chivo Mono',monospace;color:var(--bone);margin:0}
+  /* Buying an upgrade flashes the stat it moved. Nine numbers in a block and
+     one of them ticking over is invisible otherwise. Same `.hit`-class-on-a-
+     timer shape the lives strip used, and the same explicit reduced-motion
+     opt-out: theme.css kills `transition` globally but not `animation`. */
+  .statBlock .stat.bought{border-left-color:var(--brass);animation:statflash .9s ease-out 1}
+  .statBlock .stat.bought dd{color:var(--brass)}
+  @keyframes statflash{0%{background:rgba(201,162,39,.34)}100%{background:transparent}}
+  @media (prefers-reduced-motion:reduce){.statBlock .stat.bought{animation:none}}
 
-  #shopGo{align-self:center;margin-top:2px}
+  /* Full width in the sticky bar: it is the one control that is always
+     available and always the same answer, so it should never need hunting for. */
+  #shopGo{width:100%;margin:0}
 </style>
 
 <div id="shell">
@@ -211,12 +229,6 @@
     </div>
     <div class="meta">
       <div>Wave <b id="uiWave">1</b></div>
-      <!-- Lives leads the row, ahead of everything you only check between
-           waves. It used to be labelled "Cells" and sat fourth of six, which on
-           a narrow phone put it on the wrapped second line — so the one number
-           you need mid-wave was both misnamed and the hardest to find. Pips
-           rather than a digit for the same reason: countable at a glance. -->
-      <div>Lives <b id="uiLives" class="pips"></b></div>
       <div>Score <b id="uiScore">0</b></div>
       <div>Scrap <b id="uiScrap">0</b></div>
       <div>Best <b id="uiBest">—</b></div>
@@ -238,10 +250,16 @@
         <h2>Refit</h2>
         <div id="shopScrap">Scrap 0</div>
       </div>
-      <div id="shopTabs"></div>
+      <!-- Tabs and Next Wave share ONE sticky bar. Two `position:sticky`
+           siblings both pinned to the same top overlap each other, and Next
+           Wave used to be the last child of the scrolling panel — so leaving
+           the shop meant scrolling past nine branch cards to find the button. -->
+      <div id="shopBar">
+        <div id="shopTabs"></div>
+        <button id="shopGo">Next Wave</button>
+      </div>
       <div id="branches"></div>
       <div id="battery"></div>
-      <button id="shopGo">Next Wave</button>
     </div>
     <div id="fxbar"></div>
     <div id="banner">
@@ -261,7 +279,7 @@
 <script type="module">
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
-import { glowStroke, glowDot, glowDots, dim, extrudeRect, extrudeDisc, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
+import { glowStroke, glowDot, glowDots, dim, inkDot, extrudeRect, extrudeDisc, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
 import { recordProgress } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
@@ -280,14 +298,28 @@ const audio = makeAudio();
    is a fair proxy for an impact sound; `push` carries the overdrive/overheat
    floaters, which double as the cue for those tones. Firing and breaches have
    no fx hook — the frame loop watches world state for them instead. */
+/* Debris is capped. Nothing bounded it before, and the death path can spawn in
+   bulk: a chain decapitation bursts once per segment, a bomb kills everything
+   in its radius in one synchronous loop. Measured peak was 181 alive in normal
+   wave-20 fighting and far more on those two events. Oldest-first eviction, so
+   what gets dropped is the debris already fading out. */
+const MAX_BITS = 260;
+
+/* One hit sound per frame, not per kill. `audio.hit()` builds five Web Audio
+   nodes (an oscillator + gain, and a buffer source + biquad + gain), and
+   decapitating a 40-segment chain called it 40 times in one frame — 200 nodes
+   constructed on the main thread, for a sound that is one thud either way. */
+let hitPending = false;
+
 const fx = {
   burst(x, y, col, n = 10) {
-    audio.hit();
+    hitPending = true;
     if (reduce) return;
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU, sp = 40 + Math.random() * 140;
       world.bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: .35 + Math.random() * .4, col });
     }
+    if (world.bits.length > MAX_BITS) world.bits.splice(0, world.bits.length - MAX_BITS);
   },
   push(txt, x, y, col) {
     world.floaters.push({ txt, x, y, col, life: .9 });
@@ -365,6 +397,10 @@ adoptLayout();
 
 /* ---------- input ---------- */
 let keys = {}, firing = false;
+/* One loss cue per run. The breach sound used to be derived from the life count
+   dropping; with lives gone there is no counter to watch, so this latches on
+   `world.over` instead and clears when a run restarts. */
+let overCued = false;
 let paused = false;      // set when a rotation pauses a run in progress
 
 function stagePt(e) {
@@ -460,7 +496,7 @@ const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 
 /* Rotating the phone moves the run onto the other board. Chains are positioned
    by arc-length, so scaling by the ratio of path lengths puts every segment at
-   the same fraction of its journey; wave, score, scrap, lives, upgrades and the
+   the same fraction of its journey; wave, score, scrap, upgrades and the
    battery all carry over. */
 function applyLayout() {
   const L2 = pickLayout();
@@ -567,19 +603,16 @@ function frame(now) {
 
     if (tapPulse > 0) tapPulse = Math.max(0, tapPulse - dt * 4);
 
-    const livesBefore = world.lives;
     E.step(world, dt, firing);
-    // a breach costs a life; the last one ends the run. Sound it either way,
-    // read from state since the engine has no breach fx hook.
-    if (world.lives < livesBefore) {
-      audio[world.over ? 'lose' : 'breach']();
-      flashLives();
-    }
+    // however many kills this frame produced, that is one thud
+    if (hitPending) { hitPending = false; audio.hit(); }
+    // a breach ends the run outright now, so there is one cue, not two
+    if (world.over && !overCued) { overCued = true; audio.lose(); }
 
     if (world.over) {
       clearRun(GAME_ID);          // a finished run is not one to come back to
       const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
-      syncBest();
+syncBest();
       /* The run's research is banked here, at the end, and written straight to
          storage. Paying at the end rather than per wave is what stops a good
          opening being farmed by restarting; `awardResearch` is idempotent, so
@@ -605,20 +638,21 @@ let tapPulse = 0;
    advancing the chains at the same time. Cheap, and exact enough to trust. */
 function predictHit() {
   const c = world.cannon;
-  /* The marker reads the *best* optics on the battery, not mount 1's.
+  /* How far ahead the marker leads is the same for everyone now — `E.AIM_LEAD`
+     — because Optics stopped being the branch that bought it. Aiming comfort
+     was never a fair thing to sell: it was the only branch with no combat
+     effect, and it was also the one you had to buy to see what you were doing.
 
-     It used to take guns[0] on the grounds that the aim line is drawn through
-     the center gun — but since v27 made upgrades per-emplacement that meant
-     buying Optics on mounts 2-5 changed nothing you could see, while the shop
-     blurb promised a longer read. Taking the maximum makes the purchase honest
-     wherever it is made: the marker shows the furthest-ahead solution any of
-     your guns can actually reach, and shot speed comes from the same gun so the
-     two halves of the prediction stay consistent. */
+     Shot speed still comes from the *fastest* gun on the battery, so the ray
+     march matches a round some mount can really put there. It used to take
+     guns[0] on the grounds that the aim line is drawn through the centre gun,
+     which since v27's per-emplacement upgrades meant buying Velocity on mounts
+     2-6 changed nothing you could see. */
   const S = world.battery.guns.reduce((best, g) => {
     const s = E.stats(world, g);
-    return !best || s.predict > best.predict ? s : best;
+    return !best || s.shotSpeed > best.shotSpeed ? s : best;
   }, null) || E.stats(world, null);
-  const step = 1 / 90, maxT = S.predict;
+  const step = 1 / 90, maxT = E.AIM_LEAD;
   let x = c.x + Math.cos(c.ang) * c.len;
   let y = c.y + Math.sin(c.ang) * c.len;
   let vx = Math.cos(c.ang) * S.shotSpeed, vy = Math.sin(c.ang) * S.shotSpeed;
@@ -630,7 +664,11 @@ function predictHit() {
     if (y < -20 || y > H + 20) return null;
 
     for (const ch of world.chains) {
-      const s = ch.recoil > 0 ? ch.s - Math.min(ch.recoil, ch.speed * 2.4 * t) : ch.s + ch.speed * t;
+      // E.RECOIL_RATE, not a copy of it: this was a hardcoded 2.4 left behind
+      // when the engine's rate changed to 1.3, so the marker mispredicted
+      // against any chain that was being pushed back — which is every chain
+      // you are actively cutting into.
+      const s = ch.recoil > 0 ? ch.s - Math.min(ch.recoil, ch.speed * E.RECOIL_RATE * t) : ch.s + ch.speed * t;
       for (let i = 0; i < ch.segs.length; i++) {
         const p = E.atS(world.path, world.pathLen, s - i * ch.spacing);
         if (p.off) continue;
@@ -666,7 +704,11 @@ function predictHit() {
 const OVERVIEW = -2, RESEARCH = -1;
 let shopTab = OVERVIEW;
 
-function renderShop() {
+/* `bought` is the branch just purchased, if any. The whole `#branches` subtree
+   is rebuilt on every buy, so the stat row to flash does not exist until after
+   the rebuild — it has to be found and marked here, at the end, rather than
+   touched before. */
+function renderShop(bought) {
   $('shopScrap').textContent = 'Scrap ' + world.scrap;
   // a mount can be sold out from under the tab by a reset
   if (shopTab >= world.battery.guns.length) shopTab = OVERVIEW;
@@ -686,7 +728,7 @@ function renderShop() {
   const port = document.createElement('div');
   port.className = 'portrait';
   const pc = document.createElement('canvas');
-  pc.width = 420; pc.height = 190;
+  pc.width = PORTRAIT_W; pc.height = PORTRAIT_H;
   port.appendChild(pc);
   const cap = document.createElement('div');
   cap.className = 'caption';
@@ -709,31 +751,34 @@ function renderShop() {
     const gated = maxed && tier < E.MAX_TIER;
     const afford = E.canAfford(world, shopTab, b);
 
+    /* One dense row per branch: name and pips on the left, the price button on
+       the right. It was a card — heading, pip strip, a blurb paragraph and a
+       full-width button — nine of which is a wall of text between waves, and
+       the blurb is the part you only need the first time. It moves to `title`,
+       so it is still reachable and no longer in the way. */
     const el = document.createElement('div');
-    el.className = 'branch';
+    el.className = 'branch buyRow';
+    el.title = U.blurb;
 
     // pips past the researched cap are drawn as locked rather than merely
     // unbought, so how far this branch can currently go is visible at a glance
     const pips = Array.from({ length: E.MAX_TIER }, (_, i) =>
       `<i class="${i < tier ? 'on' : i >= cap ? 'locked' : ''}"></i>`).join('');
 
-    el.innerHTML =
-      `<h3>${U.name}</h3>` +
-      `<div class="pips">${pips}</div>` +
-      `<p>${U.blurb}</p>`;
+    el.innerHTML = `<div class="rowHead"><h3>${U.name}</h3><div class="pips">${pips}</div></div>`;
 
     const btn = document.createElement('button');
     btn.className = 'buy' + (gated ? ' gated' : (!maxed && !afford ? ' poor' : ''));
-    // spell out the shortfall: "Buy · 40" while holding 25 leaves you counting
-    btn.textContent = gated ? 'Needs research'
-      : maxed ? 'Maxed'
-      : afford ? `Buy · ${cost}`
-      : `${cost} · need ${cost - world.scrap} more`;
+    // spell out the shortfall: "40" while holding 25 leaves you counting
+    btn.textContent = gated ? 'Research'
+      : maxed ? 'Max'
+      : afford ? `${cost}`
+      : `${cost} · −${cost - world.scrap}`;
     btn.disabled = maxed || !afford;
     el.appendChild(btn);
     if (!gated) {
       btn.addEventListener('click', () => {
-        if (E.buyUpgrade(world, shopTab, b)) { renderShop(); sync(); }
+        if (E.buyUpgrade(world, shopTab, b)) { renderShop(b); sync(); }
       });
     }
     host.appendChild(el);
@@ -741,6 +786,15 @@ function renderShop() {
 
   host.appendChild(renderBarrels(gun));
   host.appendChild(renderRetrofit(gun));
+
+  if (bought) flashStat(host, bought);
+}
+
+/** Mark the stat a purchase just moved, on the freshly rebuilt block. */
+function flashStat(host, branch) {
+  for (const el of host.querySelectorAll(`.statBlock .stat[data-stat="${branch}"]`)) {
+    el.classList.add('bought');
+  }
 }
 
 /** This mount's barrel count. Per-emplacement since v28 — it used to be a
@@ -850,7 +904,7 @@ function renderOverview(host) {
        bitmap and showed the top-left corner of each gun. CSS scales it down to
        the card; the backing store keeps the drawing's own coordinates. */
     const pc = document.createElement('canvas');
-    pc.width = 420; pc.height = 190;
+    pc.width = PORTRAIT_W; pc.height = PORTRAIT_H;
     el.appendChild(pc);
 
     const depth = E.BRANCHES.reduce((a, b) => a + (gun.upgrades[b] || 0), 0);
@@ -894,22 +948,29 @@ function renderGunStats(gun) {
   const T = E.OD_TIERS[0];                    // base tier, so the numbers are comparable
   const n = E.barrelsOf(gun);
 
+  /* Third element is the branch that moves this number, so buying an upgrade
+     can flash the stat it bought. Without it there is no way to tell which of
+     nine rows just changed — the number ticks over silently in a block of
+     nine, which is the whole complaint. `null` for the rows no branch owns. */
   const rows = [
-    ['Damage', (T.dmg * S.dmg * G.dmg).toFixed(1) + (n > 1 ? ` ×${n}` : '')],
-    ['Reload', (T.rate * G.rate).toFixed(2) + 's'],
-    ['Round speed', Math.round(S.shotSpeed)],
-    ['Pierce', T.pierce + S.pierce + G.pierce],
-    ['Bounces', S.bounces],
-    ['Heat/shot', (S.heatPerShot * n).toFixed(2)],
-    ['Cooling', '×' + S.cool.toFixed(2)],
-    ['Lockout', '×' + S.lock.toFixed(2)],
-    ['Convergence', S.converge ? Math.round(S.converge * 100) + '%' : '—'],
+    ['Damage', (T.dmg * S.dmg * G.dmg).toFixed(1) + (n > 1 ? ` ×${n}` : ''), 'damage'],
+    ['Round size', S.shotR.toFixed(1), 'calibre'],
+    ['Reload', (T.rate * G.rate).toFixed(2) + 's', null],
+    ['Round speed', Math.round(S.shotSpeed), 'velocity'],
+    ['Reach', '×' + S.reach.toFixed(2), 'optics'],
+    ['Pierce', T.pierce + S.pierce + G.pierce, 'munitions'],
+    ['Bounces', S.bounces, 'munitions'],
+    ['Heat/shot', (S.heatPerShot * n).toFixed(2), 'breech'],
+    ['Cooling', '×' + S.cool.toFixed(2), 'cooling'],
+    ['Lockout', '×' + S.lock.toFixed(2), 'interlock'],
+    ['Convergence', S.converge ? Math.round(S.converge * 100) + '%' : '—', 'convergence'],
   ];
 
   const el = document.createElement('div');
   el.className = 'branch statBlock';
   el.innerHTML = `<h3>Stats</h3>` +
-    `<dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+    `<dl>${rows.map(([k, v, b]) =>
+      `<div class="stat"${b ? ` data-stat="${b}"` : ''}><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
   return el;
 }
 
@@ -1108,11 +1169,27 @@ function buyResearch(buy) {
    Each type gets its own silhouette, because "which gun is this" should be
    answerable from the shape alone. Mount and carriage are shared; everything
    above the trunnion is per type. */
+/* The portrait's drawing space is 420x190, but the art only ever occupies the
+   bottom of it: the trunnion sits at y=132 and the ground line at 175, so for
+   every gun except the mortar the top ~45% of the bitmap was empty sky. On a
+   card whose canvas is `width:100%;height:auto` that empty band is pure card
+   height — the dead space in the report.
+
+   So the bitmap is cropped to the ink and the drawing is translated to match,
+   keeping one coordinate space. The crop is the *union* over all five types,
+   measured rather than guessed (mortar 44..183, everything else 78..183), so
+   every card is the same height and no gun is clipped. The mortar is what sets
+   the top: its barrel is genuinely steep, and flattening it to save 18 more
+   pixels would be letting the grid dictate the art. */
+const PORTRAIT_W = 420, PORTRAIT_H = 150, PORTRAIT_TOP = 36;
+
 function drawCannonPortrait(g, type, barrels = 1) {
   const G = E.GUN_TYPES[type];
   const col = G.col;
   const W2 = 420, H2 = 190;
-  g.clearRect(0, 0, W2, H2);
+  g.clearRect(0, 0, PORTRAIT_W, PORTRAIT_H);
+  g.save();
+  g.translate(0, -PORTRAIT_TOP);
 
   const BODY = 'rgba(24,44,56,.98)';
   const BACK = 'rgba(13,26,34,.98)';
@@ -1220,20 +1297,34 @@ function drawCannonPortrait(g, type, barrels = 1) {
   /* Flanking barrels, one per purchased extra, drawn parallel to the main one
      and smaller — matching the rounds they fire, which are also parallel and
      also smaller. The offsets come from the engine so the picture cannot drift
-     away from the geometry. */
+     away from the geometry.
+
+     They used to be flat `fillRect` slabs with one outline, sitting beside a
+     main barrel that has extrusion, a collar, a muzzle and per-type detail —
+     which is what made them read as bars rather than as guns. They get the same
+     `extrudeRect` treatment as the receiver now, plus a muzzle ring and a root
+     collar, so a three-barrel mount looks like three barrels. Still visibly
+     subordinate: shorter, thinner, and shallower-extruded than the main one. */
   const offs = E.BARREL_OFFSETS[barrels] || [];
   for (const off of offs) {
     const sub = spec.bore * 0.62, sh = sub / 2;
     const y = off * 1.7;                    // scaled for the portrait's size
-    g.fillStyle = BACK; g.fillRect(bx + 10 + 5, y - sh + 4, spec.len * 0.76, sub);
-    g.fillStyle = BODY; g.fillRect(bx + 10, y - sh, spec.len * 0.76, sub);
-    glowStroke(g, c => c.rect(bx + 10, y - sh, spec.len * 0.76, sub), col, 1.6, undefined, 0.85);
+    const x0 = bx + 10, len = spec.len * 0.76;
+    // the barrel itself, solid and lit like every other block on the gun
+    extrudeRect(g, x0, y - sh, len, sub, col, { depth: 4, width: 1.5, body: BODY, back: BACK });
+    // a collar where it leaves the receiver, so it is attached to something
+    extrudeRect(g, x0 - 4, y - sh - 2, 9, sub + 4, col, { depth: 3, width: 1.2, body: BODY, back: BACK });
+    // and a muzzle ring at the business end, the cue the main barrel uses too
+    extrudeRect(g, x0 + len - 7, y - sh - 2, 8, sub + 4, col, { depth: 3, width: 1.3, body: BODY, back: BACK });
+    // the bore, a dark dot punched in the muzzle face
+    inkDot(g, x0 + len - 3, y, Math.max(1.4, sub * 0.22));
   }
   g.restore();
 
   // --- the pivot itself, last so it sits over the barrel root
   extrudeDisc(g, px, py, 17, col, { depth: 6, width: 2.2, body: BODY, back: BACK });
   glowDot(g, px, py, 3, col);
+  g.restore();
 }
 
 /* Say what the gun does to the board, and name the enemy it answers. The ion
@@ -1257,8 +1348,8 @@ function openShop() {
      says which, and the button says what leaving it will actually do. Without
      that, losing a life and landing in a shop titled "Refit / Next Wave" reads
      as the game having skipped the wave you just lost. */
-  $('shopHead').querySelector('h2').textContent = world.retry ? 'Regroup' : 'Refit';
-  $('shopGo').textContent = world.retry ? `Retry Wave ${world.wave}` : 'Next Wave';
+  $('shopHead').querySelector('h2').textContent = 'Refit';
+  $('shopGo').textContent = 'Next Wave';
   /* Always opens on mount 1, never on whatever tab was left showing.
 
      Remembering the last view sounds helpful and is not: the tab you were on
@@ -1814,11 +1905,31 @@ function draw() {
     // the white cores, one batch for the lot — they share a colour
     glowDots(ctx, world.shots.map(p => ({ x: p.x, y: p.y, r: p.r * .5 })), '#ffffff');
   }
-  for (const b of world.bits) {
-    ctx.globalAlpha = Math.max(0, Math.min(1, b.life * 2));
-    ctx.fillStyle = b.col; ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
+  /* Debris, grouped so the canvas state is written once per group instead of
+     twice per bit. Alpha is quantised to eighths to make the grouping possible;
+     over a 0.35-0.75s fade on a 3px square that banding is invisible.
+
+     Each bit still gets its own `fillRect` — the rects are *not* merged into one
+     path. Same reason `glowDots` keeps per-dot fills: one fill of many
+     overlapping translucent shapes blends the overlap once, many fills blend it
+     twice, and picking the faster one there would quietly change the picture. */
+  if (world.bits.length) {
+    const groups = new Map();
+    for (const b of world.bits) {
+      const a = Math.max(0, Math.min(1, b.life * 2));
+      const q = Math.max(1, Math.round(a * 8));
+      const key = b.col + '|' + q;
+      let g = groups.get(key);
+      if (!g) groups.set(key, g = { col: b.col, a: q / 8, list: [] });
+      g.list.push(b);
+    }
+    for (const g of groups.values()) {
+      ctx.globalAlpha = g.a;
+      ctx.fillStyle = g.col;
+      for (const b of g.list) ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
+    }
+    ctx.globalAlpha = 1;
   }
-  ctx.globalAlpha = 1;
 
   // draw each gun in the battery, each angled toward the shared aim point
   const b = world.battery;
@@ -1969,27 +2080,10 @@ function syncBest() {
   $('uiBest').textContent = b ? b.score : '—';
 }
 
-/* The lives strip flashes on a breach. Retriggering needs the class off for a
-   frame, or a second breach inside the animation's window does nothing. */
-let livesFlash = 0;
-function flashLives() {
-  const el = $('uiLives');
-  el.classList.remove('hit');
-  void el.offsetWidth;                        // force a reflow so the class re-applies
-  el.classList.add('hit');
-  clearTimeout(livesFlash);
-  livesFlash = setTimeout(() => el.classList.remove('hit'), 1600);
-}
-
 function sync() {
   $('uiWave').textContent = world.wave;
   $('uiScore').textContent = world.score;
   $('uiScrap').textContent = world.scrap;
-  // Spent lives stay on the strip as dark pips rather than disappearing, so the
-  // readout is "1 of 3 left" at a glance instead of "1 of something".
-  const slots = Math.max(E.START_LIVES, world.lives);
-  $('uiLives').innerHTML = Array.from({ length: slots }, (_, i) =>
-    `<i class="${i < world.lives ? '' : 'spent'}"></i>`).join('');
   // how far this run got, for the cabinet's unlock gate. Recorded live rather
   // than at game over: reaching the wave is the achievement, and a player who
   // closes the tab mid-run has still reached it.
@@ -2045,7 +2139,7 @@ $('go').addEventListener('click', () => {
      nothing to spend and no reason to be shown a shop first. */
   const afterLoss = !paused && world.over;
   if (paused) paused = false;
-  else if (restarting) E.resetRun(world);
+  else if (restarting) { E.resetRun(world); overCued = false; }
   $('banner').classList.add('hide');
   firing = false; drag = null;
 
@@ -2122,6 +2216,7 @@ addEventListener('pagehide', saveNow);
     } else {
       clearRun(GAME_ID);
       E.resetRun(world);
+      overCued = false;
     }
     clearRun(GAME_ID);
     sync();

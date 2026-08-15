@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-14 (v31 — round 9 feedback: four reports whose causes were not what they looked like)
+Last updated: 2026-08-15 (v32 — round 10 feedback: the choppiness was hit-stop, and Optics bought nothing)
 
 ## Read this first
 
@@ -15,12 +15,66 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 - **The cabinet** ([index.html](index.html)) — the front door, listing all four games. Each game links back to it.
 
-- **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). Per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run, buying gun types and the deepest two tiers of each branch). No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
+- **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). **Six** emplacements, per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run — superlinear in the wave reached — buying gun types and the deepest two tiers of each branch). **No lives: one breach ends the run.** No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance), and played on a phone each round.
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**502 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **47 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**516 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **51 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 10 feedback — the choppiness was never a frame budget (v32, 2026-08-15)
+
+Thirteen Flak Battery items. Two of them turned out to be worth more than the
+fix; both are in [docs/DECISIONS.md](docs/DECISIONS.md).
+
+**The choppiness was hit-stop.** The report carried its own diagnosis — "only
+when squares are being destroyed in mass, just firing five guns doesn't slow it
+down" — and that points away from rendering entirely: firing never sets
+`hitStop`, killing does. Every kill froze the whole simulation for ~3 frames
+while `draw` kept running, and each new kill re-armed it. Measured over a
+25-second wave-20 fight: **19.2% of frames frozen**. Not a game dropping frames
+— a game deliberately not simulating one in five. A 0.45s refractory takes it to
+**4.8%**, with a command ship still overriding it. Last round's glow work was
+correct and aimed at the wrong thing.
+
+Three real costs sat beside it: `audio.hit()` built five Web Audio nodes *per
+kill* (200 in one frame on a chain decapitation, now one per frame); a
+decapitation threw ~780 debris particles; and `bits` had no cap. All fixed.
+
+**Optics bought nothing.** Its only stat was how far the aim marker led — read
+by the shell, by no simulation code at all. The one branch in nine with no
+combat effect, priced like Calibre, and a tax on aiming comfort besides. Marker
+lead is free to everyone now and the branch buys **effective range**: rounds
+lose damage with distance and Optics pushes the onset out until, maxed, there is
+none. Expressed as a fraction of the board, never pixels — portrait is twice as
+deep as landscape and would otherwise have played twice as harsh.
+
+**Also this round:** lives removed (one breach ends the run, shields are the
+only save); RP made superlinear because the old linear payout meant four runs to
+wave 5 paid the same as one to wave 20 — restarting was the *efficient* play,
+exactly what end-of-run payment was meant to prevent; late-game hp steepened
+(wave 30 +22%, wave 50 +38%) with waves 1-7 bit-identical; Calibre now buys
+knockback, derived from shot radius so it stays a one-stat branch; a **sixth
+emplacement**; Next Wave pinned in the tabs' sticky bar instead of below nine
+branch cards; stats in two fixed columns; branch cards collapsed to dense rows;
+buying an upgrade flashes the stat it moved; portrait art cropped to its ink
+(190px → 150px of card height); and extra barrels drawn with the same extrusion,
+collars and muzzle rings as the main one.
+
+### Still open after this round
+
+- **The phone verdict on the choppiness.** 19.2% → 4.8% of frames frozen is
+  measured in this container, and the frozen share is layout- and
+  hardware-independent arithmetic, so it should carry. Whether it *feels* fixed
+  is a device question.
+- Removing lives, steeper hp, and range falloff all landed in one build. Any one
+  of them is a real difficulty increase and they have not been played together.
+- Optics-as-range is the one mechanic this round that was chosen rather than
+  asked for. If it does not read as worth buying, it is the thing to revisit.
+- The sixth mount is deliberately lopsided (there is no symmetric six that keeps
+  a gun on the centre line, and centre is what kills a close command ship). It
+  measures right; whether it *looks* right is a play call.
+- Knockback and the RP curve are both first drafts at new shapes.
 
 ## Round 9 feedback — four reports, four causes that were not the report (v31, 2026-08-13)
 
