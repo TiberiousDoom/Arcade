@@ -121,8 +121,13 @@ test('every cannon portrait draws something', async () => {
   const cards = doc.querySelectorAll('.empCard canvas');
   assert.equal(cards.length, world.battery.guns.length, 'a card per emplacement');
   for (const [i, cv] of [...cards].entries()) {
+    /* The canvas must be the drawing's own coordinate space. It was 260x110,
+       which drew 420x190 art at full size into a smaller bitmap and showed the
+       top-left corner of each gun. The height is the *cropped* 146 now — the
+       art only ever occupied the bottom of the 190, and the empty band above it
+       was card height for nothing. */
     assert.equal(cv.width, 420, `card ${i} canvas is the portrait's own width`);
-    assert.equal(cv.height, 190, `card ${i} canvas is the portrait's own height`);
+    assert.equal(cv.height, 150, `card ${i} canvas is cropped to the art`);
     assert.ok(lit(cv) > 400, `card ${i} portrait is blank (${lit(cv)} px)`);
     // and the art reaches the right-hand side, which is what cropping ate
     const d = cv.getContext('2d').getImageData(cv.width - 60, 0, 60, cv.height).data;
@@ -247,7 +252,13 @@ test('research is bought on the research tab and gates the deep tiers', async ()
   renderTab(0);
   const again = [...doc.querySelectorAll('#branches .branch')]
     .find(el => /^Damage$/.test(el.querySelector('h3')?.textContent || ''));
-  assert.match(again.querySelector('button').textContent, /buy/i, 'tier 4 is for sale now');
+  /* The buy button carries the bare price now rather than "Buy · 142" — nine of
+     those rows is a lot of words for nine numbers. So the check is the state,
+     not the wording: it must no longer say "Research", and it must be tappable. */
+  const buyBtn = again.querySelector('button');
+  assert.doesNotMatch(buyBtn.textContent, /research/i, 'no longer gated behind research');
+  assert.equal(buyBtn.disabled, false, 'tier 4 is for sale now');
+  assert.match(buyBtn.textContent, /\d/, 'and it says what it costs');
   assert.deepEqual(g.errors, [], 'the research tab threw');
 });
 
@@ -320,4 +331,87 @@ test('barrels are bought on the mount they belong to', async () => {
   assert.equal(world.battery.guns[0].barrels, 2, 'this mount gained a barrel');
   assert.equal(world.battery.guns[1].barrels, 1, 'the other did not');
   assert.deepEqual(g.errors, [], 'buying a barrel threw');
+});
+
+test('leaving the shop does not require scrolling past the tree', async () => {
+  /* The button used to be the last child of the scrolling panel, below nine
+     branch rows — so "Next Wave" was the one control you always want and the
+     one you had to go looking for. It shares the tabs' sticky bar now. */
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.shopOpen = true;
+  g.frame(1000);
+
+  const go = doc.getElementById('shopGo');
+  const bar = doc.getElementById('shopBar');
+  assert.ok(bar, 'the shop has a sticky bar');
+  assert.ok(bar.contains(go), 'and Next Wave lives in it');
+  assert.ok(bar.contains(doc.getElementById('shopTabs')), 'alongside the tabs');
+  // one sticky element, not two competing for the same top edge
+  assert.equal(w.getComputedStyle(bar).position, 'sticky');
+  assert.notEqual(w.getComputedStyle(doc.getElementById('shopTabs')).position, 'sticky');
+  assert.deepEqual(g.errors, [], 'the shop bar threw');
+});
+
+test('a mount shows its resolved stats in two columns', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+
+  const dl = doc.querySelector('#branches .statBlock dl');
+  assert.ok(dl, 'the mount tab carries a stat block');
+  assert.equal(w.getComputedStyle(dl).gridTemplateColumns, '1fr 1fr', 'exactly two columns');
+  const stats = [...dl.querySelectorAll('.stat')];
+  assert.ok(stats.length >= 9, 'and the stats are in it');
+  // every pair is one cell, so a label can never land in a different column
+  // from its own number
+  for (const s of stats) {
+    assert.ok(s.querySelector('dt') && s.querySelector('dd'), 'label and value travel together');
+  }
+  assert.deepEqual(g.errors, [], 'the stat block threw');
+});
+
+test('buying an upgrade flashes the stat it moved', async () => {
+  /* Nine numbers in a block and one of them ticking over is invisible. The
+     subtree is fully rebuilt on a purchase, so this also pins that the flash
+     lands on the *new* node rather than one that no longer exists. */
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+
+  const row = [...doc.querySelectorAll('#branches .branch')]
+    .find(el => /^Damage$/.test(el.querySelector('h3')?.textContent || ''));
+  assert.ok(row, 'the Damage row is there');
+  row.querySelector('button').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.equal(world.battery.guns[0].upgrades.damage, 1, 'the tier was bought');
+
+  const lit = [...doc.querySelectorAll('#branches .statBlock .stat.bought')];
+  assert.equal(lit.length, 1, 'exactly one stat is highlighted');
+  assert.equal(lit[0].dataset.stat, 'damage', 'and it is the one that moved');
+  assert.deepEqual(g.errors, [], 'the buy flash threw');
+});
+
+test('every branch in the tree points at a stat the block shows', async () => {
+  // a branch whose data-stat matches nothing would flash nothing on purchase,
+  // silently, which is exactly the failure this whole feature exists to fix
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+
+  const shown = new Set([...doc.querySelectorAll('#branches .statBlock .stat')]
+    .map(el => el.dataset.stat).filter(Boolean));
+  for (const b of g.E.BRANCHES) {
+    assert.ok(shown.has(b), `${b} moves a stat the block displays`);
+  }
 });
