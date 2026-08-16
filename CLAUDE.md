@@ -19,6 +19,8 @@ An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invad
 
 This is a solo, part-time project with potentially long gaps (weeks or months) between sessions. Read **[STATUS.md](STATUS.md)** first — it's the current "what's playable / what's next" snapshot, kept fresh each session rather than left to go stale. **[docs/DECISIONS.md](docs/DECISIONS.md)** has the reasoning behind past architectural choices, append-only — check it before re-deciding something that looks unusual.
 
+**The playtesting comes from a real phone.** Every "V*n* Feedback" round in STATUS.md is someone playing on glass, so touch, portrait and the safe-area fit work are the primary path rather than an untested one — and a frame time measured in a desktop browser is a direction, not a verdict. [docs/TESTING.md](docs/TESTING.md) is the live device checklist for the current build; when a section is settled the outcome moves to STATUS.md and the section is deleted rather than left to rot.
+
 At the end of a session: update STATUS.md (what changed, what's next, any newly open questions), add an entry to docs/DECISIONS.md for any real decision made, and write commit messages that explain intent — with month-long gaps, `git log` is effectively documentation too.
 
 ## Commands
@@ -51,9 +53,21 @@ python -m http.server 8123
 npm install --no-save jsdom canvas
 node --test games/*/render-test.mjs
 
+# Resume tests — the mid-run save/restore flow end to end in a real DOM with a
+# real localStorage: play, background, reload, press Continue. The engine suites
+# already cover snapshot/hydrate as pure functions; these cover the shell half
+# (save written on the right beat, banner offers it, Continue restores). Only
+# the three games with saves have one — Feedline is one-life score-attack.
+node --test games/{flak-battery,hull-breach,choke-point}/resume-test.mjs
+
 # Everything at once
-node --test games/*/engine.test.js shared/*.test.js games/*/render-test.mjs
+node --test games/*/engine.test.js shared/*.test.js games/*/render-test.mjs games/*/resume-test.mjs
 ```
+
+Both `render-test.mjs` and `resume-test.mjs` boot the real shell through
+[tools/render-harness.mjs](tools/render-harness.mjs) (which inlines it via
+`tools/inline.mjs`) — so a change to a shell's `<script>`, its imports, or
+anything in `shared/` is exercised by them without any checked-in build artifact.
 
 There is no lint config in the repo.
 
@@ -160,8 +174,12 @@ Games follow a per-game engine/shell split modeled on Flak Battery: pure logic w
 - **`shared/fit.js`** — `makeFit(...)` sizes the board and owns the resize/orientation listeners. It performs the first fit itself, so shells must not also call the returned function at startup. `extra` is only for furniture *outside* `#shell` (everything inside is measured, so passing it twice double-counts). **`fillWidth`** inverts the usual priority — spend the whole stage width and let the page scroll rather than paying a height shortfall out of the board's width. Only Choke Point uses it, and a shell that asks for it must also add `body.scrolls` or the overflow is unreachable. **When judging any of this, simulate the safe-area insets**: a desktop browser reports them as 0, and that is exactly how v26 shipped a gutter fix that did nothing on a phone.
 - **`shared/version.js`** — one app-wide `BUILD` string, shown in every help panel and on the cabinet. Deliberately **one version for the whole app, not one per game**: four hand-maintained numbers with no release process would drift instantly, and the only question anyone asks is which deploy they're looking at. Kept in lockstep with `sw.js`'s `CACHE_VERSION` by `shared/version.test.js`.
 - **`shared/fx.js`** — `makeFx(...)` for particles and the screen-flash value. Hull Breach and Feedline use it. **Flak Battery deliberately does not** — its bits/floaters live on the world and are stepped inside its engine, and rewiring that was judged not worth the churn.
+- **`shared/glow.js`** — the vector/CRT art primitives every shell draws with (`glowStroke`, `glowDot`, `inkDot`, `extrude`/`extrudeDisc`/`extrudeRect`, `cube`, `fadeFrame`, `scanlines`). Two rules here have each cost a build already, and [shared/README.md](shared/README.md) has the full five: **additive compositing cannot darken** — `glowStroke`/`glowDot` brighten what's underneath, so anything meant to read as recessed or shadowed must be painted with the normal composite (`inkDot` or a plain fill); and **static content accumulates under `fadeFrame`**, settling at roughly `1/fade` times the alpha you wrote, so write static alphas about a third of what you want. The art also has one absolute: **invaders are cubes, defenders are spheres**, everywhere, because shape alone is what keeps a busy board readable.
+- **`shared/menu.js`** — `makeMenu(...)`, the single corner button + panel every game uses for pause, mute and instructions. It replaced three always-visible buttons that were eating tappable board area. **Opening the panel pauses the run**; shells gate their frame loop on the returned `{ paused, pause(), resume(), toggle() }`.
+- **`shared/resume.js`** — storage for mid-run saves: keys, build-stamping, and the fact that localStorage throws in real situations (Safari private browsing, storage disabled by policy). The **engines** own what a snapshot *is* (`snapshot`/`hydrate`); this owns none of it. Used by Flak Battery, Hull Breach and Choke Point — **not** Feedline, which is one-life score-attack.
+- **`shared/audio.js`** (`makeAudio()`, all effects synthesized in WebAudio, no files), **`shared/scores.js`** (`best()`/`submit()` for local personal bests) and **`shared/levels.js`** (highest level reached, for Hull Breach's level select) all use the same guarded-localStorage shape — losing a personal best is never worth crashing a game over.
 - **`shared/unlocks.js`** — the first-play-through gate. Each game calls `recordProgress(id, value)` as it plays (a Feedline run finishing, the current wave in Flak Battery / Choke Point), and the cabinet asks `isUnlocked(id)` / `lockLabel(id)` to decide whether a card is dimmed. `GATES` is the whole ruleset, in one object. **The gate is enforced on the cabinet only** — direct URLs and the PWA's shortcuts still open any game, on purpose (see DECISIONS.md, 2026-08-04). Don't record progress via `scores.js`'s `submit()`: it only writes on an improved score, so a weak run after a strong one would record nothing.
 
-Deliberately not shared: banner show/hide (Serpent's variant hides a legend and two hint paragraphs, so sharing it would be a config-heavy wrapper around ~6 lines each), and the engine `step()` signatures.
+Deliberately not shared: banner show/hide (Flak Battery's variant hides a legend and two hint paragraphs, so sharing it would be a config-heavy wrapper around ~6 lines each), and the engine `step()` signatures.
 
 The engine/shell **seam legitimately differs per game** and should not be forced into a single shape: Flak Battery's `step(w, dt, firing)` takes input, Hull Breach's `step(w, dt)` takes none (the shell drives the paddle), and Feedline's engine owns its own tick clock. What's shared is the *principle* — pure logic, no DOM/canvas/timers — not the signature.

@@ -415,3 +415,37 @@ test('every branch in the tree points at a stat the block shows', async () => {
     assert.ok(shown.has(b), `${b} moves a stat the block displays`);
   }
 });
+
+test('a buy row previews what the next tier is worth, and stops at the top', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+
+  const rowFor = (name) => [...doc.querySelectorAll('#branches .branch')]
+    .find(el => el.querySelector('h3')?.textContent === name);
+
+  /* The numbers come off UPGRADES rather than being restated in the shell, so
+     the assertion is that the row shows *this branch's* tier values — a row
+     wired to the wrong branch would still render something plausible. */
+  const damage = rowFor('Damage');
+  const [t0, t1] = [E.UPGRADES.damage.tiers[0].dmg, E.UPGRADES.damage.tiers[1].dmg];
+  const text = damage.querySelector('.preview').textContent.replace(/\s+/g, ' ');
+  assert.match(text, new RegExp(`Damage ${t0} → ${t1}`),
+    `the Damage row previews ${t0} → ${t1}`);
+
+  // Munitions moves two stats — the documented exception — and must show both
+  const munitions = rowFor('Munitions').querySelector('.preview').textContent;
+  assert.match(munitions, /Pierce/, 'Munitions previews pierce');
+  assert.match(munitions, /Bounces/, 'Munitions previews bounces');
+
+  // at the top of a branch there is no next tier, so there is nothing to promise
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(world, 0, 'damage');
+  openMount(doc, w, 0);
+  assert.equal(rowFor('Damage').querySelector('.preview'), null,
+    'a maxed branch previews nothing rather than repeating its last tier');
+  assert.deepEqual(g.errors, [], 'the buy-row preview threw');
+});

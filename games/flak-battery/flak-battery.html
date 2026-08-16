@@ -87,7 +87,14 @@
   .branch.buyRow h3{font-size:10px;letter-spacing:.1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .branch.buyRow .pips{width:100%}
   /* Still a thumb target — the row got shorter, the tap area did not. */
-  .branch.buyRow .buy{width:auto;flex:0 0 auto;min-width:64px;min-height:38px;padding:10px 10px;font-size:10px}
+  .branch.buyRow .buy{width:auto;flex:0 0 auto;min-width:72px;min-height:44px;padding:10px 10px;font-size:10px}
+  /* current → next for the tier on offer, under the name and pips. Small and
+     dim: it answers "is this worth 142 scrap" on the one glance you give it
+     between waves, and must not turn the dense row back into a card. */
+  .branch.buyRow .preview{display:flex;flex-wrap:wrap;gap:2px 10px}
+  .preview .delta{font:600 9px/1.4 'Chivo Mono',monospace;color:var(--dim);letter-spacing:.04em;white-space:nowrap}
+  .preview .delta i{font-style:normal;color:#5d7681}
+  .preview .delta b{color:var(--brass);font-weight:700}
   .shopSection{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);
     border-bottom:1px solid var(--line);padding-bottom:5px;margin-top:4px}
   .assign{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
@@ -148,7 +155,7 @@
   .pips{display:flex;gap:3px}
   .pips i{flex:1;height:5px;background:#1b3038;border-radius:1px}
   .pips i.on{background:var(--scale)}
-  .buy{width:100%;min-height:42px;padding:12px 10px;font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.12em;
+  .buy{width:100%;min-height:48px;padding:12px 10px;font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.12em;
     text-transform:uppercase;border:0;cursor:pointer;background:var(--brass);color:#1a1405;border-radius:3px}
   /* "maxed" and "can't afford yet" are different states and used to look
      identical — the second is temporary, so it keeps a hint of the brass. */
@@ -285,6 +292,7 @@ import { recordProgress } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio } from '../../shared/audio.js';
 import { makeMenu } from '../../shared/menu.js';
+import { prefs, buzz } from '../../shared/prefs.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 let W, H;
@@ -765,7 +773,19 @@ function renderShop(bought) {
     const pips = Array.from({ length: E.MAX_TIER }, (_, i) =>
       `<i class="${i < tier ? 'on' : i >= cap ? 'locked' : ''}"></i>`).join('');
 
-    el.innerHTML = `<div class="rowHead"><h3>${U.name}</h3><div class="pips">${pips}</div></div>`;
+    /* What the next tier actually buys, as current → next. The pips say how
+       *deep* the branch is; they never said what a tier is worth, so deciding
+       between nine branches meant buying one to find out. Read straight off
+       `UPGRADES[b].tiers` — the same numbers `stats()` folds — so it cannot
+       drift from what the purchase does, and every key in the tier object is
+       shown, which is what covers Munitions moving two. */
+    const preview = (!maxed && U.tiers[tier + 1])
+      ? Object.keys(U.tiers[tier]).map(k =>
+          `<span class="delta"><i>${statLabel(k)}</i> ${fmtStat(U.tiers[tier][k])} → <b>${fmtStat(U.tiers[tier + 1][k])}</b></span>`).join('')
+      : '';
+
+    el.innerHTML = `<div class="rowHead"><h3>${U.name}</h3><div class="pips">${pips}</div>` +
+      (preview ? `<div class="preview">${preview}</div>` : '') + `</div>`;
 
     const btn = document.createElement('button');
     btn.className = 'buy' + (gated ? ' gated' : (!maxed && !afford ? ' poor' : ''));
@@ -778,7 +798,7 @@ function renderShop(bought) {
     el.appendChild(btn);
     if (!gated) {
       btn.addEventListener('click', () => {
-        if (E.buyUpgrade(world, shopTab, b)) { renderShop(b); sync(); }
+        if (E.buyUpgrade(world, shopTab, b)) { buzz(15); renderShop(b); sync(); }
       });
     }
     host.appendChild(el);
@@ -789,6 +809,22 @@ function renderShop(bought) {
 
   if (bought) flashStat(host, bought);
 }
+
+/* Labels for the raw stat keys in `UPGRADES[b].tiers`, kept word-for-word in
+   step with the Stats block's rows so a preview and the stat it moves read as
+   the same thing. An unmapped key falls back to itself rather than vanishing —
+   a branch added without a label should look untidy, not silently show nothing. */
+const STAT_LABELS = {
+  dmg: 'Damage', shotR: 'Round size', shotSpeed: 'Round speed', reach: 'Reach',
+  pierce: 'Pierce', bounces: 'Bounces', heatPerShot: 'Heat/shot', cool: 'Cooling',
+  lock: 'Lockout', converge: 'Convergence',
+};
+const statLabel = k => STAT_LABELS[k] || k;
+
+/** Tier values are a mix of multipliers, absolutes and counts, so print what
+ *  is there: whole numbers stay whole, everything else keeps the two decimals
+ *  that distinguish adjacent tiers (1.18 vs 1.38) without inventing precision. */
+const fmtStat = v => (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0$/, ''));
 
 /** Mark the stat a purchase just moved, on the freshly rebuilt block. */
 function flashStat(host, branch) {
@@ -1736,11 +1772,22 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   const { path, pathLen, L } = world;
 
-  // screen shake: translate everything, restored at the end of the frame
+  /* Screen shake: translate *and* rotate everything, restored at the end of
+     the frame. Pure translation reads as a glitch — a few tenths of a degree
+     is what makes it read as force. The rotation is about the board's centre
+     rather than the origin, or the corners would swing far more than the
+     middle and the whole board would appear to slide.
+
+     `prefs.shake` scales it: reduced-motion still zeroes it outright, and the
+     preference only narrows from there. */
   ctx.save();
-  if (world.shake > 0 && !reduce) {
-    const m = world.shake * 9;
+  const shakeAmt = reduce ? 0 : world.shake * prefs.shake;
+  if (shakeAmt > 0) {
+    const m = shakeAmt * 9;
     ctx.translate((Math.random() - .5) * m, (Math.random() - .5) * m);
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate((Math.random() - .5) * shakeAmt * 0.006);   // ≈0.17° at full shake
+    ctx.translate(-W / 2, -H / 2);
   }
 
   /* The road, drawn leg by leg so it can *taper*: a constant-width band is the
@@ -2063,8 +2110,12 @@ function draw() {
     }
   }
 
+  /* Floaters are the damage numbers. They still *exist* on the world when the
+     preference is off — the engine owns them and nothing about the simulation
+     changes — they just aren't drawn. Keeping the engine unaware is the point:
+     no effect here may be load-bearing. */
   ctx.font = '700 13px "Chivo Mono",monospace'; ctx.textAlign = 'center';
-  for (const f of world.floaters) {
+  if (prefs.numbers) for (const f of world.floaters) {
     ctx.globalAlpha = Math.max(0, Math.min(1, f.life));
     ctx.fillStyle = f.col; ctx.fillText(f.txt, f.x, f.y);
   }
