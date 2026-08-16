@@ -45,7 +45,16 @@ function parseImports(src) {
 function bindingFor(clause, modVar) {
   const ns = clause.match(/^\*\s+as\s+([A-Za-z_$][\w$]*)$/);
   if (ns) return `const ${ns[1]} = ${modVar};`;
-  if (clause.startsWith('{')) return `const ${clause} = ${modVar};`;
+  /* A named clause becomes a destructuring pattern — but `import {a as b}` and
+     `const {a: b}` spell renaming differently, so the aliases have to be
+     translated. Passing `{ set as setPref }` straight through emitted
+     `const { set as setPref } = …`, which is a SyntaxError that took the whole
+     shell down; the render test caught it, which is the only reason this is a
+     one-line bug and not a shipped one. */
+  if (clause.startsWith('{')) {
+    const renamed = clause.replace(/([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)/g, '$1: $2');
+    return `const ${renamed} = ${modVar};`;
+  }
   // No module in this repo has a default export; fail loudly rather than
   // emitting something that silently resolves to undefined.
   throw new Error(`unsupported import clause "${clause}" — only namespace and named imports are handled`);

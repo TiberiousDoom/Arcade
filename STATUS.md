@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-15 (v32 — round 10 feedback: the choppiness was hit-stop, and Optics bought nothing)
+Last updated: 2026-08-16 (v33 — effect toggles, shake rotation, and the shop says what a tier buys)
 
 ## Read this first
 
@@ -20,7 +20,41 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**516 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **51 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**516 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **52 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## v33 — an outside UI review, checked against the code (2026-08-16)
+
+A UI/UX review of the collection arrived from another Claude instance. It was
+written **without access to the repo** (its fetches were blocked, which it says
+twice), so most of its "highest-leverage" recommendations were already shipped:
+hit-stop, particles, damage numbers, synthesized WebAudio, reduced-motion,
+safe-area insets, a pause/settings panel, combo tiers. One recommendation —
+"add 60-80ms hit-stop" — was the v32 *bug*, and following it literally would
+have re-introduced the choppiness a round of device feedback was spent finding.
+
+Five items survived checking against the code, and all five are in:
+
+- **Effect toggles** ([shared/prefs.js](shared/prefs.js)) — shake multiplier
+  (Full/Reduced/Off), damage numbers on/off, haptics on/off. Rendered by
+  `makeMenu` for every game. Reduced-motion still wins; the preferences only
+  narrow. See DECISIONS.
+- **Haptics** — `buzz()` in the same module, gated on the preference and on the
+  device having a motor at all. Wired to Flak Battery purchases, Choke Point
+  builds, and Hull Breach's lost ball. Absent on iOS Safari by design.
+- **Shake rotation** — Flak Battery's shake was pure translation.
+- **Before→after stat preview** on Flak Battery's buy rows, read off
+  `UPGRADES[b].tiers` so it cannot drift from what the purchase does.
+- **Touch targets to 48px** — the menu button (was 40), menu/settings buttons
+  (42), and the shop's buy buttons (42, and 38 in the compact row → 44).
+
+**Rejected:** rarity-coded shop cards (reverts a v30 decision, and imports a
+loot-game convention into nine parallel upgrade tracks) and hold-to-confirm
+purchases (friction designed for real-money IAP, applied to a soft currency).
+
+**A tooling bug fell out of it.** [tools/inline.mjs](tools/inline.mjs) turned
+`import { set as setPref }` into `const { set as setPref } = …`, which is a
+SyntaxError — the two spell renaming differently. Every shell using an aliased
+import would have died in the render tests, which is exactly where it surfaced.
 
 ## Round 10 feedback — the choppiness was never a frame budget (v32, 2026-08-15)
 

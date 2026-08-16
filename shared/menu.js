@@ -10,6 +10,59 @@
    — only where a game passes `onLevels` — a way into level-select. */
 
 import { BUILD_LABEL } from './version.js';
+import { prefs, set as setPref, hasHaptics } from './prefs.js';
+
+/* The effects block every game gets, built here rather than passed in as
+   `extra`: these settings mean the same thing in all four games, and a
+   per-shell copy would be four chances to drift.
+
+   `prefers-reduced-motion` already suppresses motion wholesale — this is for
+   the player who wants the game to move and just doesn't want the screen
+   thrown around. The haptics row is omitted entirely where the device has no
+   vibration motor (all of iOS Safari), since a switch that cannot do anything
+   is worse than no switch. */
+function effectsSettings() {
+  const el = document.createElement('div');
+  el.className = 'menuSettings';
+  el.innerHTML = '<h3>Effects</h3>';
+
+  const shakeRow = document.createElement('label');
+  shakeRow.innerHTML = '<span>Screen shake</span>';
+  const shakeSel = document.createElement('select');
+  shakeSel.id = 'prefShake';
+  for (const [value, label] of [[1, 'Full'], [0.5, 'Reduced'], [0, 'Off']]) {
+    const opt = document.createElement('option');
+    opt.value = String(value);
+    opt.textContent = label;
+    opt.selected = prefs.shake === value;
+    shakeSel.append(opt);
+  }
+  shakeSel.addEventListener('change', () => setPref('shake', Number(shakeSel.value)));
+  shakeRow.append(shakeSel);
+
+  const numbersRow = document.createElement('label');
+  const numbersBox = document.createElement('input');
+  numbersBox.type = 'checkbox';
+  numbersBox.id = 'prefNumbers';
+  numbersBox.checked = prefs.numbers;
+  numbersBox.addEventListener('change', () => setPref('numbers', numbersBox.checked));
+  numbersRow.append(numbersBox, Object.assign(document.createElement('span'), { textContent: 'Damage numbers' }));
+
+  el.append(shakeRow, numbersRow);
+
+  if (hasHaptics) {
+    const hapticRow = document.createElement('label');
+    const hapticBox = document.createElement('input');
+    hapticBox.type = 'checkbox';
+    hapticBox.id = 'prefHaptics';
+    hapticBox.checked = prefs.haptics;
+    hapticBox.addEventListener('change', () => setPref('haptics', hapticBox.checked));
+    hapticRow.append(hapticBox, Object.assign(document.createElement('span'), { textContent: 'Vibration' }));
+    el.append(hapticRow);
+  }
+
+  return el;
+}
 
 /**
  * @param stage    the positioned element the button and panel are placed in
@@ -76,6 +129,7 @@ export function makeMenu({ stage, audio, title, rows = [], notes = [], lore = ''
     `<h2>${title}</h2>` +
     (lore ? `<p class="lore">${lore}</p>` : '');
   panel.appendChild(actions);
+  panel.appendChild(effectsSettings());
   if (extra) panel.appendChild(extra);
   panel.insertAdjacentHTML('beforeend',
     `<dl>${rows.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>` +

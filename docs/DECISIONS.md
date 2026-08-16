@@ -1121,3 +1121,23 @@ That change made a latent bug in the research payout urgent. RP was linear in th
 The curve is superlinear now — a linear term plus `n^1.5`. One run to 20 pays 31 against 16 for four runs to 5; one run to 40 pays 84 against 62 for two runs to 20. The linear term is deliberate: a pure power curve paid 2 at wave 5, and with a breach ending the run outright the early waves are where most runs *end*, so a new player would have ground several runs for a single point. Waves 1 and 2 pay literally zero, so an instant restart is worth exactly nothing.
 
 The test now asserts the *property* — deeper beats shallower, at several depths — rather than only that the function increases, which the old one did while the game was farmable.
+
+## 2026-08-16 — Effect toggles are shared and shallow, and reduced-motion still wins
+
+An external UI review recommended a settings pane with per-effect switches. Most of that review described work already shipped — hit-stop, particles, floaters, synthesized audio, safe-area insets, reduced-motion — because it was written without access to the code. Five items survived checking, and this is the one with a design decision in it.
+
+`prefers-reduced-motion` was the only motion control, and it is all-or-nothing: a player who wants the game to move and just doesn't want the screen thrown around had no way to say so. **shared/prefs.js** adds three values (shake multiplier, damage numbers, haptics) with the same guarded-localStorage shape as scores/levels, and `makeMenu` renders the block for every game rather than each shell passing it through `extra` — the settings mean the same thing in all four, and four copies would be four chances to drift.
+
+**The preferences narrow; they never widen.** Reduced-motion still zeroes shake outright and the multiplier applies on top, so a player cannot turn back on something the OS asked to be suppressed. Nothing is load-bearing either: floaters still exist on the world with the toggle off, they are simply not drawn, and the engine never learns the preference exists.
+
+Haptics lives in the same module rather than its own, because `navigator.vibrate` *is* one line — the part worth writing down is the gate in front of it. The row is hidden entirely where the device has no motor (all of iOS Safari), since a switch that cannot do anything is worse than no switch.
+
+## 2026-08-16 — The shake needed rotation, and the shop needed to say what a tier buys
+
+Two smaller items from the same review, both real.
+
+Flak Battery's screen shake was pure translation, which reads as a glitch rather than as force; a few tenths of a degree of rotation about the board's centre fixes it. Rotating about the origin instead would swing the corners far more than the middle and look like a slide.
+
+The shop's buy rows showed a name, a pip strip and a price. The pips say how *deep* a branch is; nothing said what the next tier was worth, so choosing between nine branches meant buying one to find out. Rows now show `current → next` read straight off `UPGRADES[b].tiers` — the same numbers `stats()` folds, so the promise cannot drift from the purchase, and every key in the tier object is printed, which is what covers Munitions moving two. Measured at 360px the row grows from 44px to 58px, which is the price of the answer.
+
+Explicitly **not** taken from the review: rarity-coded shop cards. The rows were cards until v30 and were deliberately flattened (nine cards is a wall of text between waves), and a rarity colour ladder is a loot-game convention — these are nine parallel tracks of five tiers, where depth is what a player needs to see and the pips already carry it.

@@ -109,6 +109,7 @@ import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio } from '../../shared/audio.js';
 import { makeMenu } from '../../shared/menu.js';
 import { maxLevel, recordLevel } from '../../shared/levels.js';
+import { buzz } from '../../shared/prefs.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
@@ -126,7 +127,9 @@ const fx = {
     audio.brick(row);
   },
   bounce() { audio.bounce(); },
-  lose() { gfx.hit(.5); audio.lose(); },
+  // losing the ball is the one moment worth a buzz: rare, and the player is
+  // often looking at the paddle rather than the floor when it happens
+  lose() { gfx.hit(.5); audio.lose(); buzz([25, 40, 25]); },
   // a caught capsule: burst in its own color, and reuse the pickup blip
   power(kind) {
     const p = world.paddle;

@@ -217,6 +217,7 @@ import { recordProgress } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio } from '../../shared/audio.js';
 import { makeMenu } from '../../shared/menu.js';
+import { buzz } from '../../shared/prefs.js';
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
@@ -668,7 +669,9 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
 
-  if (E.buildTower(world, cell.c, cell.r, selected)) sync();
+  // a tap that actually placed something, confirmed in the hand — the
+  // board is dense enough that a rejected tap looks much like an accepted one
+  if (E.buildTower(world, cell.c, cell.r, selected)) { buzz(); sync(); }
 });
 for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
   cv.addEventListener(ev, e => e.preventDefault());
@@ -741,7 +744,7 @@ addEventListener('pointerup', e => {
   if (!dragType) return;
   const p = dragPoint(e);
   const cell = p && E.cellAt(world.L, p.x, p.y);
-  if (cell && E.buildTower(world, cell.c, cell.r, dragType)) sync();
+  if (cell && E.buildTower(world, cell.c, cell.r, dragType)) { buzz(); sync(); }
   dragType = null; hoverCell = null;
 });
 

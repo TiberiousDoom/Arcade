@@ -168,8 +168,11 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
    the HUD wraps before running underneath it. */
 #menuBtn{
   position:absolute;top:0;right:0;
-  /* 40px is the smallest comfortable touch target; the visible glyph is smaller */
-  width:40px;height:40px;padding:0;
+  /* 48px is the platform guidance for a touch target (Material and the
+     Playables guidance both land there); the visible glyph stays smaller. It
+     was 40 — fine under a mouse, and the one control a player reaches for
+     mid-run with a thumb, so it gets the full size. */
+  width:48px;height:48px;padding:0;
   background:transparent;color:var(--dim);
   border:1px solid var(--line);border-radius:50%;
   font:700 16px/1 'Chivo Mono',monospace;letter-spacing:0;
@@ -205,12 +208,22 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
    they get a thumb-sized target and a look that is plainly not the accent
    color used by things you are meant to press. */
 .menuSettings button{
-  min-height:42px;padding:10px 14px;font-size:11px;letter-spacing:.08em;
+  min-height:48px;padding:10px 14px;font-size:11px;letter-spacing:.08em;
   text-transform:uppercase;background:#2a1a17;color:#e0a89c;
   border:1px solid var(--line);border-radius:3px;cursor:pointer;
 }
 .menuSettings button:hover{background:#3a241f}
-.menuActions button{padding:10px 18px}
+.menuActions button{min-height:48px;padding:10px 18px}
+/* The effects block makeMenu builds for every game. Rows are label-wrapped, so
+   the whole row is the hit target rather than just the box — a 13px checkbox
+   is nobody's thumb target. */
+.menuSettings select{
+  min-height:48px;padding:0 8px;background:#12222a;color:var(--bone);
+  border:1px solid var(--line);border-radius:3px;
+  font:600 11px/1 'Chivo Mono',monospace;letter-spacing:.08em;cursor:pointer;
+}
+.menuSettings label:has(input[type=checkbox]){min-height:48px;cursor:pointer}
+.menuSettings input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer}
 #menuMute.off{color:#3a4b52;background:#1b3038}
 #menuPanel dl{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;align-items:baseline}
 #menuPanel dt{
