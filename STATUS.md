@@ -13,14 +13,111 @@ This is the "pick back up" file — check here before touching code. See [CLAUDE
 Serve the repo first — the shells use ES modules, so `file://` won't work:
 `python -m http.server 8123`, then open `http://localhost:8123/`.
 
-- **The cabinet** ([index.html](index.html)) — the front door, listing all four games. Each game links back to it.
+- **Two cabinets** — [index.html](index.html) is the invasion (Flak Battery, Choke Point), [classics.html](classics.html) is the classics (Feedline, Hull Breach). Each links to the other, and each game links back to its own. Split in v34; see DECISIONS.
 
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). **Six** emplacements, per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run — superlinear in the wave reached — buying gun types and the deepest two tiers of each branch). **No lives: one breach ends the run.** No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance), and played on a phone each round.
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**516 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **52 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**525 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **52 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## v34 — two cabinets, and Flak Battery's opening (2026-08-19)
+
+**Decided this session: Hull Breach and Feedline leave the main cabinet, but
+are not deleted.** They are finished games and they are good; they are also
+both classics and neither is a defense game, so they never fit alongside Flak
+Battery and Choke Point. They move to a second cabinet of their own, which is
+where the rebuilt Breakout / Snake / Missile Command / Invaders belong too.
+See DECISIONS for the reasoning, including the argument that was rejected.
+
+**The gate chain was the argument for keeping Feedline, and it does not hold.**
+Feedline was the one ungated game — the front door — so dropping it makes Flak
+Battery the opener. But FB walks a new player in cold either way: a run of
+Feedline teaches nothing about heat, scrap or nine upgrade branches. Feedline
+was never the on-ramp, it was just what came first. **The answer is to fix FB's
+opening, not to keep a game as a buffer.**
+
+### What is overwhelming about Flak Battery, specifically
+
+Read off the code rather than guessed. Run 1 starts at **1 mount, 0 scrap**, so
+the first shop is nine branch cards for one gun, plus a Research tab.
+
+- **The three cheapest branches are the three most confusable.** Cooling (13),
+  Breech (13) and Interlock (13) all modify the same heat gauge, in near
+  identical language, and they undercut Damage (23) and Calibre (19) — the two
+  that visibly do something. The cheapest, most tempting first purchase is the
+  one whose effect is least visible, which teaches that the shop does nothing.
+- **The Research tab is unconditional** (`flak-battery.html`, `renderTabs`). On
+  run 1 there are 0 RP and no way to earn any — `awardResearch` pays at game
+  over — so a second currency is on screen before the first one is understood.
+- **Nine tracks at once, at minute two.** Nine is not too many; nine
+  simultaneously, before a single mechanic has landed, is.
+- **The first shop has no equivalent of "Drag to aim, hold to fire."** Neither
+  rule the economy hangs on (tiers are per-run; a breach ends the run) is
+  stated anywhere the player will read them.
+
+### The four changes, in leverage order
+
+1. **Gate branches by wave.** Open with three cards (Damage, Calibre, Cooling)
+   and let the rest arrive as waves clear. Same shape as `tierCap`'s research
+   gate, one level up. No depth is lost — by wave 8 the tree is the same tree,
+   met one idea at a time.
+2. **Group the thermal three as one card, in the UI only.** Not merged in the
+   engine: `stats()` folds over `BRANCHES` and a test pins one-stat-per-branch.
+   Nine competing decisions become seven, and heat reads as one system.
+3. **Hide Research until it exists** — when RP is non-zero or something is
+   owned. It then appears at the end of run 1 as a reward rather than as a
+   fourth thing to parse.
+4. **A one-line rule in the first shop only.** "Spend scrap. Tiers last this
+   run; a breach ends it."
+
+Items 1 and 2 are structural and expected to land; 3 and 4 are cheap and
+near-riskless. **Whether it is still overwhelming is a phone question** — this
+is a hypothesis about *what* overwhelms, and the next round tests it.
+
+### What shipped
+
+All four, plus one thing that fell out of them.
+
+- `BRANCH_UNLOCK` opens damage/calibre/cooling at wave 1, breech+interlock at 3,
+  velocity 5, optics 7, munitions 9, convergence 11. **Gated on `experience(w)`
+  — best wave ever reached, banked in `research.best` by `awardResearch` — not
+  on the current wave**, so a veteran restarting gets the whole tree in the
+  first shop. `canAfford` and `buyUpgrade` both refuse a locked branch, so no
+  shell bug can sell one.
+- The thermal three render inside one `.branchGroup` card. **UI only** — the
+  engine still has three branches and the one-stat-per-branch test still holds.
+- The Research tab appears once `research.best > 1` (a run has ended), *or*
+  anything is owned or banked. Checking the points balance alone was wrong: it
+  hits zero every time it is spent, and a tab that vanished when you bought
+  something with it would be worse than one that showed up early.
+- `#shopRule` states the two rules in the first shop only, and the shop names
+  what the next wave opens ("Breech and Interlock open at wave 3").
+- **Fell out of it:** the emplacement card read `0/45 tiers` for a player whose
+  ceiling was 15. It counts over open branches now.
+
+**Test counts: 279 logic in Flak Battery** (up from 270 — nine cover the ramp),
+581 across the repo. Engine tests about what a branch *does* now call a
+`veteran(w)` helper, which is the honest fix: they were never about the ramp,
+and several were silently relying on the opening shop being wide.
+
+### Still open after this round
+
+- **The whole thing is unplayed.** The ramp is a hypothesis about what
+  overwhelms; whether meeting three branches then earning six feels like
+  pacing or like being drip-fed is a phone question, and the first one to ask.
+- The unlock waves (1/3/5/7/9/11) are a first draft. If runs routinely end at
+  wave 4, convergence at 11 may as well not exist for a new player — worth
+  checking against where runs actually end rather than reasoning about it.
+- **The Refit block still lists four locked gun types on the first shop**, which
+  is more first-run noise of exactly the kind this round removed. Deliberately
+  left: it advertises progression rather than demanding a decision. Next
+  candidate if the opening still reads as busy.
+- The two cabinets have never been seen on a phone — in particular whether the
+  crosslink between them is findable, or reads as a footer nobody taps.
+- Nothing was done about Choke Point's opening, which has the same shape of
+  problem (three tower types, four armory tracks, three difficulties).
 
 ## v33 — an outside UI review, checked against the code (2026-08-16)
 

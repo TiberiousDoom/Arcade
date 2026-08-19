@@ -1,9 +1,8 @@
 /* First-play-through gating: the cabinet opens with one game, and the rest
    unlock as you get somewhere in the one before.
 
-   The order is the story order — you play the invasion, then defend against
-   it twice, then answer it — so the gate is really just "meet the games in
-   the order they were written to be met", once, on a first run through.
+   Each cabinet orders its own games, and the two orders are independent —
+   see the note on GATES below.
 
    Deliberately **cabinet-only**. Direct URLs, bookmarks and the installed
    PWA's shortcuts all still open any game, and the manifest is untouched.
@@ -49,12 +48,16 @@ export function recordProgress(game, value) {
 
 /** What each gated game waits on. `needs` is the game that must be played,
  *  `at` the progress value that opens the next door, and `label` is what the
- *  cabinet shows on a locked card. Feedline is absent — it is always open,
- *  and is where a new player starts. */
+ *  cabinet shows on a locked card.
+ *
+ *  **A gate never crosses cabinets.** There are two front doors now — Flak
+ *  Battery opens the invasion cabinet, Feedline opens the classics — and each
+ *  is absent here because each is always open. Gating one cabinet behind the
+ *  other would mean a player who only wants Snake has to play a tower defense
+ *  first, which is exactly the mismatch splitting them was meant to end. */
 export const GATES = {
-  'flak-battery': { needs: 'feedline',     at: 1,  label: 'Finish a run of Feedline' },
   'choke-point':  { needs: 'flak-battery', at: 10, label: 'Reach wave 10 in Flak Battery' },
-  'hull-breach':  { needs: 'choke-point',  at: 10, label: 'Reach wave 10 in Choke Point' },
+  'hull-breach':  { needs: 'feedline',     at: 1,  label: 'Finish a run of Feedline' },
 };
 
 /** Is this game playable yet? Ungated games are always true. */

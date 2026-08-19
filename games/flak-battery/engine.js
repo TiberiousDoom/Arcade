@@ -616,6 +616,58 @@ export const UPGRADES = {
 export const BRANCHES = Object.keys(UPGRADES);
 export const MAX_TIER = 5;
 
+/* Which wave each branch first appears in the shop.
+
+   Nine branches is not too many; nine *at once, on the first shop screen* is.
+   A new player used to meet the whole tree two minutes in, at 1 mount and 0
+   scrap, and the three cheapest rows (Cooling, Breech, Interlock at 13 each)
+   all moved the same heat gauge — so the most tempting first purchase was also
+   the one whose effect was least visible, which teaches that the shop does
+   nothing. The tree is unchanged; only the order it is met in is.
+
+   **Gated on experience, not on the current wave.** `experience(w)` is the
+   best wave ever reached, so this is a first-play-through ramp like
+   shared/unlocks.js — a veteran restarting has the whole tree in the first
+   shop, and does not re-earn it every run. Waves 1/3/5/7/9/11 are reachable
+   inside a couple of runs even on a bad one.
+
+   Order is roughly "how much does this ask you to already understand": damage
+   and round size are visible immediately, heat once you have held the trigger
+   down, and Convergence — which engages by range and rewards reading the
+   column — is last. */
+export const BRANCH_UNLOCK = {
+  damage: 1, calibre: 1, cooling: 1,
+  breech: 3, interlock: 3,
+  velocity: 5,
+  optics: 7,
+  munitions: 9,
+  convergence: 11,
+};
+
+/** Best wave ever reached, which is what the branch ramp is measured against.
+ *  Falls back to the run in progress, so a world built without research (every
+ *  engine test that does not opt in) behaves as it always did. */
+export function experience(w) {
+  return Math.max(w.wave || 1, w.research?.best ?? 1);
+}
+
+/** Is this branch open to be bought at all yet? */
+export function branchUnlocked(w, branch) {
+  return experience(w) >= (BRANCH_UNLOCK[branch] ?? 1);
+}
+
+/** The branches this world can currently buy, in table order. */
+export function openBranches(w) {
+  return BRANCHES.filter(b => branchUnlocked(w, b));
+}
+
+/** Branches that open exactly on arriving at `wave`, for the shop to announce.
+ *  Empty for a player already past that point — a veteran is told nothing. */
+export function branchesOpenedAt(w, wave) {
+  if ((w.research?.best ?? 1) >= wave) return [];
+  return BRANCHES.filter(b => BRANCH_UNLOCK[b] === wave);
+}
+
 export function newUpgrades() {
   const u = {};
   for (const b of BRANCHES) u[b] = 0;
@@ -657,6 +709,7 @@ export function gunAt(w, mountIndex) {
 export function canAfford(w, mountIndex, branch) {
   const g = gunAt(w, mountIndex);
   if (!g) return false;
+  if (!branchUnlocked(w, branch)) return false;
   const c = upgradeCost(g.upgrades, branch, tierCap(w, branch));
   return c !== null && w.scrap >= c;
 }
@@ -664,6 +717,7 @@ export function canAfford(w, mountIndex, branch) {
 /** Buy one tier for one emplacement. Returns true if it went through. */
 export function buyUpgrade(w, mountIndex, branch) {
   if (!BRANCHES.includes(branch)) return false;
+  if (!branchUnlocked(w, branch)) return false;
   const g = gunAt(w, mountIndex);
   if (!g) return false;
   const cost = upgradeCost(g.upgrades, branch, tierCap(w, branch));
@@ -1111,7 +1165,7 @@ export function newResearch() {
   const marks = {};
   for (const t of GUN_KEYS) marks[t] = 0;      // permanent upgrades per gun type
   return {
-    points: 0, depth, marks,
+    points: 0, best: 1, depth, marks,
     guns: { auto: false, rail: false, mortar: false, ion: false },
   };
 }
@@ -1122,6 +1176,7 @@ export function sanitizeResearch(raw) {
   const r = newResearch();
   if (!raw || typeof raw !== 'object') return r;
   r.points = Math.max(0, Math.floor(Number(raw.points) || 0));
+  r.best = Math.max(1, Math.floor(Number(raw.best) || 1));
   for (const b of BRANCHES) {
     r.depth[b] = clamp(Math.floor(Number(raw.depth?.[b]) || 0), 0, MAX_TIER - FREE_TIER);
   }
@@ -1184,6 +1239,10 @@ export function awardResearch(w) {
   const earned = researchEarned(w);
   w.researchPaid = true;
   w.research.points += earned;
+  /* The run's high-water mark rides along with the payout, because this is the
+     one call that already happens exactly once per run, at the end. It drives
+     the branch ramp (see BRANCH_UNLOCK) and never goes backwards. */
+  w.research.best = Math.max(w.research.best ?? 1, w.wave);
   return earned;
 }
 
