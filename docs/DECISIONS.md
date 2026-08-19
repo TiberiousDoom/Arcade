@@ -1268,3 +1268,83 @@ its pierce is wasted on a single target (25.9s against the plain cannon's
 8.2s at wave 18). Rail's edge is `railBonus` against hardened hulls. And
 convergence turns out to be what makes a decapitation possible at all: 8.2s
 with it, 57.5s without.
+
+## 2026-08-19 — Convergence is fire control, and fire control is not per-gun
+
+Convergence was one of the nine per-emplacement scrap branches, and it was
+quietly incoherent. Every gun fires toward one shared focal point, so five
+mounts cannot converge on five different points — `aimPointFor` read the
+*best* convergence on the battery and the other four purchases did nothing at
+all. The shop charged five times for one effect, which is the kind of thing a
+player only finds out by feeling cheated.
+
+It is one permanent research track now (`CONV_MAX`, `convergeLevel`,
+`researchConverge`), bought with RP, applying to the whole battery including
+mounts built later. The tree drops to eight scrap branches.
+
+**What a level buys changed too, and the new shape is simpler.** It used to buy
+how far *out* the focus would commit — a threshold distance, with a blend either
+side. Now the focal point sits at `focusDefault(L)` and **contracts inward** to
+follow the leading command ship as it closes, down to the floor the level
+allows. Level 0 cannot move it at all; the last level commits to `MIN_FOCUS`.
+It never travels outward, because above the default there is nothing to gain:
+several mounts aiming at one distant point sweep a dense column better than a
+point does. The 2026-08-08 finding still holds and is not re-litigated —
+interpolating the *degree* of convergence made the middle tiers worse than the
+low ones, and nothing here does that.
+
+**The default is five rungs of the serpentine, not a pixel count.**
+`focusDefault(L) = 5 * L.ROW_GAP`, so it is five rungs on the landscape board
+(310px) and five on the portrait one (520px). It was a flat 620px, which is past
+the top of the board on either layout — the "fixed focal point" was effectively
+at infinity and the guns fired parallel. Same reasoning as Hull Breach deriving
+ball speed from board height.
+
+Measured after the change, with the v36 head armour: the decapitation ladder
+holds and improves at the top — a maxed battery now takes a full chain's head at
+wave 45 in 8s, where before it could not at all. A two-mount opening battery
+still never gets it.
+
+Two engine tests were rewritten rather than adjusted, since they asserted the
+old mechanism directly (tiers buying engagement reach). The replacements pin
+the new one as behaviour: the point never extends past the default, it
+contracts monotonically as the ship closes, and it never passes the floor its
+level allows.
+
+## 2026-08-19 — The shop is three groups, one gun card, and prices without arithmetic
+
+Round 11's shop items, which were mostly one problem wearing several hats.
+
+**Buttons were covering words.** The buy button sized itself to its own text,
+and its widest state was the shortfall label — "142 · −80". So the longest
+price in a list set the column width for every row, and the branch names beside
+them were ellipsised to fit. Both reported items ("only show cost" and "buttons
+are covering up words") are the same fix: the button shows the price alone and
+has a *fixed* width rather than a minimum. The scrap you hold is already on
+screen permanently, and "can't afford" is carried by the disabled styling.
+Applied to the research tab's buttons too, which had the same label.
+
+**Eight rows became three groups.** Ammunition (damage, calibre, velocity,
+munitions) is what the round is and does; Thermal (cooling, breech, interlock)
+is the heat gauge, whose branches are otherwise the most confusable rows in the
+shop. Optics is deliberately left ungrouped — it is the only branch about range,
+and a group of one is a heading with nothing to organize.
+
+**The portrait and the stats table became one card.** They were stacked, which
+put a picture between the player and the only thing on screen that answers "is
+this mount any good". Side by side the drawing labels the numbers and the
+numbers explain the drawing, in about the height the portrait alone used. This
+is what required raising the barrel to ~70°: flat-on, the gun needs a wide
+letterbox, and a wide letterbox is why the two blocks had to be stacked.
+
+**"Refit" named two things** — the panel, and the gun-type swap inside it. The
+panel is "Upgrade" now; Refit is where you change which gun it is.
+
+A note on verifying the raised barrel: two attempts to assert the elevation in
+the render test both passed with the gun still lying flat. Nearly every pixel
+of that canvas carries some alpha (dark body fills, wide glow falloff), so "is
+there ink up here" answers yes wherever it is pointed, and the luminance that
+would separate the two is exactly what a node-canvas harness renders
+unreliably. The vacuous assertion was removed rather than kept: the test now
+pins what a machine can honestly judge (the canvas has the headroom a raised
+barrel needs, and the art is not blank) and the elevation is a device check.

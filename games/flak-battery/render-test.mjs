@@ -123,17 +123,22 @@ test('every cannon portrait draws something', async () => {
   for (const [i, cv] of [...cards].entries()) {
     /* The canvas must be the drawing's own coordinate space. It was 260x110,
        which drew 420x190 art at full size into a smaller bitmap and showed the
-       top-left corner of each gun. The height is the *cropped* 146 now — the
-       art only ever occupied the bottom of the 190, and the empty band above it
-       was card height for nothing. */
+       top-left corner of each gun. Since v36 the barrel is raised to ~70°, so
+       the canvas is taller than the 190 carriage box: the muzzle of the longest
+       gun reaches far above the trunnion and a short canvas would cut it off —
+       which is the same class of bug as the original crop. */
     assert.equal(cv.width, 420, `card ${i} canvas is the portrait's own width`);
-    assert.equal(cv.height, 150, `card ${i} canvas is cropped to the art`);
+    assert.ok(cv.height > 300, `card ${i} canvas has headroom for a raised barrel`);
     assert.ok(lit(cv) > 400, `card ${i} portrait is blank (${lit(cv)} px)`);
-    // and the art reaches the right-hand side, which is what cropping ate
-    const d = cv.getContext('2d').getImageData(cv.width - 60, 0, 60, cv.height).data;
-    let right = 0;
-    for (let p = 3; p < d.length; p += 4) if (d[p] > 8) right++;
-    assert.ok(right > 0, `card ${i} portrait is cut off before its right edge`);
+
+    /* No assertion here about the barrel's *angle*, deliberately. Two attempts
+       at one both passed with the gun lying flat: nearly every pixel of this
+       canvas carries some alpha (dark body fills and wide glow falloff), so an
+       "is there ink up here" test says yes wherever you point it, and the
+       luminance that would separate them is exactly what this harness renders
+       unreliably. The elevation is a *look*, and looks are checked on a device.
+       What is pinned here is the part a machine can honestly judge: the canvas
+       has the headroom a raised barrel needs, and the art is not blank. */
   }
 
   for (let barrels = 1; barrels <= E.MAX_BARRELS; barrels++) {
@@ -226,7 +231,7 @@ test('the emplacement bar shows how built-out the gun is, not its heat', async (
   assert.deepEqual(g.errors, [], 'the emplacement card threw');
 });
 
-test('a first-run shop opens with three rows, one thermal card, and no Research tab', async () => {
+test('a first-run shop opens with three rows, grouped, and no Research tab', async () => {
   const g = await bootAndStart(SHELL);
   const { world, window: w } = g;
   const doc = w.document;
@@ -239,11 +244,13 @@ test('a first-run shop opens with three rows, one thermal card, and no Research 
   assert.deepEqual(names, ['Damage', 'Calibre', 'Cooling'],
     'a new player meets three branches, not nine');
 
-  // Cooling is inside the Thermal card even while it is the only one open
-  const group = doc.querySelector('#branches .branchGroup');
-  assert.ok(group, 'the thermal card exists');
-  assert.match(group.querySelector('.groupName').textContent, /thermal/i);
-  assert.deepEqual([...group.querySelectorAll('.buyRow h3')].map(el => el.textContent), ['Cooling']);
+  /* Two cards on the opening shop: Ammunition holding what has opened of it,
+     and Thermal holding Cooling alone until Breech and Interlock arrive. */
+  const cards = [...doc.querySelectorAll('#branches .branchGroup')];
+  const named = Object.fromEntries(cards.map(c =>
+    [c.querySelector('.groupName').textContent,
+     [...c.querySelectorAll('.buyRow h3')].map(el => el.textContent)]));
+  assert.deepEqual(named, { Ammunition: ['Damage', 'Calibre'], Thermal: ['Cooling'] });
 
   // no second currency on screen before the first one is understood
   const tabs = [...doc.querySelectorAll('#shopTabs .tab')].map(t => t.textContent);
@@ -255,7 +262,7 @@ test('a first-run shop opens with three rows, one thermal card, and no Research 
   assert.deepEqual(g.errors, [], 'the opening shop threw');
 });
 
-test('the thermal card gathers all three heat branches once they open', async () => {
+test('the branch groups gather their rows once the ramp opens them', async () => {
   const g = experienced(await bootAndStart(SHELL));
   const { world, window: w } = g;
   const doc = w.document;
@@ -264,12 +271,19 @@ test('the thermal card gathers all three heat branches once they open', async ()
   g.frame(1000);
   openMount(doc, w, 0);
 
-  const group = doc.querySelector('#branches .branchGroup');
-  assert.deepEqual([...group.querySelectorAll('.buyRow h3')].map(el => el.textContent),
-    ['Cooling', 'Breech', 'Interlock'], 'one card, three knobs');
+  const cards = [...doc.querySelectorAll('#branches .branchGroup')];
+  const named = Object.fromEntries(cards.map(c =>
+    [c.querySelector('.groupName').textContent,
+     [...c.querySelectorAll('.buyRow h3')].map(el => el.textContent)]));
+  assert.deepEqual(named.Thermal, ['Cooling', 'Breech', 'Interlock'], 'one card, three knobs');
+  assert.deepEqual(named.Ammunition, ['Damage', 'Calibre', 'Velocity', 'Munitions']);
 
-  // exactly one card — the group must not be rebuilt per branch
-  assert.equal(doc.querySelectorAll('#branches .branchGroup').length, 1);
+  // one card per group — a group must not be rebuilt per branch
+  assert.equal(cards.length, 2, 'Ammunition and Thermal, and no more');
+
+  // Optics stands alone rather than becoming a heading over one row
+  const loose = [...doc.querySelectorAll('#branches > .buyRow h3')].map(el => el.textContent);
+  assert.deepEqual(loose, ['Optics'], 'the one ungrouped branch is not given a card');
   // and the veteran is not told about a ramp they are past
   assert.equal(doc.querySelector('#branches .openingSoon'), null);
   assert.equal(doc.getElementById('shopRule').style.display, 'none',
