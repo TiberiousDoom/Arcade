@@ -2798,12 +2798,25 @@ test('power-ups appear and take effect during real play', () => {
 
   let collected = 0;
   const seen = new Set();
+  const shields0 = w.shieldCharges;
   for (let i = 0; i < 60 * 120; i++) {
     aim(w);
     const before = w.pickups.length;
+    const beforeY = w.pickups.map(p => p.y);
     E.step(w, 1 / 60, true);
-    if (w.pickups.length < before) collected++;
+    /* A pickup leaving the array is not the same as one being *caught* — it
+       also expires on a timer and falls off the bottom. Only a catch happens
+       above the floor, so count those; the old test counted reaps and would
+       have passed on a run where the player touched nothing. */
+    if (w.pickups.length < before && beforeY.some(y => y < w.L.H)) collected++;
     for (const k of Object.keys(w.effects)) seen.add(k);
+    /* Per-mount effects too. `spread` has lived on the gun since v30, so a run
+       that caught only spreads registered nothing here and the test failed
+       for a reason that had nothing to do with power-ups working. */
+    for (const g of w.battery.guns) {
+      for (const k of Object.keys(g.effects || {})) seen.add(k);
+    }
+    if (w.shieldCharges > shields0) seen.add('shield');
     if (w.shopOpen) E.nextWave(w);
 
     assert.ok(w.pickups.length < 40, 'pickups are being reaped');

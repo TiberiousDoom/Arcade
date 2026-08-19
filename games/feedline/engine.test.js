@@ -593,6 +593,43 @@ test('freeCells excludes the wire, the food, and the bonus', () => {
   assert.equal(free.length, L.COLS * L.ROWS - w.wire.length - 2);
 });
 
+/* ---------- the RNG ---------- */
+
+test('the LCG survives a large seed', () => {
+  /* The multiply overflows 2^53 for any seed above ~8e6, and a float that has
+     lost its low bits is then masked to 31 — throwing away the bits the LCG
+     keeps its randomness in. The shell seeds from Date.now(), so this was the
+     live path, and it collapsed food placement onto a coarse lattice. */
+  const spread = (seed) => {
+    const cols = new Set();
+    for (let i = 0; i < 400; i++) {
+      cols.add(E.createWorld({ seed: (seed + i * 17) & 0x7fffffff }).food.x);
+    }
+    return cols.size;
+  };
+  const small = spread(12345);
+  const clock = spread(Date.now() & 0x7fffffff);
+  assert.ok(clock > E.LAYOUT.COLS * 0.6,
+    `a clock seed reached ${clock} of ${E.LAYOUT.COLS} columns`);
+  assert.ok(clock >= small * 0.6,
+    `a clock seed (${clock}) must place food about as freely as a small one (${small})`);
+});
+
+test('a retry does not replay the same food', () => {
+  // resetGame used to hardcode one seed, so every run after the first was
+  // byte-identical — in a game whose only variable is where the food goes
+  const a = E.createWorld({ seed: 1 });
+  E.resetGame(a, 4242);
+  const b = E.createWorld({ seed: 1 });
+  E.resetGame(b, 9999);
+  assert.notDeepEqual(a.food, b.food);
+
+  // and with no seed given it is still exactly replayable, which tests rely on
+  const c = E.createWorld({ seed: 1 }); E.resetGame(c);
+  const d = E.createWorld({ seed: 7 }); E.resetGame(d);
+  assert.deepEqual(c.food, d.food, 'the default reset stays deterministic');
+});
+
 /* ---------- reset ---------- */
 
 test('resetGame restores a clean opening position', () => {

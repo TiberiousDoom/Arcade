@@ -151,6 +151,24 @@ button{
 button:hover{background:var(--accent-hot)}
 button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 
+/* Press feedback, for every button in every game.
+
+   A tap on a phone has no hover state to confirm it landed, and several of
+   these buttons do something the player cannot see immediately (buying a tier
+   deep in a list, queueing a wave). The press itself has to acknowledge the
+   tap. Transform and filter only — both composite on the GPU and neither
+   reflows, so this cannot cost a frame in the middle of a run.
+
+   `:active` fires on pointerdown and clears on release or cancel, including a
+   drag off the button, so a press that turns into a scroll un-presses itself.
+   The `transition` is on the release; the press is instant, because a
+   *delayed* acknowledgement is worse than none. */
+button{transition:transform .12s ease-out, filter .12s ease-out, background .12s ease-out}
+button:not(:disabled):active{transform:scale(.96);filter:brightness(1.12)}
+/* Disabled buttons must stay inert: a press animation on a button that will
+   not act is a promise the UI does not keep. */
+button:disabled{transform:none}
+
 /* ---- the single menu button, replacing the old help/mute/pause trio ----
    Three always-visible corner buttons used to sit on top of the board and
    overlap tappable game area. One button now opens a panel holding all of
@@ -280,4 +298,8 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
   }
   #stage::after{right:0;transform:scaleX(-1)}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  /* the press keeps its brightness change — that is feedback, not motion */
+  button:not(:disabled):active{transform:none}
+}

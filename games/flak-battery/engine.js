@@ -1714,7 +1714,7 @@ export const DROP_CHANCE = 0.26;
  *  yields nothing — the same LCG decides both, so one call is one advance and
  *  a seeded run stays exactly reproducible. */
 export function rollDrop(w) {
-  const n = (w.dropSeed = (w.dropSeed * 1103515245 + 12345) & 0x7fffffff);
+  const n = (w.dropSeed = (Math.imul(w.dropSeed, 1103515245) + 12345) & 0x7fffffff);
   // top bits for the yes/no, low bits for the kind: an LCG's low bits are the
   // least random part of it, so the coarser decision gets the better ones
   if ((n >>> 8) % 1000 >= DROP_CHANCE * 1000) return null;

@@ -41,9 +41,24 @@ export function makeAudio() {
     return ctx;
   }
 
+  /* Wake the context on anything that is not already running.
+     
+     This used to check for `'suspended'` alone, which is the whole spec'd set
+     of not-running states — and misses the one that actually happens on a
+     phone. iOS Safari has a non-standard **`'interrupted'`** state it enters
+     when the app is backgrounded, a call arrives, or the screen locks. A
+     context sitting in `interrupted` failed the equality check, never got
+     resumed, and the game played on in silence for the rest of the session.
+     That is the reported "switching apps kills the sound".
+     
+     Resuming a running context is a no-op, so testing for the negative is both
+     correct and cheaper than enumerating states some vendor may add next. */
   function resume() {
     const c = ensure();
-    if (c && c.state === 'suspended') c.resume();
+    if (!c || c.state === 'running') return;
+    // resume() rejects rather than throws when it is called outside a gesture,
+    // which is routine on the visibilitychange path — the next tap retries.
+    Promise.resolve(c.resume()).catch(() => {});
   }
 
   /** A single enveloped oscillator. Frequencies glide from f0 to f1. */
