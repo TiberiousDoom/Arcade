@@ -36,6 +36,18 @@ function learn(w, type) {
 function openTree(w) {
   w.research.points += 1e6;
   for (const b of E.BRANCHES) while (E.researchDepth(w, b)) { /* to the cap */ }
+  return veteran(w);
+}
+
+/* Past the branch ramp (BRANCH_UNLOCK), so every branch is buyable.
+
+   A fresh world is a *new player's* world: it opens with three branches and
+   earns the rest over the first few runs. Tests about what a branch does are
+   not tests about that ramp, so they say so here rather than each quietly
+   depending on the opening being wide. The ramp itself is covered in the
+   upgrades section. */
+function veteran(w) {
+  w.research.best = 99;
   return w;
 }
 
@@ -1542,7 +1554,7 @@ test('splitting the tree redistributed its cost rather than inflating it', () =>
 });
 
 test('every branch is buyable and reachable', () => {
-  const w = E.createWorld();
+  const w = veteran(E.createWorld());
   w.scrap = 1e9;
   w.research.points = 1e6;
   for (const b of E.BRANCHES) {
@@ -1557,7 +1569,7 @@ test('every branch is buyable and reachable', () => {
 /* ---------- convergence ---------- */
 
 test('convergence moves the focal point toward the column', () => {
-  const w = E.createWorld();
+  const w = veteran(E.createWorld());
   w.scrap = 1e9; w.research.points = 1e6;
   w.wave = 3; E.spawnWave(w);
   w.chains[0].s = 900;                       // bring the column onto the board
@@ -1606,7 +1618,7 @@ test('convergence is what makes a close command ship killable', () => {
   const build = (conv) => {
     // drops off: this times how fast convergence kills a command ship, and a
     // stray Rapid or Bomb would be measuring something else
-    const w = E.createWorld({ drops: false });
+    const w = veteran(E.createWorld({ drops: false }));
     w.research.points = 1e6;
     for (const b of E.BRANCHES) while (E.researchDepth(w, b));
     w.scrap = 1e9; w.shieldCharges = 1e6;
@@ -1730,12 +1742,12 @@ test('stats resolve from the current tiers', () => {
 });
 
 test('each branch changes something the others do not', () => {
-  const w = E.createWorld();
+  const w = veteran(E.createWorld());
   w.scrap = 1e6;
   const base = E.stats(w, gun0(w));
   const touched = {};
   for (const b of E.BRANCHES) {
-    const t = E.createWorld();
+    const t = veteran(E.createWorld());
     t.scrap = 1e6;
     for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(t, 0, b);
     const s = E.stats(t, gun0(t));
@@ -1747,12 +1759,98 @@ test('each branch changes something the others do not', () => {
   assert.equal(new Set(sigs).size, sigs.length, 'branches overlap entirely');
 });
 
+/* ---------- the branch ramp ---------- */
+
+test('a new player is offered three branches, not nine', () => {
+  const open = E.openBranches(E.createWorld());
+  assert.deepEqual(open, ['damage', 'calibre', 'cooling']);
+});
+
+test('the opening three are not three ways to say the same thing', () => {
+  /* The whole point of the ramp. Cooling, Breech and Interlock all move the
+     heat gauge and were the three cheapest rows, so the most tempting first
+     purchase was the least visible one. At most one heat branch may open. */
+  const heat = ['cooling', 'breech', 'interlock'];
+  const opening = E.openBranches(E.createWorld()).filter(b => heat.includes(b));
+  assert.equal(opening.length, 1, 'one heat branch at a time, at the start');
+});
+
+test('every branch opens eventually, and none opens after the tree is meant to be met', () => {
+  for (const b of E.BRANCHES) {
+    const at = E.BRANCH_UNLOCK[b];
+    assert.ok(Number.isInteger(at) && at >= 1, `${b} needs an unlock wave`);
+    assert.ok(at <= 11, `${b} opens at ${at}, too late to be part of a run`);
+  }
+});
+
+test('a locked branch cannot be bought however much scrap is on the table', () => {
+  const w = E.createWorld();
+  w.scrap = 1e9;
+  assert.equal(E.branchUnlocked(w, 'convergence'), false);
+  assert.equal(E.canAfford(w, 0, 'convergence'), false);
+  assert.equal(E.buyUpgrade(w, 0, 'convergence'), false);
+  assert.equal(gun0(w).upgrades.convergence, 0);
+  assert.equal(w.scrap, 1e9, 'a refused buy must not charge');
+});
+
+test('the ramp is measured on experience, so a veteran restarting keeps the tree', () => {
+  /* The failure this guards against is a returning player re-earning the shop
+     every run, which would make the ramp a permanent tax instead of a
+     first-play-through one. */
+  const w = E.createWorld();
+  w.research.best = 20;
+  assert.equal(w.wave, 1, 'a fresh run, but not a fresh player');
+  assert.deepEqual(E.openBranches(w), E.BRANCHES);
+  w.scrap = 1e9;
+  assert.equal(E.buyUpgrade(w, 0, 'convergence'), true);
+});
+
+test('reaching a wave in this run opens its branches immediately', () => {
+  // no waiting for the payout: the shop after wave 5 shows what wave 5 opened
+  const w = E.createWorld();
+  assert.equal(E.branchUnlocked(w, 'velocity'), false);
+  w.wave = 5;
+  assert.equal(E.branchUnlocked(w, 'velocity'), true);
+});
+
+test('a run banks its high-water mark once, and never backwards', () => {
+  const w = E.createWorld();
+  w.wave = 12;
+  E.awardResearch(w);
+  assert.equal(w.research.best, 12);
+
+  const next = E.createWorld();
+  next.research = w.research;
+  next.wave = 3;
+  E.awardResearch(next);
+  assert.equal(next.research.best, 12, 'a short run must not walk it back');
+});
+
+test('the shop announces a branch only the first time it opens', () => {
+  const w = E.createWorld();
+  assert.deepEqual(E.branchesOpenedAt(w, 5), ['velocity']);
+  w.research.best = 20;
+  assert.deepEqual(E.branchesOpenedAt(w, 5), [], 'a veteran is told nothing');
+});
+
+test('a stored best survives sanitizing, and a junk one does not become zero', () => {
+  assert.equal(E.sanitizeResearch({ best: 31 }).best, 31);
+  assert.equal(E.sanitizeResearch({ best: -5 }).best, 1);
+  assert.equal(E.sanitizeResearch({}).best, 1);
+});
+
 test('the first shop visit is never empty-handed', () => {
-  // wave 1 must fund at least one upgrade, or the shop feels pointless
+  /* Wave 1 must fund at least one upgrade, or the shop feels pointless — and
+     it has to be one a *new player* is actually offered, which since the
+     branch ramp is the three opening branches rather than the cheapest of all
+     nine. The cheapest branch overall is Interlock at 13, which does not open
+     until wave 3; measuring against it would pass while the real opening shop
+     sat unaffordable. */
   const ch = chain(E.waveCount(1), 100, 0);
   const income = ch.segs.reduce((a, s) => a + E.KIND[s.kind].scrap, 0);
-  const cheapest = Math.min(...E.BRANCHES.map(b => E.UPGRADES[b].costs[0]));
-  assert.ok(income >= cheapest, `wave 1 pays ${income}, cheapest upgrade is ${cheapest}`);
+  const opening = E.openBranches(E.createWorld());
+  const cheapest = Math.min(...opening.map(b => E.UPGRADES[b].costs[0]));
+  assert.ok(income >= cheapest, `wave 1 pays ${income}, cheapest opening upgrade is ${cheapest}`);
 });
 
 test('a long run cannot afford everything', () => {
@@ -1834,7 +1932,7 @@ test('wall bounces are limited by munitions', () => {
 });
 
 test('velocity speeds shots up', () => {
-  const w = E.createWorld();
+  const w = veteran(E.createWorld());
   E.fire(w);
   const slow = w.shots[w.shots.length - 1];
   const v0 = Math.hypot(slow.vx, slow.vy);

@@ -1173,3 +1173,51 @@ same version treats the cause.
 The gate chain collapses to Flak Battery → Choke Point in the main cabinet,
 with the classics cabinet opening on Feedline. The cabinet-only enforcement
 from 2026-08-04 is unchanged: direct URLs still open anything.
+
+## 2026-08-19 — Flak Battery opens with three branches, and the ramp is measured on experience
+
+The overwhelm was specific, and reading the code named it. Run 1 starts at 1
+mount and 0 scrap, so the first shop was nine branch rows for one gun plus a
+Research tab. Worse, the three cheapest rows — Cooling, Breech and Interlock at
+13 each — all move the same heat gauge, in near-identical language, and they
+undercut Damage (23) and Calibre (19), the two branches that visibly do
+something. The most tempting first purchase was the one whose effect was least
+visible. A player who buys it, sees nothing, and concludes the shop is
+decorative has learned the wrong lesson in the first ninety seconds.
+
+`BRANCH_UNLOCK` opens three branches at wave 1 and earns the rest at 3/5/7/9/11,
+ordered by how much each asks you to already understand — damage and round size
+are legible immediately, heat once you have held the trigger down, convergence
+(which engages by range and rewards reading the column) last. **No depth is
+lost**; by wave 11 it is the same tree, met one idea at a time.
+
+**The gate is on experience, not on the current wave, and that is the whole
+design.** `experience(w)` is the best wave ever reached, banked in
+`research.best` by `awardResearch` — the one call that already happens exactly
+once per run. Gating on `w.wave` would have been simpler and wrong: it would
+make a returning player re-earn the shop on every run, turning a
+first-play-through ramp into a permanent tax on the people who like the game
+most. This is the same shape as shared/unlocks.js, and for the same reason.
+
+`canAfford` and `buyUpgrade` both refuse a locked branch. The ramp is
+presentational in intent, but a purchase the shop should not offer must not go
+through if a shell bug offers it anyway — the alternative is the engine
+trusting the UI, which is backwards.
+
+**The thermal three are grouped in the shop and left alone in the engine.**
+Merging them for real was the obvious move and is wrong: `stats()` folds over
+`BRANCHES` and a test pins one-stat-per-branch, so a merge would spend real
+structure to fix a presentation problem. One card with three rows says "heat is
+one system with three knobs" without the engine learning anything.
+
+**The Research tab now waits for research to exist**, which means `best > 1` —
+a run has ended — rather than a non-zero points balance. The balance was the
+first cut and it had a bug in it: points hit zero every time they are spent, so
+the tab would have vanished the moment a player used it. A render test that
+wanted the tab visible with nothing to spend is what surfaced that.
+
+Nine engine tests cover the ramp. Seven existing tests failed on the first run
+of the suite, all of them buying late branches at wave 1 — they were never about
+onboarding, and they now say which player they mean via a `veteran(w)` helper.
+That several tests were silently relying on the opening shop being wide is
+itself the argument for stating it.

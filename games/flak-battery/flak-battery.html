@@ -110,6 +110,24 @@
      two cannot overlap. */
   #shopBar{position:sticky;top:-16px;z-index:2;background:rgba(11,20,24,.97);
     padding:6px 0 8px;display:flex;flex-direction:column;gap:6px}
+  /* The thermal card: one heading over the rows that share the heat gauge. */
+  .branchGroup{
+    border:1px solid var(--line);border-radius:5px;
+    padding:7px 8px 3px;margin-bottom:6px;
+  }
+  .branchGroup .groupName{
+    margin:0 0 4px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim);font-weight:700;
+  }
+  .branchGroup .buyRow{margin-bottom:4px}
+  .branchGroup .buyRow:last-child{margin-bottom:0}
+  .openingSoon{
+    margin:8px 2px 0;font-size:11px;color:var(--dim);text-align:center;
+  }
+  #shopRule{
+    margin:0 0 8px;font-size:12px;line-height:1.45;color:var(--dim);
+    border-left:2px solid var(--accent);padding-left:8px;
+  }
   #shopTabs{display:flex;gap:5px;flex-wrap:wrap}
   #shopTabs:empty{display:none}
   #shopTabs.hidden{display:none}
@@ -261,6 +279,7 @@
            siblings both pinned to the same top overlap each other, and Next
            Wave used to be the last child of the scrolling panel — so leaving
            the shop meant scrolling past nine branch cards to find the button. -->
+      <p id="shopRule">Spend scrap on this gun. Tiers last the run &mdash; one breach ends it.</p>
       <div id="shopBar">
         <div id="shopTabs"></div>
         <button id="shopGo">Next Wave</button>
@@ -718,6 +737,10 @@ let shopTab = OVERVIEW;
    touched before. */
 function renderShop(bought) {
   $('shopScrap').textContent = 'Scrap ' + world.scrap;
+  /* The board gets "Drag to aim, hold to fire"; the shop had no equivalent, and
+     neither rule the whole economy hangs on was stated anywhere. Shown only to
+     a player who has never finished a run, and gone for good after that. */
+  $('shopRule').style.display = E.experience(world) <= 2 ? '' : 'none';
   // a mount can be sold out from under the tab by a reset
   if (shopTab >= world.battery.guns.length) shopTab = OVERVIEW;
 
@@ -746,8 +769,11 @@ function renderShop(bought) {
   drawCannonPortrait(pc.getContext('2d'), gun.type, E.barrelsOf(gun));
   host.appendChild(renderGunStats(gun));
 
-  // this mount's four branches
-  for (const b of E.BRANCHES) {
+  /* This mount's branches — only the ones the branch ramp has opened, and
+     with the thermal three inside a single card (see THERMAL). */
+  const open = E.openBranches(world);
+  let thermalHost = null;
+  for (const b of open) {
     const U = E.UPGRADES[b];
     const tier = gun.upgrades[b];
     const cap = E.tierCap(world, b);
@@ -801,13 +827,82 @@ function renderShop(bought) {
         if (E.buyUpgrade(world, shopTab, b)) { buzz(15); renderShop(b); sync(); }
       });
     }
-    host.appendChild(el);
+
+    /* The thermal branches go inside one card rather than beside the others.
+       All three move the same gauge, and as three of nine sibling rows they
+       read as three unrelated bets — one of which you buy, see nothing happen,
+       and conclude the shop is decorative. Grouped, heat is one system with
+       three knobs. **UI only**: `stats()` folds over BRANCHES and a test pins
+       one-stat-per-branch, so merging them in the engine would cost real
+       structure to fix a presentation problem. */
+    if (THERMAL.includes(b)) {
+      if (!thermalHost) {
+        const card = document.createElement('div');
+        card.className = 'branchGroup';
+        card.innerHTML = '<h3 class="groupName">Thermal</h3>';
+        thermalHost = document.createElement('div');
+        thermalHost.className = 'groupRows';
+        card.appendChild(thermalHost);
+        host.appendChild(card);
+      }
+      thermalHost.appendChild(el);
+    } else {
+      host.appendChild(el);
+    }
+  }
+
+  /* What the next wave opens, named before it arrives, so a new branch reads
+     as something earned rather than as a row that silently appeared. */
+  const soon = nextBranchOpening();
+  if (soon) {
+    const note = document.createElement('p');
+    note.className = 'openingSoon';
+    note.textContent = soon;
+    host.appendChild(note);
   }
 
   host.appendChild(renderBarrels(gun));
   host.appendChild(renderRetrofit(gun));
 
   if (bought) flashStat(host, bought);
+}
+
+/** Is there any research to look at? True once a run has ended — that is the
+ *  event that pays RP and the moment the system starts existing — or if
+ *  anything has already been earned or bought.
+ *
+ *  Finishing a run is checked *first and separately* from the points balance:
+ *  points hit zero again every time they are spent, and a tab that vanished
+ *  when a player bought something with it would be far worse than one that
+ *  showed up early. */
+function hasResearch() {
+  const r = world.research;
+  if (!r) return false;
+  if ((r.best ?? 1) > 1) return true;
+  if (r.points > 0) return true;
+  if (Object.values(r.guns || {}).some(Boolean)) return true;
+  if (Object.values(r.depth || {}).some(v => v > 0)) return true;
+  return Object.values(r.marks || {}).some(v => v > 0);
+}
+
+/* The heat branches, grouped in the shop as one card. Named here rather than
+   derived from the stat they move, because the grouping is an editorial claim
+   about what a player thinks of as one system, not something the tables know. */
+const THERMAL = ['cooling', 'breech', 'interlock'];
+
+/** "Velocity opens at wave 5" for the next branch still to come, or null once
+ *  the tree is fully met. Reads BRANCH_UNLOCK so it cannot drift from the gate. */
+function nextBranchOpening() {
+  const at = E.experience(world);
+  const pending = E.BRANCHES
+    .filter(b => E.BRANCH_UNLOCK[b] > at)
+    .sort((a, b) => E.BRANCH_UNLOCK[a] - E.BRANCH_UNLOCK[b]);
+  if (!pending.length) return null;
+  const wave = E.BRANCH_UNLOCK[pending[0]];
+  const names = pending.filter(b => E.BRANCH_UNLOCK[b] === wave)
+    .map(b => E.UPGRADES[b].name);
+  const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names.at(-1) : names[0];
+  return `${list} ${names.length > 1 ? 'open' : 'opens'} at wave ${wave}.`;
 }
 
 /* Labels for the raw stat keys in `UPGRADES[b].tiers`, kept word-for-word in
@@ -915,11 +1010,19 @@ function renderTabs() {
     host.appendChild(add);
   }
 
-  const bt = document.createElement('button');
-  bt.className = 'tab' + (shopTab === RESEARCH ? ' on' : '');
-  bt.innerHTML = `<b>&#9632;</b><span>Research</span>`;
-  bt.addEventListener('click', () => { shopTab = RESEARCH; renderShop(); });
-  host.appendChild(bt);
+  /* Research appears once there is any to look at. On run 1 there are 0 RP and
+     no way to earn one — `awardResearch` pays at game over — so the tab was a
+     second currency on screen before the first was understood. It now shows up
+     at the end of the first run, as the reward for having finished one. */
+  if (hasResearch()) {
+    const bt = document.createElement('button');
+    bt.className = 'tab' + (shopTab === RESEARCH ? ' on' : '');
+    bt.innerHTML = `<b>&#9632;</b><span>Research</span>`;
+    bt.addEventListener('click', () => { shopTab = RESEARCH; renderShop(); });
+    host.appendChild(bt);
+  } else if (shopTab === RESEARCH) {
+    shopTab = OVERVIEW;                  // never strand the view on a hidden tab
+  }
 }
 
 /* One card per emplacement, all of them at once.
@@ -943,8 +1046,12 @@ function renderOverview(host) {
     pc.width = PORTRAIT_W; pc.height = PORTRAIT_H;
     el.appendChild(pc);
 
-    const depth = E.BRANCHES.reduce((a, b) => a + (gun.upgrades[b] || 0), 0);
-    const most = E.BRANCHES.length * E.MAX_TIER;
+    /* Counted over the branches actually open, not all nine — the ramp means a
+       new player's ceiling really is lower, and "0/45" for someone who can
+       reach 15 reads as a progress bar that will not move. */
+    const opened = E.openBranches(world);
+    const depth = opened.reduce((a, b) => a + (gun.upgrades[b] || 0), 0);
+    const most = opened.length * E.MAX_TIER;
     const cap = document.createElement('div');
     cap.className = 'empMeta';
     cap.innerHTML =

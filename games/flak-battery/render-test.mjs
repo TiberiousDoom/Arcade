@@ -192,8 +192,96 @@ test('a touch above the breach line aims at the finger, below it drags', async (
   assert.deepEqual(g.errors, [], 'aiming threw');
 });
 
-test('the research tab renders alongside the mount tabs and the add slot', async () => {
+/* A world belonging to someone who has finished a run before: past the branch
+   ramp, and with research to their name. Tests about the shop's *contents* are
+   not tests about the opening ramp, so they say which player they mean —
+   the ramp and the hidden Research tab have their own tests below. */
+function experienced(g, { points = 1e6 } = {}) {
+  g.world.research.best = 99;
+  g.world.research.points = points;
+  return g;
+}
+
+test('a first-run shop opens with three rows, one thermal card, and no Research tab', async () => {
   const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+
+  const names = [...doc.querySelectorAll('#branches .buyRow h3')].map(el => el.textContent);
+  assert.deepEqual(names, ['Damage', 'Calibre', 'Cooling'],
+    'a new player meets three branches, not nine');
+
+  // Cooling is inside the Thermal card even while it is the only one open
+  const group = doc.querySelector('#branches .branchGroup');
+  assert.ok(group, 'the thermal card exists');
+  assert.match(group.querySelector('.groupName').textContent, /thermal/i);
+  assert.deepEqual([...group.querySelectorAll('.buyRow h3')].map(el => el.textContent), ['Cooling']);
+
+  // no second currency on screen before the first one is understood
+  const tabs = [...doc.querySelectorAll('#shopTabs .tab')].map(t => t.textContent);
+  assert.ok(!tabs.some(t => /research/i.test(t)), 'Research stays hidden on run 1');
+
+  // and the two rules the economy hangs on are stated
+  assert.notEqual(doc.getElementById('shopRule').style.display, 'none');
+  assert.match(doc.getElementById('shopRule').textContent, /breach ends it/i);
+  assert.deepEqual(g.errors, [], 'the opening shop threw');
+});
+
+test('the thermal card gathers all three heat branches once they open', async () => {
+  const g = experienced(await bootAndStart(SHELL));
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+
+  const group = doc.querySelector('#branches .branchGroup');
+  assert.deepEqual([...group.querySelectorAll('.buyRow h3')].map(el => el.textContent),
+    ['Cooling', 'Breech', 'Interlock'], 'one card, three knobs');
+
+  // exactly one card — the group must not be rebuilt per branch
+  assert.equal(doc.querySelectorAll('#branches .branchGroup').length, 1);
+  // and the veteran is not told about a ramp they are past
+  assert.equal(doc.querySelector('#branches .openingSoon'), null);
+  assert.equal(doc.getElementById('shopRule').style.display, 'none',
+    'the opening rule is for a first run only');
+});
+
+test('the shop names what the next wave opens', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+  const note = doc.querySelector('#branches .openingSoon');
+  assert.ok(note, 'a new player is told what is coming');
+  assert.match(note.textContent, /Breech and Interlock open at wave 3/);
+});
+
+test('a locked branch cannot be bought through the shop', async () => {
+  /* The engine refuses it, but the shop must not offer it either — a row that
+     renders and then does nothing on tap is worse than no row. */
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+  const names = [...doc.querySelectorAll('#branches .buyRow h3')].map(el => el.textContent);
+  assert.ok(!names.includes('Convergence'), 'Convergence is not on the opening shop');
+  assert.equal(E.buyUpgrade(world, 0, 'convergence'), false);
+});
+
+test('the research tab renders alongside the mount tabs and the add slot', async () => {
+  const g = experienced(await bootAndStart(SHELL));
   const { world, window: w } = g;
   const doc = w.document;
   world.scrap = 1e6;
@@ -217,7 +305,7 @@ test('the research tab renders alongside the mount tabs and the add slot', async
 });
 
 test('research is bought on the research tab and gates the deep tiers', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = experienced(await bootAndStart(SHELL));
   const { world, E, window: w } = g;
   const doc = w.document;
   world.scrap = 1e6;
@@ -263,7 +351,8 @@ test('research is bought on the research tab and gates the deep tiers', async ()
 });
 
 test('a gun type is learned with research points, not scrap', async () => {
-  const g = await bootAndStart(SHELL);
+  // experienced enough for the tab to exist, but with nothing banked to spend
+  const g = experienced(await bootAndStart(SHELL), { points: 0 });
   const { world, E, window: w } = g;
   const doc = w.document;
   world.scrap = 1e6;
@@ -417,7 +506,7 @@ test('every branch in the tree points at a stat the block shows', async () => {
 });
 
 test('a buy row previews what the next tier is worth, and stops at the top', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = experienced(await bootAndStart(SHELL));
   const { world, E, window: w } = g;
   const doc = w.document;
   world.scrap = 1e6;
