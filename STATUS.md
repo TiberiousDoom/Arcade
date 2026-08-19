@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-16 (v33 — effect toggles, shake rotation, and the shop says what a tier buys)
+Last updated: 2026-08-19 (v38 — two cabinets, FB onboarding, round-11 fixes, convergence as research, cannon art)
 
 ## Read this first
 
@@ -21,6 +21,85 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **525 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **52 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 11 feedback — v34 to v38, and the art round that is still open (2026-08-19)
+
+**Everything reported is in except the artwork**, which is mid-flight and drawn
+outside the repo. Read the art section below before picking this up.
+
+### Shipped
+
+- **v34 — two cabinets.** Hull Breach and Feedline moved to `classics.html`;
+  the gate chain lost its cross-cabinet link so each cabinet has its own
+  ungated opener. **Flak Battery opens with three branches, not nine**
+  (`BRANCH_UNLOCK`, gated on best wave ever reached so a veteran keeps the
+  tree). Research tab waits until a run has ended.
+- **v35 — three bugs, all older than the reports.** The LCG lost its low bits
+  above 2^53, so a clock seed collapsed food placement onto 8 of 32 columns
+  (`Math.imul` in all three engines); `resetGame` now takes a seed so a retry
+  is not a replay; audio checked only for `'suspended'` and missed iOS
+  Safari's non-standard `'interrupted'`; button press animation in the theme.
+- **v36 — the command ship is killable again.** Head armour `1/(1+bodyLeft)`
+  → `1/(1+bodyLeft^0.7)`. The emplacement card's green bar was live gun heat
+  and now shows tiers bought.
+- **v37 — convergence is research.** Battery-wide RP track; the focal point
+  sits five rungs out and contracts inward to follow the command ship. Shop
+  pass: Ammunition/Thermal groups, "Upgrade" panel title, price-only buttons at
+  a fixed width, portrait and stats merged into one card, brighter aim line.
+- **v38 — the cannon is artillery.** Cruciform outriggers on jack pads, breech
+  behind the trunnion, recoil cradle, equilibrator, tapered tube, 60° elevation.
+
+### The art round, still open
+
+**Redesigns for the railgun and autocannon are drawn and approved but NOT in
+the repo.** They live in **[docs/art/gun-bench.html](docs/art/gun-bench.html)**
+— open it in a browser, no server needed. That file is a *snapshot ahead of the
+game*: its drawing code was assembled from repo sources and then edited
+further, so it is not a source of truth and should be deleted once the port
+lands.
+
+What is waiting to be ported into `drawCannonPortrait`:
+
+- **Three mount kinds instead of one.** `towed` (outriggers, the field guns),
+  `deck` (bolted plate + turret drum, the railgun), `bunker` (armoured
+  casemate, the autocannon). It began as a boolean and did not survive the
+  second one. The mount is the widest thing on the card, so it is read first —
+  which makes it as much of a gun's identity as its barrel.
+- **A per-type trunnion height** (`pvy`). A towed gun pivots on top of its
+  carriage; a turret pivots high above its armour. Pivoting at the mount's
+  centre is what kept burying the mount behind the breech.
+- **Railgun:** deck plate, drum, mount body, an *elevating* housing between the
+  barrel and the counterweight, and an open rail truss drawn in three-quarter
+  view — coils exposed along the top channel, near flank closed.
+- **Autocannon:** bunker casemate with bolted plates and a ground skirt, a
+  squat wide turret with ammunition boxes on the crown, and a four-barrel
+  rotary cluster with staggered muzzles.
+- Everything that elevates shares **one projection**. Mixing the rails'
+  offset with `extrudeRect`'s generic one made two halves of one rigid body
+  look seen from opposite sides.
+
+**Still to draw:** the mortar and ion cannon have not been revisited, and the
+board art (the battery drawn at ~40px) has not been touched at all — only the
+shop portraits.
+
+### The workflow that came out of this round
+
+**Art is drawn on the bench before it is applied to the repo.** The reason is
+recorded in DECISIONS: the render harness cannot judge this art, and two
+attempts to assert the cannon's barrel elevation both passed with the gun lying
+flat. Do not write render assertions about how the art *looks*; pin what a
+machine can judge (canvas geometry, not-blank) and review the rest by eye.
+
+### Still open after this round
+
+- **None of v34–v38 has been played on a phone.** The branch ramp, the
+  head-armour ladder, the new convergence, and the whole shop layout are all
+  hypotheses waiting on a device.
+- The raised barrel elevation (60°) is unverified by anything but my own eye.
+- Ammunition boxes on the autocannon turret are partly hidden behind the rotor
+  at rest; they clear at lower elevation. A play call.
+- Choke Point's opening has the same shape of problem Flak Battery's had and
+  has not been touched.
 
 ## v34 — two cabinets, and Flak Battery's opening (2026-08-19)
 
