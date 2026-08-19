@@ -1348,3 +1348,50 @@ would separate the two is exactly what a node-canvas harness renders
 unreliably. The vacuous assertion was removed rather than kept: the test now
 pins what a machine can honestly judge (the canvas has the headroom a raised
 barrel needs, and the art is not blank) and the elevation is a device check.
+
+## 2026-08-19 — The cannon is artillery now, and the mount is what did most of it
+
+The basic cannon read as a length of pipe on a wedge. Working from a reference
+photograph of a towed heavy AA gun, four things were missing, and only one of
+them was the barrel:
+
+**The mount.** It was a splayed trapezoid, which is a mortar baseplate — a
+wedge with a tube coming out of it. Real towed artillery sits on a cross of
+outriggers levelled on screw jacks, with the traversing body on a pedestal
+above them. That outline is most of what separates "gun" from "launcher", and
+it is shared by every type, so all five got it at once: four tapered arms (the
+fore-and-aft pair foreshortened so it reads as a cross seen from the side),
+jack pads drawn as flat ellipses, a pedestal, and a traversing race.
+
+**The breech, behind the trunnion.** A gun does not pivot at the back of its
+own barrel. The breech and its counterweight swing *down* as the muzzle comes
+up, which is the clearest single cue that the thing is elevating rather than
+merely pointing — and it fills the wedge under the raised tube that used to be
+conspicuously empty.
+
+**The cradle**, with its recoil cylinder slung under it, kept to a third of the
+tube so the barrel stays obviously the longest thing on the gun.
+
+**A tapered tube.** `bore2` gives the bore at the muzzle where it differs from
+the breech; the old parallel-sided `fillRect` was most of the pipe impression.
+A reinforced muzzle band replaces the plain end cap, and the three evenly
+spaced reinforcing bands drop to one, where the taper starts — evenly spaced
+bands read as a ladder, which is what made the old cannon look like a mortar.
+
+**The elevation came back down from 70° to 60°.** Past about 65° the
+equilibrator, cradle and breech all fold in behind the tube and the gun loses
+the triangle of linkage that says artillery. Real guns do tuck up like that at
+high elevation; it is honest and it is unreadable, which is the wrong trade for
+a portrait whose whole job is to be identified at a glance. Still inside the
+60–80° the raised layout needs.
+
+**A note on method, since this is the second art round to hit it.** The render
+harness cannot judge this art: it is dark body fills plus additive glow, and
+node-canvas renders the glow far dimmer than a GPU, so a faithful capture is
+unreadable and an "is there ink here" assertion answers yes wherever it is
+pointed. What worked was a throwaway inspector that composites the portrait
+over the board background and then lifts the gamma hard — deliberately *not*
+faithful, and useful precisely because silhouette is the only thing it shows.
+Paired with `window.__drawGun`, the temporary hook CLAUDE.md already recommends
+for this situation, it made each change checkable in one render. Both were
+removed afterwards.
