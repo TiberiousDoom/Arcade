@@ -22,6 +22,60 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 **516 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **52 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
+## v34 — two cabinets, and Flak Battery's opening (in progress, 2026-08-19)
+
+**Decided this session: Hull Breach and Feedline leave the main cabinet, but
+are not deleted.** They are finished games and they are good; they are also
+both classics and neither is a defense game, so they never fit alongside Flak
+Battery and Choke Point. They move to a second cabinet of their own, which is
+where the rebuilt Breakout / Snake / Missile Command / Invaders belong too.
+See DECISIONS for the reasoning, including the argument that was rejected.
+
+**The gate chain was the argument for keeping Feedline, and it does not hold.**
+Feedline was the one ungated game — the front door — so dropping it makes Flak
+Battery the opener. But FB walks a new player in cold either way: a run of
+Feedline teaches nothing about heat, scrap or nine upgrade branches. Feedline
+was never the on-ramp, it was just what came first. **The answer is to fix FB's
+opening, not to keep a game as a buffer.**
+
+### What is overwhelming about Flak Battery, specifically
+
+Read off the code rather than guessed. Run 1 starts at **1 mount, 0 scrap**, so
+the first shop is nine branch cards for one gun, plus a Research tab.
+
+- **The three cheapest branches are the three most confusable.** Cooling (13),
+  Breech (13) and Interlock (13) all modify the same heat gauge, in near
+  identical language, and they undercut Damage (23) and Calibre (19) — the two
+  that visibly do something. The cheapest, most tempting first purchase is the
+  one whose effect is least visible, which teaches that the shop does nothing.
+- **The Research tab is unconditional** (`flak-battery.html`, `renderTabs`). On
+  run 1 there are 0 RP and no way to earn any — `awardResearch` pays at game
+  over — so a second currency is on screen before the first one is understood.
+- **Nine tracks at once, at minute two.** Nine is not too many; nine
+  simultaneously, before a single mechanic has landed, is.
+- **The first shop has no equivalent of "Drag to aim, hold to fire."** Neither
+  rule the economy hangs on (tiers are per-run; a breach ends the run) is
+  stated anywhere the player will read them.
+
+### The four changes, in leverage order
+
+1. **Gate branches by wave.** Open with three cards (Damage, Calibre, Cooling)
+   and let the rest arrive as waves clear. Same shape as `tierCap`'s research
+   gate, one level up. No depth is lost — by wave 8 the tree is the same tree,
+   met one idea at a time.
+2. **Group the thermal three as one card, in the UI only.** Not merged in the
+   engine: `stats()` folds over `BRANCHES` and a test pins one-stat-per-branch.
+   Nine competing decisions become seven, and heat reads as one system.
+3. **Hide Research until it exists** — when RP is non-zero or something is
+   owned. It then appears at the end of run 1 as a reward rather than as a
+   fourth thing to parse.
+4. **A one-line rule in the first shop only.** "Spend scrap. Tiers last this
+   run; a breach ends it."
+
+Items 1 and 2 are structural and expected to land; 3 and 4 are cheap and
+near-riskless. **Whether it is still overwhelming is a phone question** — this
+is a hypothesis about *what* overwhelms, and the next round tests it.
+
 ## v33 — an outside UI review, checked against the code (2026-08-16)
 
 A UI/UX review of the collection arrived from another Claude instance. It was

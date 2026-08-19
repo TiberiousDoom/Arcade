@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>Arcade</title>
-<meta name="description" content="A small collection of canvas arcade games.">
+<title>Arcade · Classics</title>
+<meta name="description" content="The classics cabinet: one-sitting arcade games, no progression.">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0b1418">
 <link rel="icon" href="shared/icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="shared/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Arcade">
+<meta name="apple-mobile-web-app-title" content="Classics">
 <link rel="stylesheet" href="shared/theme.css">
 <script type="module" src="shared/pwa.js"></script>
 <style>
@@ -89,8 +89,8 @@
   .card .lock{color:var(--pip);letter-spacing:.08em;text-align:right}
 
   /* each card tints itself with the accent of the game it opens */
-  .card.flak-battery{--pip:#c9a227}
-  .card.choke-point{--pip:#6fb7e8}
+  .card.hull-breach{--pip:#3fae8f}
+  .card.feedline{--pip:#5fc9a4}
 
   footer{display:flex;flex-direction:column;gap:6px;text-transform:none;letter-spacing:.04em}
   footer b{color:var(--dim);font-weight:400}
@@ -98,39 +98,39 @@
 
 <div id="shell">
   <header>
-    <h1>Ar<span>cade</span></h1>
-    <div class="tag">Two games · one invasion</div>
-    <a class="crosslink" href="classics.html">Classics cabinet &rarr;</a>
+    <h1>Class<span>ics</span></h1>
+    <div class="tag">Pick up, play, stop</div>
+    <a class="crosslink" href="index.html">The invasion &rarr;</a>
 
   </header>
 
   <nav>
     <ul id="games">
       <li>
-        <a class="card flak-battery" href="games/flak-battery/flak-battery.html">
+        <a class="card feedline" href="games/feedline/feedline.html">
           <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
-            <circle cx="16" cy="12" r="6"/><circle cx="34" cy="12" r="5"/>
-            <circle cx="50" cy="12" r="5"/><circle cx="66" cy="12" r="5"/>
-            <circle cx="82" cy="12" r="5"/>
-            <path d="M60 36v-8" stroke-linecap="round"/>
-            <path d="M52 36h16" stroke-linecap="round"/>
+            <path d="M14 30h18v-14h18v14h18v-8h14" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="80" y="16" width="9" height="9" fill="currentColor" stroke="none"/>
+            <circle cx="102" cy="12" r="4" fill="currentColor" stroke="none"/>
           </svg>
-          <h2>Flak Battery</h2>
-          <p class="lore">They came down in one unbroken column. This is the last emplacement still firing.</p>
-          <span class="how"><span class="step">1 / 2</span>Aim &amp; fire</span>
+          <h2>Feedline</h2>
+          <p class="lore">One line, one life, and it only ever gets longer.</p>
+          <span class="how"><span class="step">1 / 2</span>Swipe or arrows</span>
         </a>
       </li>
       <li>
-        <a class="card choke-point" href="games/choke-point/choke-point.html">
+        <a class="card hull-breach" href="games/hull-breach/hull-breach.html">
           <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M6 30h28v-16h34v16h20" stroke-linecap="round" stroke-linejoin="round"/>
-            <rect x="28" y="8" width="12" height="12" rx="2"/>
-            <rect x="62" y="20" width="12" height="12" rx="2"/>
-            <circle cx="108" cy="30" r="6" fill="currentColor" stroke="none"/>
+            <rect x="12" y="6" width="22" height="7"/><rect x="38" y="6" width="22" height="7"/>
+            <rect x="64" y="6" width="22" height="7"/><rect x="90" y="6" width="18" height="7"/>
+            <rect x="12" y="17" width="22" height="7"/><rect x="38" y="17" width="22" height="7"/>
+            <rect x="64" y="17" width="22" height="7"/>
+            <circle cx="74" cy="31" r="3" fill="currentColor"/>
+            <path d="M40 36h20" stroke-linecap="round" stroke-width="4"/>
           </svg>
-          <h2>Choke Point</h2>
-          <p class="lore">They are on the ground now, and they only advance one way. Make that one way expensive.</p>
-          <span class="how"><span class="step">2 / 2</span>Tap to build</span>
+          <h2>Hull Breach</h2>
+          <p class="lore">The wall is layered, the ball is fast, and the angle is entirely yours.</p>
+          <span class="how"><span class="step">2 / 2</span>Slide to steer</span>
         </a>
       </li>
     </ul>

@@ -1141,3 +1141,35 @@ Flak Battery's screen shake was pure translation, which reads as a glitch rather
 The shop's buy rows showed a name, a pip strip and a price. The pips say how *deep* a branch is; nothing said what the next tier was worth, so choosing between nine branches meant buying one to find out. Rows now show `current → next` read straight off `UPGRADES[b].tiers` — the same numbers `stats()` folds, so the promise cannot drift from the purchase, and every key in the tier object is printed, which is what covers Munitions moving two. Measured at 360px the row grows from 44px to 58px, which is the price of the answer.
 
 Explicitly **not** taken from the review: rarity-coded shop cards. The rows were cards until v30 and were deliberately flattened (nine cards is a wall of text between waves), and a rarity colour ladder is a loot-game convention — these are nine parallel tracks of five tiers, where depth is what a player needs to see and the pips already carry it.
+
+## 2026-08-19 — Two cabinets: the defense games and the classics
+
+Hull Breach and Feedline are finished, tested, and played on a phone every
+round. They are also the two games that do not fit. Flak Battery and Choke
+Point are both defense games with a persistent meta-currency — enemies traverse
+a path, you build and upgrade shooters, something carries between runs (Choke
+Point literally reuses Flak Battery's arc-length movement model). Hull Breach
+is Breakout and Feedline is Snake: one-sitting classics with no meta at all.
+Four games in one cabinet asked a player to switch genre *and* switch what
+progress means, on a front page that gave no warning which they were getting.
+
+**They are separated, not deleted.** Deleting a finished game to tidy a menu
+throws away the only thing that is genuinely scarce here — working code that
+has survived ten rounds of device feedback. A second cabinet costs almost
+nothing: the games are self-contained under `games/<name>/`, and only
+`index.html` and `shared/unlocks.js` know the roster. It also gives the
+rebuilt Missile Command and Invaders somewhere to land that is not "a fifth
+tile next to a tower-defense."
+
+**The argument for keeping Feedline in the main cabinet was the unlock chain,
+and it was wrong.** Feedline was the only ungated game, so it was structurally
+the front door, and removing it makes Flak Battery the opener. That looked like
+a reason to keep it. It is not: a run of Feedline teaches nothing about heat,
+scrap, or nine upgrade branches, so FB was always met cold — Feedline was
+merely *first*, not an on-ramp. Keeping a game as a buffer in front of a
+game that is hard to start is treating the symptom. The onboarding work in the
+same version treats the cause.
+
+The gate chain collapses to Flak Battery → Choke Point in the main cabinet,
+with the classics cabinet opening on Feedline. The cabinet-only enforcement
+from 2026-08-04 is unchanged: direct URLs still open anything.
