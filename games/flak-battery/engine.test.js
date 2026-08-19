@@ -653,9 +653,18 @@ test('the head takes a fraction of normal damage while a body remains', () => {
   assert.equal(E.headDamageFactor(0), 1, 'exposed head takes full damage');
   assert.ok(E.headDamageFactor(30) < E.headDamageFactor(5), 'a longer body protects more');
   assert.ok(E.headDamageFactor(5) < 1, 'and any body at all protects some');
-  // the whole reason this exists: the head is the closest, most exposed target,
-  // so an unprotected instant-kill head would be the easiest shot on the board
-  assert.ok(E.headDamageFactor(30) < 0.05, 'a full-length chain makes the head near-immune');
+  /* The head is the closest, most exposed target, so an unarmored instant-kill
+     head would be the easiest shot on the board. But "near-immune" was too far
+     the other way: the divisor used to scale linearly with body count, and
+     since late waves are long, decapitation stopped being reachable inside the
+     breach window around wave 18 and was gone by 45 — the mechanic died exactly
+     where a command ship reaching the floor hurts most. Sublinear now: heavily
+     protected at full length, never immune. */
+  assert.ok(E.headDamageFactor(30) < 0.12, 'a full chain still protects heavily');
+  assert.ok(E.headDamageFactor(30) > 0.05, 'but never to the point of immunity');
+  // and the protection must still be worth stripping: clearing body has to pay
+  assert.ok(E.headDamageFactor(5) > E.headDamageFactor(30) * 2,
+    'killing body meaningfully opens the head up');
 });
 
 test('shooting the head of a full chain barely scratches it', () => {
@@ -725,7 +734,47 @@ test('an early decapitation is possible but costs far more damage', () => {
     }
     return spent;
   })();
-  assert.ok(straightAway > bodyFirst, `head-first cost ${straightAway}, body-first ${bodyFirst}`);
+  /* This used to assert head-first costs *more raw damage* than body-first, and
+     that is no longer true — deliberately.
+
+     The claim it was really standing in for is "decapitation is not the default
+     route". Measuring the two in real play (battery firing, column held, same
+     build) shows that claim never actually held on *time*: even under the old
+     linear divisor, aiming at the head killed the chain faster than fighting it
+     whenever it was feasible at all — 13s against 14s at wave 10. What stopped
+     decapitation being the default was never its damage bill, it was that the
+     bill could not be paid inside the breach window without a deep battery.
+
+     So the invariant worth pinning is the one that is actually load-bearing:
+     the head costs far more than the same damage spent on body, which is what
+     makes the attempt a burst-damage gamble rather than a free shortcut. */
+  assert.ok(straightAway > bodyFirst * 0.5,
+    `head-first (${straightAway}) must stay expensive next to body-first (${bodyFirst})`);
+
+  // the real gate: a full chain's head costs many times an exposed one
+  const exposed = (() => {
+    const w = E.createWorld();
+    const ch = chain(20, 0, 1200);
+    w.chains = [ch];
+    const headHp = ch.segs[0].hp;
+    return headHp;
+  })();
+  assert.ok(straightAway > exposed * 5,
+    `a protected head costs ${straightAway} against a bare head's ${exposed}`);
+});
+
+test('a full-length chain is decapitable, not merely armored', () => {
+  /* The property the sublinear divisor exists for, stated as a bound on burst
+     rather than on the constant: the head of a full chain must be reachable by
+     a battery a real run can actually build. Pinned as a ratio so retuning the
+     exponent has to stay honest about what it costs. */
+  const full = E.headDamageFactor(39);
+  assert.ok(full > 1 / 15, `a full chain's head takes 1/${(1 / full).toFixed(0)} damage, too little to ever land`);
+  assert.ok(full < 1 / 6, 'but it is still heavily protected');
+
+  // and the penalty must keep growing with the body, or clearing stops paying
+  assert.ok(E.headDamageFactor(39) < E.headDamageFactor(20));
+  assert.ok(E.headDamageFactor(20) < E.headDamageFactor(8));
 });
 
 test('a head grown by a split is armored by its own new body', () => {

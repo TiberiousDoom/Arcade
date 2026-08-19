@@ -206,8 +206,13 @@
   .empMeta{display:flex;flex-direction:column;gap:2px;padding:0 2px 2px}
   .empMeta b{font-size:11px;letter-spacing:.1em;text-transform:uppercase}
   .empMeta span{font-size:9px;color:var(--dim);letter-spacing:.04em}
-  .empMeta .heatline{height:3px;background:#1b3038;border-radius:1px;overflow:hidden;margin-top:2px}
-  .empMeta .heatline i{display:block;height:100%;background:var(--scale)}
+  /* How far this emplacement is built out — tiers bought over tiers available.
+     It was live gun heat until v36, which is a real number about a gun that is
+     not currently firing: it sat wherever the heat happened to be when the shop
+     opened, so it read as a progress bar that moved at random and meant
+     nothing here. Depth is what the card is actually about. */
+  .empMeta .xpline{height:3px;background:#1b3038;border-radius:1px;overflow:hidden;margin-top:2px}
+  .empMeta .xpline i{display:block;height:100%;background:var(--accent);transition:width .2s ease-out}
   .addCard{align-items:center;justify-content:center;border-style:dashed;
     border-left-style:dashed;min-height:110px;color:var(--dim)}
   .addCard b{font-size:22px;color:var(--brass);line-height:1}
@@ -1057,7 +1062,7 @@ function renderOverview(host) {
     cap.innerHTML =
       `<b style="color:${G.col}">${i + 1} · ${G.name}</b>` +
       `<span>${E.barrelsOf(gun)} barrel${E.barrelsOf(gun) > 1 ? 's' : ''} · ${depth}/${most} tiers</span>` +
-      `<span class="heatline"><i style="width:${Math.round(gun.heat * 100)}%"></i></span>`;
+      `<span class="xpline" title="${depth} of ${most} tiers bought"><i style="width:${most ? Math.round(depth / most * 100) : 0}%"></i></span>`;
     el.appendChild(cap);
 
     el.addEventListener('click', () => { shopTab = i; renderShop(); });

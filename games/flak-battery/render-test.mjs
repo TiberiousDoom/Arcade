@@ -202,6 +202,30 @@ function experienced(g, { points = 1e6 } = {}) {
   return g;
 }
 
+test('the emplacement bar shows how built-out the gun is, not its heat', async () => {
+  const g = experienced(await bootAndStart(SHELL));
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+
+  // heat high, nothing bought: a heat bar would be near full, a depth bar empty
+  world.battery.guns[0].heat = 0.9;
+  g.frame(1000);
+  const bar = () => doc.querySelector('.empCard .empMeta .xpline i')?.style.width;
+  assert.equal(bar(), '0%', 'an unbuilt gun reads empty however hot it is');
+
+  // buy into it and the bar has to move
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(world, 0, 'damage');
+  // the shop rebuilds on interaction, not on a frame — go into the mount and
+  // back out to the overview so the card is redrawn
+  openMount(doc, w, 0);
+  doc.querySelectorAll('#shopTabs .tab')[0].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const after = parseInt(bar(), 10);
+  assert.ok(after > 0, `the bar tracks tiers bought (read ${bar()})`);
+  assert.deepEqual(g.errors, [], 'the emplacement card threw');
+});
+
 test('a first-run shop opens with three rows, one thermal card, and no Research tab', async () => {
   const g = await bootAndStart(SHELL);
   const { world, window: w } = g;

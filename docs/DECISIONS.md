@@ -1221,3 +1221,50 @@ of the suite, all of them buying late branches at wave 1 — they were never abo
 onboarding, and they now say which player they mean via a `veteran(w)` helper.
 That several tests were silently relying on the opening shop being wide is
 itself the argument for stating it.
+
+## 2026-08-19 — The command ship is killable again, and the green bar was heat
+
+Two round-11 items on Flak Battery's emplacement cards and its head armour.
+
+**The bar under each emplacement card was live gun heat.** That is a real
+number about a gun that is not currently firing: it sat at whatever the heat
+happened to be when the shop opened, so it read as a progress bar that moved at
+random and told you nothing. It now shows tiers bought over tiers available,
+which is what the card is about and what it was being mistaken for anyway.
+Counted over *open* branches, so it agrees with the `n/m tiers` text beside it
+and does not show a new player a ceiling the ramp has not given them yet.
+
+**Head armour went from `1/(1+bodyLeft)` to `1/(1+bodyLeft^0.7)`.** The linear
+divisor scaled the penalty with chain length, and late waves are long, so
+decapitation stopped being reachable inside the breach window around wave 18
+for anything but a maxed battery and was gone by wave 45 — the mechanic died
+exactly where a command ship reaching the floor hurts most. At `^0.7` a
+two-mount opening battery still never gets it, three mounts at tier 3 gets it
+to wave 30, and four mounts at tier 4 gets it throughout.
+
+**The measurement that changed the framing:** decapitation was already the
+*faster* route whenever it was feasible, under the old divisor — 13s against
+14s for clearing the column at wave 10 — and it pays out every segment still
+attached, so it is not poorer either. Clearing the body was never the efficient
+route; it was the only available one. What gates decapitation is feasibility,
+not efficiency, and that is what the exponent tunes.
+
+Two engine tests asserted the old shape and were rewritten rather than nudged.
+One claimed a full chain makes the head "near-immune" (`< 0.05`); it now pins
+the band that keeps it both protected and reachable. The other asserted
+head-first costs more raw damage than body-first, which is no longer true — its
+methodology spent one oversized shot per body segment, and the property it
+stood in for ("decapitation is not the default route") was never true on time
+in the first place. It now pins the load-bearing claim: a protected head costs
+many times a bare one, so the attempt is a burst-damage gamble.
+
+If decapitation ever needs a real counterweight, **cut the payout, not the
+damage** — a fast kill that forfeits the column's scrap is a trade a player can
+weigh; a slow one nobody can land is just a dead mechanic.
+
+Also corrected: the comment above this code claimed the railgun was the tool
+for an early decapitation. Measured, it is the worst of them — slow rate, and
+its pierce is wasted on a single target (25.9s against the plain cannon's
+8.2s at wave 18). Rail's edge is `railBonus` against hardened hulls. And
+convergence turns out to be what makes a decapitation possible at all: 8.2s
+with it, 57.5s without.

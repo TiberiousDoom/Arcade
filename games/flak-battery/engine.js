@@ -1904,16 +1904,55 @@ export function splitChain(w, ci, i) {
    board an instant win and left recoil, mid-chain cutting, splitters and
    shielded flanking pointless.
 
-   Instead the body armors the head. Damage to it is divided by how much body
-   is still alive, so clearing the chain first is the efficient route — but a
-   rail shot or an overdrive burst can still attempt an early decapitation for
-   a large payoff. That turns the head into a risk/reward decision rather than
-   a shortcut, and killing it does end the whole snake. */
+   Instead the body armors the head, so stripping the chain is what opens the
+   head up — but a committed battery can attempt an early decapitation for a
+   large payoff. That makes the head a risk/reward decision rather than a
+   shortcut, and killing it does end the whole snake.
+
+   **The divisor is sublinear, and that is the whole point.** It was a flat
+   `1/(1+bodyLeft)` until v36, so the penalty scaled with chain length — and
+   late waves are long. Measured against the time a column actually gives you
+   before it breaches, decapitation stopped being reachable around wave 18 for
+   anything but a maxed battery and was gone entirely by wave 45. The mechanic
+   died exactly where a command ship reaching the floor hurts most.
+
+   At `^0.7` the ladder is (standard guns, full chain, vs the breach window):
+
+     build              w10    w18    w30    w45
+     2 mounts, tier 2   13s ✓  22s ✗  29s ✗  39s ✗    never, past the opening
+     3 mounts, tier 3    7s ✓  13s ✓  17s ✓  23s ✗    the committed build
+     4 mounts, tier 4    6s ✓  11s ✓  13s ✓  17s ✓    reliably
+     6 mounts, tier 5    3s ✓   9s ✓   8s ✓  19s ✗
+
+   **What gates decapitation is feasibility, not efficiency**, and that was
+   already true before this change. Measured in real play, aiming at the head
+   killed the chain *faster* than fighting it whenever it was possible at all —
+   13s against 14s at wave 10 under the old linear divisor. Clearing the body
+   was never the efficient route; it was the only available one. Decapitation
+   also pays out every segment still attached, so the price of the attempt is
+   the battery it takes to land it inside the window, and nothing else. If that
+   ever needs a real counterweight, cut the payout rather than the damage — a
+   fast kill that forfeits the column's scrap is a trade; a slow one nobody can
+   land is just a dead mechanic.
+
+   Two things measured along the way, worth not re-learning: **convergence is
+   what makes a decapitation possible at all** (8.2s with it, 57.5s without, at
+   wave 18), and **the railgun is the wrong tool** despite what this comment
+   used to claim — its slow rate and wasted pierce make it worse on a single
+   target than the plain cannon (25.9s against 8.2s). Rail's edge is
+   `railBonus` against hardened hulls, which is a different job. */
+
+/** Tuned by measuring decapitation time against the breach window at several
+ *  waves and build depths — see the table above. Toward 1 the mechanic dies
+ *  late; toward 0.5 a two-mount opening battery decapitates at wave 30, which
+ *  makes the body pointless. */
+export const HEAD_ARMOR_EXP = 0.7;
 
 /** Fraction of normal damage the head takes with `bodyLeft` segments behind it.
- *  1 at full exposure, falling away steeply while the body is intact. */
+ *  1 at full exposure, falling away steeply — but sublinearly, so a long chain
+ *  protects more than a short one without ever making the head immune. */
 export function headDamageFactor(bodyLeft) {
-  return 1 / (1 + Math.max(0, bodyLeft));
+  return 1 / (1 + Math.pow(Math.max(0, bodyLeft), HEAD_ARMOR_EXP));
 }
 
 /* ---------- hit-stop ----------
