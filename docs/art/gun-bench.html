@@ -1,0 +1,1292 @@
+<!-- WORK IN PROGRESS — NOT LOADED BY THE GAME.
+
+     A review bench for the shop gun portraits: the five guns drawn live, with
+     elevation, barrel-count and exposure controls. Open it directly in a
+     browser (it needs no server — everything is inlined).
+
+     **This file is a snapshot, not a source of truth.** Its drawing code was
+     assembled from shared/glow.js, the engine's GUN_TYPES/BARREL_OFFSETS and
+     the Flak Battery shell's drawCannonPortrait — and then *edited further*
+     with railgun and autocannon redesigns that are NOT yet in the shell. So it
+     is deliberately ahead of the game, and it will be behind the game the
+     moment the port lands. Treat it as a design document with a render
+     attached; delete it once the art is ported and the bench is rebuilt from
+     repo sources.
+
+     Why it exists at all: the render-test harness cannot judge this art. It is
+     dark body fills under additive glow, which node-canvas renders far dimmer
+     than a real GPU, so a faithful capture is unreadable and an "is there ink
+     here" assertion answers yes wherever it is pointed — two such assertions
+     passed with a gun lying flat. Seeing the art is the only way to review it.
+     See docs/DECISIONS.md, 2026-08-19.
+-->
+<title>Flak Battery Gun Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Chivo+Mono:wght@300;400;600;700&display=swap">
+<style>
+  /* One visual world on purpose: this art only ever exists on a dark board,
+     and a light ground would misrepresent every value in it. Every colour is
+     painted explicitly so the page holds whatever ground the viewer's theme
+     paints behind it. Tokens are the game's own. */
+  :root{
+    --board:#050b0d; --panel:#0b1a20; --panel-hi:#10242c;
+    --line:#16303a; --bone:#e6e9e2; --dim:#5d7681;
+    --brass:#c9a227; --brass-hot:#e3b929; --ink:#1a1405;
+    --plate:520px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--board); color:var(--bone);
+    font:400 14px/1.6 'Chivo Mono',ui-monospace,monospace;
+    padding:32px 20px 64px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+
+  header{display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line);padding-bottom:20px}
+  h1{
+    font:400 clamp(26px,4.4vw,42px)/1.05 'Archivo Black',system-ui,sans-serif;
+    margin:0; letter-spacing:.01em; text-wrap:balance; color:var(--bone);
+  }
+  h1 span{color:var(--brass)}
+  .sub{margin:0;color:var(--dim);max-width:62ch}
+  .stamp{
+    display:flex;gap:14px;flex-wrap:wrap;align-items:center;
+    font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
+  }
+  .stamp b{color:var(--brass);font-weight:700}
+
+  /* Control rail. Fixed-width fields so nothing reflows as values change. */
+  .rail{
+    display:flex;flex-wrap:wrap;gap:22px;align-items:flex-end;
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 18px;
+  }
+  .field{display:flex;flex-direction:column;gap:7px;min-width:0}
+  .field>label{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+  .val{color:var(--brass);font-weight:700;font-variant-numeric:tabular-nums}
+  input[type=range]{width:210px;accent-color:var(--brass);background:transparent}
+  .seg{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .seg button{
+    font:600 11px/1 'Chivo Mono',monospace;letter-spacing:.12em;text-transform:uppercase;
+    background:var(--panel-hi);color:var(--dim);border:0;padding:11px 14px;cursor:pointer;
+    transition:background .12s ease-out,color .12s ease-out;
+  }
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button[aria-pressed=true]{background:var(--brass);color:var(--ink)}
+  .seg button:focus-visible{outline:2px solid var(--bone);outline-offset:-2px}
+  .hint{font-size:11px;color:var(--dim);max-width:34ch;line-height:1.5}
+
+  /* The plates. Fixed minimum so a gun is never squeezed into illegibility. */
+  .plates{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  figure{
+    margin:0;background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    padding:12px;display:flex;flex-direction:column;gap:8px;
+  }
+  figure.lead{grid-column:1/-1;background:linear-gradient(180deg,var(--panel-hi),var(--panel))}
+  canvas{width:100%;height:auto;display:block;background:var(--board);border-radius:3px}
+  figcaption{display:flex;flex-direction:column;gap:3px}
+  .name{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+  .note{font-size:11px;color:var(--dim);line-height:1.5}
+
+  .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .note-card{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--brass);
+    border-radius:4px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+  .note-card h2{margin:0;font:700 11px/1.3 'Chivo Mono',monospace;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--brass)}
+  .note-card p{margin:0;font-size:12.5px;line-height:1.65;color:var(--bone)}
+  .note-card p em{color:var(--dim);font-style:normal}
+  footer{color:var(--dim);font-size:11.5px;line-height:1.7;border-top:1px solid var(--line);padding-top:18px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="stamp"><span>Flak Battery</span><span>·</span><span>shop portraits</span><span>·</span><span>build <b>v38</b></span></div>
+    <h1>Gun <span>Bench</span></h1>
+    <p class="sub">The five gun portraits, drawn by the repo's own code — <code>shared/glow.js</code> and
+    <code>drawCannonPortrait</code>, lifted verbatim. Change the elevation here before it changes in the game. The railgun keeps its own offset from the slider — it is a flat-trajectory gun.</p>
+  </header>
+
+  <div class="rail">
+    <div class="field">
+      <label for="elev">Elevation <span class="val" id="elevVal">60°</span></label>
+      <input type="range" id="elev" min="35" max="85" value="60" step="1">
+    </div>
+    <div class="field">
+      <label for="barrels">Barrels <span class="val" id="barVal">1</span></label>
+      <input type="range" id="barrels" min="1" max="3" value="1" step="1">
+    </div>
+    <div class="field">
+      <label>Exposure</label>
+      <div class="seg" role="group" aria-label="Exposure">
+        <button id="expTrue" aria-pressed="true">As it renders</button>
+        <button id="expLift" aria-pressed="false">Silhouette</button>
+      </div>
+    </div>
+    <p class="hint" id="expHint">True brightness: dark fills under additive glow, on the board's own ground.</p>
+  </div>
+
+  <div class="plates" id="plates"></div>
+
+  <div class="notes">
+    <div class="note-card">
+      <h2>The mount did most of it</h2>
+      <p>It was a splayed trapezoid — a mortar baseplate. Now a cruciform of outriggers on screw-jack pads,
+      with a pedestal and traversing race. <em>Shared by all five types, as the mount always was.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>The breech sits behind the trunnion</h2>
+      <p>A gun does not pivot at the back of its own barrel. The breech swings down as the muzzle comes up —
+      the clearest cue that the gun is elevating rather than merely pointing.</p>
+    </div>
+    <div class="note-card">
+      <h2>The tube tapers</h2>
+      <p>A parallel-sided rectangle was most of the pipe impression. It tapers to a reinforced muzzle band now,
+      and the three evenly spaced reinforcing bands drop to one. <em>Evenly spaced bands read as a ladder.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>Three mounts, not a boolean</h2>
+      <p><b>Towed</b> outriggers for the field guns · <b>deck</b> plate and drum for the railgun · <b>bunker</b>
+      casemate for the autocannon. <em>What a gun stands on is read first, because it is the widest thing on the
+      card. Started as a boolean and did not survive the second one.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>Four barrels, not six</h2>
+      <p>Only the front arc of a rotary cluster is visible side-on; all six merged into one fat tube at this size.
+      Four are drawn as tubes, each with its own collar and bore. <em>Showing what can be seen beats modelling
+      what is there.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>The railgun is emplaced, not towed</h2>
+      <p>A bolted deck plate and turret drum instead of outriggers, an armoured housing instead of an open
+      carriage, and a flat trajectory — it is a direct-fire weapon, so it does not sit at flak elevation.
+      <em>The mount is now per type, because which one a gun stands on is as much of its identity as the barrel.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>No tube, on purpose</h2>
+      <p>A railgun accelerates its round down a pair of rails in open air. Drawing a solid barrel around them
+      would be drawing the one thing the weapon does not have — so the frame is open, and the coil ladder
+      running its length is what makes it read as an accelerator rather than a girder.</p>
+    </div>
+    <div class="note-card">
+      <h2>Coils on the top, plate on the side</h2>
+      <p>A second pair of rails offset back and up gives the assembly a top face and a near face. The coils are
+      exposed along the top channel; the flank is closed. <em>Running the ladder down both faces made it read as
+      open lattice from every angle — which is a ladder, not a machine.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>The trunnion sits high on the mount</h2>
+      <p>A towed gun's trunnion sits on top of its carriage; a turret's sits high, with the fixed armour below the
+      rails rather than wrapped around them. <em>Pivoting at the mount's centre is what kept burying it behind
+      the counterweight.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>One projection for the whole gun</h2>
+      <p>Housing, counterweight, collar and muzzle brace all take the same depth offset as the rails — back and up.
+      <em>They were built with the generic back-face offset, which points down-right, so two halves of one rigid
+      body looked seen from opposite sides. A depth cue only works if every part agrees on it.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>Five parts, named apart</h2>
+      <p><b>Base plate</b> bolted down · <b>mount</b> traversing on the drum · <b>housing</b> elevating with the gun ·
+      <b>counterweight</b> behind it · <b>rails</b> out the front. <em>Calling the mount "the housing" is what hid
+      the fact that the housing was missing.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>Why 60° and not 70°</h2>
+      <p>Past about 65° the equilibrator, cradle and breech fold in behind the tube and the gun loses the triangle
+      of linkage that reads as artillery. <em>Drag the slider past 70 and watch it happen.</em></p>
+    </div>
+  </div>
+
+  <footer>
+    Silhouette exposure lifts the gamma hard — deliberately unfaithful, and useful because shape is the only thing
+    it shows. It is how this art gets checked at all: a headless canvas renders the additive glow far dimmer than a
+    phone does, so a faithful capture is unreadable and an <q>is there ink here</q> test answers yes wherever it is pointed.
+  </footer>
+</div>
+
+<script>
+/* Lifted verbatim from the repo, so this bench cannot drift from the game:
+   shared/glow.js, GUN_TYPES and BARREL_OFFSETS from the engine, and
+   drawCannonPortrait from the Flak Battery shell. */
+const TAU = Math.PI * 2;
+
+/* The vector/CRT look, as Canvas 2D primitives.
+
+   The reference is vector-arcade hardware — Asteroids, Tempest, Battlezone —
+   where a beam draws lines onto phosphor rather than filling pixels. Three
+   ideas do all the work:
+
+   1. An emissive stroke is the SAME path drawn several times, widest and
+      dimmest first, narrowest and brightest last, composited with 'lighter' so
+      the passes accumulate. That stacking is what makes a line read as
+      emitting light rather than as being painted.
+   2. Volume comes from a dark opaque body with a glowing rim and a second face
+      offset behind it — not from shading, which emissive line art cannot do.
+      See `extrude`.
+   3. Phosphor persistence is a frame that is faded rather than cleared.
+
+   Deliberately NOT using `shadowBlur`, which is the obvious API for glow and is
+   brutally slow — measurably so on a phone. Multi-pass strokes get the same
+   look for a fraction of the cost and give control over the falloff.
+
+   Deliberately NOT using WebGL either, which would make real bloom cheap. The
+   render tests boot every shell against node-canvas, which is 2D only, so
+   moving to WebGL would throw away the draw-path safety net across all four
+   games. That trade is not worth it for a look this achieves anyway. */
+
+/**
+ * Scale a color's brightness, keeping its hue and alpha.
+ *
+ * Exists because `extrude`/`extrudeRect`/`cube` take colors but no intensity
+ * argument the way `glowStroke` does — they issue several strokes and fills
+ * internally, so a single alpha could not describe "dimmer" for all of them.
+ * For additive glow, multiplying the channels is equivalent to lowering the
+ * intensity anyway, and it also correctly darkens the opaque body fills.
+ *
+ * Both Flak Battery and Choke Point use this to say the same thing: a damaged
+ * thing is a dimmer thing. That's the whole health readout in both games now —
+ * no numbers, no bars.
+ *
+ * @param col CSS color — `#rgb`, `#rrggbb`, or `rgb()/rgba()`
+ * @param k   0..1 brightness multiplier
+ */
+function dim(col, k) {
+  const f = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
+  if (col[0] === '#') {
+    const h = col.slice(1);
+    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const n = parseInt(full, 16);
+    return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+  }
+  const m = col.match(/-?[\d.]+/g);
+  if (!m || m.length < 3) return col;               // unrecognised: leave it alone
+  const a = m.length > 3 ? m[3] : 1;
+  return `rgba(${f(+m[0])},${f(+m[1])},${f(+m[2])},${a})`;
+}
+
+/** Default falloff: [widthMultiplier, alpha] per pass, dim-and-wide first. */
+const GLOW_PASSES = [[6, 0.10], [3.5, 0.20], [2, 0.45], [1, 1]];
+/** A cheaper two-pass falloff for things drawn many times per frame. */
+const GLOW_PASSES_CHEAP = [[3.5, 0.16], [1, 0.9]];
+
+/**
+ * Stroke a path so it glows.
+ * @param ctx    canvas context
+ * @param path   (ctx) => void — issues the path commands, no stroke/fill
+ * @param col    CSS color
+ * @param width  width of the bright core
+ * @param passes falloff table; use GLOW_PASSES_CHEAP in hot loops
+ * @param intensity 0..1 dimmer. Has to be a parameter rather than an outer
+ *        `globalAlpha`, because each pass sets its own alpha and would
+ *        overwrite it — a caller wrapping this in save/globalAlpha/restore
+ *        silently gets no effect at all.
+ */
+function glowStroke(ctx, path, col, width = 2, passes = GLOW_PASSES, intensity = 1) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = col;
+  for (const [mult, alpha] of passes) {
+    ctx.globalAlpha = alpha * intensity;
+    ctx.lineWidth = width * mult;
+    ctx.beginPath();
+    path(ctx);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** A solid emissive dot of radius `r`, with the glow spreading *outside* it —
+ *  for sparks, food, impact flashes.
+ *
+ *  `r` is the size of the opaque core, not the outer extent of the haze, and
+ *  that matters: an earlier version put the only full-alpha pass at r * 0.5, so
+ *  a caller asking for a 7px pellet got a 3px core wrapped in a soft smudge.
+ *  It rendered — it just read as a faint blur rather than an object, and Live
+ *  Wire's food became genuinely hard to spot on a phone. A dot should be as
+ *  solid as the flat art it replaces, and merely gain a halo.
+ *
+ *  Stacked filled discs rather than a stroked circle, because a stroked circle
+ *  is an annulus and comes out as a donut at small radii. */
+/** Falloff for a glowing dot. Exported so `glowDots` and callers that want the
+ *  cheap version can name the same thing. */
+const DOT_PASSES = [[2.2, 0.08], [1.6, 0.16], [1.2, 0.30], [1, 1]];
+const DOT_PASSES_CHEAP = [[1.7, 0.18], [1, 1]];
+
+function glowDot(ctx, x, y, r, col, intensity = 1, passes = DOT_PASSES) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = col;
+  for (const [mult, alpha] of passes) {
+    ctx.globalAlpha = alpha * intensity;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(0.4, r * mult), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Many glowing dots of one colour, drawn with the canvas state set up once.
+ *
+ *  `glowDot` is fine for a handful and ruinous for a crowd: it is four arcs
+ *  plus a save/restore and a composite change *per dot*. Flak Battery peaks at
+ *  82 rounds on screen, each drawn with two of them — about 650 individual
+ *  fills a frame for the shots alone, which is what the reported choppiness at
+ *  five upgraded guns actually was.
+ *
+ *  The win is entirely in hoisting: one `save`/`restore`, one composite change
+ *  and one `globalAlpha` write per *pass* rather than per dot. Measured on the
+ *  five-gun/28-tier case, mean frame went 16.36 ms → 8.19 ms.
+ *
+ *  It still fills each dot separately, on purpose. Accumulating every arc into
+ *  one path per pass was tried and is *faster on paper but not the same
+ *  picture*: a single fill covers overlapping arcs once, while separate fills
+ *  blend twice under `lighter`, so clustered fire came out dimmer (measured:
+ *  1772 of 160000 pixels differing, max channel delta 162). It also measured no
+ *  quicker in practice (8.31 ms vs 8.19 ms), so exactness costs nothing.
+ *
+ *  `dots` is an array of `{ x, y, r }`. */
+function glowDots(ctx, dots, col, intensity = 1, passes = DOT_PASSES) {
+  if (!dots.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = col;
+  for (const [mult, alpha] of passes) {
+    ctx.globalAlpha = alpha * intensity;
+    for (const d of dots) {
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, Math.max(0.4, d.r * mult), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/** Paint over an emissive shape in a dark color — pupils, vents, panel lines.
+ *  Additive compositing cannot darken, so detail *inside* a glowing object has
+ *  to be drawn normally, on top. */
+function inkDot(ctx, x, y, r, col = 'rgba(6,20,17,.92)') {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * Draw a shape as a solid object with thickness: a dark face offset behind,
+ * the connecting edges, then a dark body in front with a glowing rim.
+ *
+ * The body fill matters as much as the glow — it occludes whatever is behind,
+ * which is what stops a screen full of emissive line art turning into soup.
+ *
+ * @param path   (ctx, dx, dy) => void — the outline, offset by (dx, dy)
+ * @param opts.depth  how far the back face sits down-right
+ * @param opts.body   fill for the front face
+ */
+function extrude(ctx, path, col, {
+  depth = 7, width = 1.8, body = 'rgba(8,18,22,.97)', back = 'rgba(6,14,17,.95)',
+  edges = null,
+} = {}) {
+  const dx = depth * 0.55, dy = depth;
+
+  // back face, filled dark then rimmed very faintly so it reads as *behind*
+  ctx.save();
+  ctx.fillStyle = back;
+  ctx.beginPath(); path(ctx, dx, dy); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c => path(c, dx, dy), col, 1, [[4, 0.05], [2, 0.10]]);
+
+  // the side edges connecting the faces — this is what says "extruded" rather
+  // than "two copies". Supplied per-shape because only the caller knows which
+  // points are on the silhouette.
+  if (edges) glowStroke(ctx, c => edges(c, dx, dy), col, 1, [[3, 0.07], [1.2, 0.18]]);
+
+  // front face: opaque body, then the bright rim
+  ctx.save();
+  ctx.fillStyle = body;
+  ctx.beginPath(); path(ctx, 0, 0); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c => path(c, 0, 0), col, width);
+}
+
+/** Convenience: an extruded disc, with the specular arc that reads as curvature. */
+function extrudeDisc(ctx, x, y, r, col, opts = {}) {
+  const depth = opts.depth ?? 7;
+  extrude(ctx, (c, dx, dy) => c.arc(x + dx, y + dy, r, 0, Math.PI * 2), col, opts);
+  // a short highlight on the lit side. Small, but it is the single cue that
+  // makes a flat disc read as a domed one.
+  glowStroke(ctx, c => c.arc(x, y, r * 0.62, Math.PI * 1.15, Math.PI * 1.75),
+    '#ffffff', 1, [[3, 0.08], [1.4, 0.22]]);
+}
+
+/** The invaders' shape.
+ *
+ *  A square face with a second face offset behind it and the silhouette corners
+ *  joined, which reads as a cube without needing a projection matrix. `rot`
+ *  tumbles it — worth using for things in flight, wrong for things marching in
+ *  formation on the ground.
+ *
+ *  This is the whole visual half of the setting: everything the invaders are
+ *  made of is a cube, everything the defenders are made of is a sphere. Keeping
+ *  that rule absolute is what makes a board readable at a glance, so resist
+ *  drawing a "sort of rounded" anything. */
+function cube(ctx, x, y, size, col, {
+  depth = size * 0.34, rot = 0, width = 2,
+  body = 'rgba(10,20,26,.97)', back = 'rgba(7,14,18,.95)',
+} = {}) {
+  const h = size / 2;
+  const c = Math.cos(rot), s = Math.sin(rot);
+  // corners of the front face, rotated about the center
+  const pt = (sx, sy) => ({ x: x + (sx * h * c - sy * h * s), y: y + (sx * h * s + sy * h * c) });
+  const F = [pt(-1, -1), pt(1, -1), pt(1, 1), pt(-1, 1)];
+  const dx = depth * 0.55, dy = depth;
+
+  const face = (c2, ox, oy) => {
+    c2.moveTo(F[0].x + ox, F[0].y + oy);
+    for (let i = 1; i < 4; i++) c2.lineTo(F[i].x + ox, F[i].y + oy);
+    c2.closePath();
+  };
+
+  ctx.save();
+  ctx.fillStyle = back;
+  ctx.beginPath(); face(ctx, dx, dy); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c2 => face(c2, dx, dy), col, 1, [[4, 0.05], [2, 0.10]]);
+
+  // the joining edges are what say "solid", not "two squares"
+  glowStroke(ctx, c2 => {
+    for (const p of F) { c2.moveTo(p.x, p.y); c2.lineTo(p.x + dx, p.y + dy); }
+  }, col, 1, [[3, 0.07], [1.2, 0.18]]);
+
+  ctx.save();
+  ctx.fillStyle = body;
+  ctx.beginPath(); face(ctx, 0, 0); ctx.fill();
+  ctx.restore();
+  glowStroke(ctx, c2 => face(c2, 0, 0), col, width);
+}
+
+/** Convenience: an extruded axis-aligned rectangle. */
+function extrudeRect(ctx, x, y, w, h, col, opts = {}) {
+  const depth = opts.depth ?? 6;
+  extrude(ctx, (c, dx, dy) => c.rect(x + dx, y + dy, w, h), col, {
+    ...opts, depth,
+    edges: (c, dx, dy) => {
+      // only the two silhouette corners need connecting for an axis-aligned box
+      c.moveTo(x + w, y);         c.lineTo(x + w + dx, y + dy);
+      c.moveTo(x + w, y + h);     c.lineTo(x + w + dx, y + h + dy);
+      c.moveTo(x, y + h);         c.lineTo(x + dx, y + h + dy);
+    },
+  });
+}
+
+/**
+ * Phosphor persistence: fade the frame instead of clearing it, so moving
+ * objects leave a decaying trail.
+ *
+ * `reduce` short-circuits to a hard clear — trails are exactly the kind of
+ * motion `prefers-reduced-motion` exists to suppress, and a game that ignores
+ * it is worse than one that never had the effect.
+ */
+function fadeFrame(ctx, w, h, { amount = 0.28, bg = '#050b0d', reduce = false } = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  if (reduce) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    // the alpha is applied to the background color, so the trail decays
+    // toward the board color rather than toward transparent
+    ctx.globalAlpha = amount;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+  }
+  ctx.restore();
+}
+
+/** Horizontal scanlines. Cheap, and the thing that most says "CRT". */
+function scanlines(ctx, w, h, { gap = 3, strength = 0.28 } = {}) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = `rgba(0,0,0,${strength})`;
+  for (let y = 0; y < h; y += gap) ctx.fillRect(0, y, w, 1);
+  ctx.restore();
+}
+
+
+const GUN_TYPES = {
+  standard: { name: 'Cannon',     rate: 1.0,  dmg: 1.0, pierce: 0, spd: 1.0,  col: '#c9a227', refitBase: 0 },
+  auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', refitBase: 120 },
+  rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', refitBase: 160 },
+  mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', refitBase: 200, arc: true },
+  // The one gun `shielded` can't deflect — the collision loop checks the
+  // shot's `gun` field for the literal string 'ion' before ever calling
+  // isDeflected, not a stat on this table.
+  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', refitBase: 260 },
+};
+
+const BARREL_OFFSETS = { 1: [], 2: [11], 3: [-13, 13] };;
+const PORTRAIT_W = 420, PORTRAIT_H = 372, PORTRAIT_LIFT = 182;
+let PORTRAIT_ANGLE = -1.05;
+
+const E = { GUN_TYPES, BARREL_OFFSETS };
+
+function drawCannonPortrait(g, type, barrels = 1) {
+  const G = E.GUN_TYPES[type];
+  const col = G.col;
+  const W2 = 420, H2 = 190;
+  g.clearRect(0, 0, PORTRAIT_W, PORTRAIT_H);
+  g.save();
+  g.translate(0, PORTRAIT_LIFT);
+
+  const BODY = 'rgba(24,44,56,.98)';
+  const BACK = 'rgba(13,26,34,.98)';
+  const px = 130, py = 132;                 // trunnion: where the barrel pivots
+
+  /* --- the mount: a cruciform platform on jack pads, then a pedestal.
+
+     This was a plain splayed trapezoid, which reads as a mortar baseplate — a
+     wedge with a tube coming out of it. Real towed AA artillery sits on a
+     cross of outriggers, levelled on screw jacks, with the traversing body on
+     a pedestal above them; that outline is most of what makes a gun look like
+     a gun rather than a launcher, and it is the one part of the drawing that
+     is the same for every type. Shared, as the mount always was. */
+  const gy = H2 - 15;                       // ground line
+  /* Two mounts, not one. A towed field piece stands on outriggers; a railgun is
+     an emplacement — bolted to a deck plate, never moved once sited. Which one a
+     gun sits on is as much of its identity as the barrel, so it is per type. */
+  /* Three mounts, not one. What a gun stands on is as much of its identity as
+     what it fires — and it is the part of the silhouette read first, because it
+     is the widest thing on the card.
+
+       towed   outriggers on screw jacks   the field guns
+       deck    bolted plate and drum       the railgun, an emplacement
+       bunker  armoured casemate           the autocannon, dug in
+
+     Started as a boolean and did not survive the second one. */
+  const mount = type === 'rail' ? 'deck' : type === 'auto' ? 'bunker' : 'towed';
+  const deck = mount === 'deck';
+  /* Where the barrel actually pivots. A towed gun's trunnion sits on top of its
+     carriage; a turret's sits high above its armour, with the mass *below* the
+     gun rather than wrapped around it. Pivoting at the mount's centre was what
+     kept burying it behind the breech. */
+  const pvy = mount === 'towed' ? py : mount === 'deck' ? py - 34 : py - 52;
+
+  // ground first, so everything stands on it
+  glowStroke(g, c => { c.moveTo(14, gy); c.lineTo(W2 - 14, gy); }, col, 1.6, undefined, 0.5);
+
+  if (mount === 'bunker') {
+    /* An armoured casemate: a truncated pyramid, wide at the ground and stepped
+       in as it rises, with a heavy skirt where it meets the deck. A dug-in
+       emplacement, not a vehicle — the autocannon is the gun you put where the
+       line has to hold, and its mount should look poured rather than parked. */
+    const bTop = gy - 74, bBot = gy + 12;
+    const casemate = (dx, dy, fill) => {
+      g.beginPath();
+      g.moveTo(px - 128 + dx, bBot + dy);
+      g.lineTo(px - 62 + dx, bTop + dy);
+      g.lineTo(px + 74 + dx, bTop + dy);
+      g.lineTo(px + 146 + dx, bBot + dy);
+      g.closePath();
+      g.fillStyle = fill; g.fill();
+    };
+    casemate(9, 5, BACK); casemate(0, 0, BODY);
+    glowStroke(g, c => {
+      c.moveTo(px - 128, bBot); c.lineTo(px - 62, bTop);
+      c.lineTo(px + 74, bTop); c.lineTo(px + 146, bBot);
+    }, col, 2.4);
+
+    /* Armour plates bolted to the slope. Their edges follow the batter of the
+       wall rather than sitting square on it, which is what stops them reading
+       as stickers on a cone. */
+    const plate = (x0, x1, inset) => {
+      const t = (bBot - bTop);
+      const sl = (x, y) => x + (y - bTop) / t * inset;
+      const y0 = bTop + 14, y1 = bBot - 16;
+      const q = (c) => {
+        c.moveTo(sl(x0, y0), y0); c.lineTo(sl(x1, y0), y0);
+        c.lineTo(sl(x1, y1), y1); c.lineTo(sl(x0, y1), y1); c.closePath();
+      };
+      g.beginPath(); q(g); g.fillStyle = BODY; g.fill();
+      glowStroke(g, q, col, 1.5, undefined, 0.75);
+      for (const [bx2, by2] of [[sl(x0, y0) + 7, y0 + 8], [sl(x1, y0) - 7, y0 + 8],
+                                [sl(x0, y1) + 8, y1 - 8], [sl(x1, y1) - 8, y1 - 8]]) {
+        glowDot(g, bx2, by2, 2, col, 0.7);
+      }
+    };
+    plate(px - 104, px - 40, 30);
+    plate(px - 24, px + 34, 12);
+    plate(px + 52, px + 112, -18);
+
+    // the skirt: a heavy band at the ground, with the tie-down cleats
+    extrudeRect(g, px - 138, bBot - 8, 296, 18, col,
+      { depth: 5, width: 1.9, body: BODY, back: BACK });
+    for (const cx2 of [px - 110, px - 42, px + 34, px + 108]) {
+      extrudeRect(g, cx2 - 9, bBot - 16, 18, 14, col,
+        { depth: 3, width: 1.3, body: BODY, back: BACK });
+      glowDot(g, cx2, bBot - 9, 2.2, col, 0.8);
+    }
+
+    // the turret ring the gun traverses on, stepped in above the casemate
+    for (const [ry, rr, a] of [[bTop + 2, 74, 1], [bTop - 10, 66, 0.85], [bTop - 21, 58, 0.7]]) {
+      g.beginPath(); g.ellipse(px + 6, ry, rr, rr * 0.28, 0, 0, TAU);
+      g.fillStyle = a > 0.9 ? BACK : BODY; g.fill();
+      glowStroke(g, c => c.ellipse(px + 6, ry, rr, rr * 0.28, 0, 0, TAU), col, 1.6, undefined, a);
+    }
+  } else if (deck) {
+    /* Deck plate: a low armoured slab, chamfered at both ends and lugged at the
+       corners where it bolts down. Drawn as a shallow parallelogram rather than
+       a rectangle so it reads as a plate lying on the ground rather than a wall
+       standing on it — the same cue the jack pads use. */
+    const pl = (dx, dy, fill) => {
+      g.beginPath();
+      g.moveTo(px - 114 + dx, gy - 2 + dy);
+      g.lineTo(px - 88 + dx, gy - 18 + dy);
+      g.lineTo(px + 106 + dx, gy - 18 + dy);
+      g.lineTo(px + 134 + dx, gy - 2 + dy);
+      g.lineTo(px + 106 + dx, gy + 14 + dy);
+      g.lineTo(px - 88 + dx, gy + 14 + dy);
+      g.closePath();
+      g.fillStyle = fill; g.fill();
+    };
+    pl(5, 4, BACK); pl(0, 0, BODY);
+    glowStroke(g, c => {
+      c.moveTo(px - 114, gy - 2); c.lineTo(px - 88, gy - 18); c.lineTo(px + 106, gy - 18);
+      c.lineTo(px + 134, gy - 2); c.lineTo(px + 106, gy + 14); c.lineTo(px - 88, gy + 14);
+      c.closePath();
+    }, col, 2.2);
+    // the recessed channel around the turret ring, and the plate's seam line
+    glowStroke(g, c => { c.moveTo(px - 80, gy - 11); c.lineTo(px + 98, gy - 11); }, col, 1.1, undefined, 0.45);
+    // bolt lugs: a ring at each corner of the plate
+    for (const [lx, ly] of [[px - 99, gy - 2], [px + 119, gy - 2], [px - 70, gy + 11], [px + 88, gy + 11]]) {
+      glowStroke(g, c => c.ellipse(lx, ly, 7, 3.4, 0, 0, TAU), col, 1.4, undefined, 0.9);
+      inkDot(g, lx, ly, 2.6);
+    }
+    // turret ring: the drum the housing traverses on, stacked rings
+    for (const [ry, rr, a] of [[gy - 12, 58, 1], [gy - 22, 52, 0.85], [gy - 32, 45, 0.7]]) {
+      g.beginPath(); g.ellipse(px + 8, ry, rr, rr * 0.30, 0, 0, TAU);
+      g.fillStyle = a > 0.8 ? BACK : BODY; g.fill();
+      glowStroke(g, c => c.ellipse(px + 8, ry, rr, rr * 0.30, 0, 0, TAU), col, 1.6, undefined, a);
+    }
+  } else {
+
+  /* Outriggers. Two run left and right nearly along the ground line, two run
+     fore and aft — foreshortened, so they read as a cross seen from the side
+     rather than as four legs in a row. Each is a tapered arm, not a stick:
+     a plain line at this size disappears next to the barrel. */
+  const arm = (x2, y2, w0, w1) => {
+    const dx = x2 - px, dy = y2 - (gy - 12);
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;    // unit normal, for the taper
+    const path = (c) => {
+      c.moveTo(px + nx * w0, (gy - 12) + ny * w0);
+      c.lineTo(x2 + nx * w1, y2 + ny * w1);
+      c.lineTo(x2 - nx * w1, y2 - ny * w1);
+      c.lineTo(px - nx * w0, (gy - 12) - ny * w0);
+      c.closePath();
+    };
+    g.beginPath(); path(g); g.fillStyle = BODY; g.fill();
+    glowStroke(g, path, col, 1.6);
+  };
+  /* A jack pad: the screw post and the dish it stands on. Drawn as a flat
+     ellipse because that is what a disc lying on the ground looks like from
+     here — the same perspective cue the board uses for craft on the deck. */
+  const pad = (x, y, r) => {
+    g.beginPath(); g.ellipse(x, y, r, r * 0.34, 0, 0, TAU);
+    g.fillStyle = BACK; g.fill();
+    glowStroke(g, c => c.ellipse(x, y, r, r * 0.34, 0, 0, TAU), col, 1.5);
+    extrudeRect(g, x - 3.5, y - 13, 7, 13, col, { depth: 3, width: 1.2, body: BODY, back: BACK });
+  };
+
+  // the far pair first, so the near pair overlaps them
+  arm(px - 52, gy - 22, 7, 3);   pad(px - 52, gy - 22, 11);
+  arm(px + 62, gy - 24, 7, 3);   pad(px + 62, gy - 24, 11);
+  arm(px - 104, gy + 4, 8, 4);   pad(px - 104, gy + 4, 15);
+  arm(px + 118, gy + 2, 8, 4);   pad(px + 118, gy + 2, 15);
+
+  // pedestal: the drum the whole gun traverses on
+  const ped = (dx, dy, fill) => {
+    g.beginPath();
+    g.moveTo(px - 24 + dx, gy - 10 + dy);
+    g.lineTo(px - 18 + dx, py + 22 + dy);
+    g.lineTo(px + 26 + dx, py + 22 + dy);
+    g.lineTo(px + 32 + dx, gy - 10 + dy);
+    g.closePath();
+    g.fillStyle = fill; g.fill();
+  };
+  ped(6, 4, BACK); ped(0, 0, BODY);
+  glowStroke(g, c => {
+    c.moveTo(px - 24, gy - 10); c.lineTo(px - 18, py + 22);
+    c.lineTo(px + 26, py + 22); c.lineTo(px + 32, gy - 10);
+  }, col, 2.2);
+  // the traversing race: a band where the pedestal meets the body
+  glowStroke(g, c => { c.moveTo(px - 19, py + 21); c.lineTo(px + 27, py + 21); }, col, 1.8, undefined, 0.8);
+
+  }
+
+  // --- the traversing body, and the trunnion the barrel pivots on
+  if (mount === 'bunker') {
+    /* A squat turret sitting in the casemate's ring: sloped cheeks, a low crown,
+       and the ammunition boxes that feed a rotary gun. Wide and low where the
+       railgun's mount is tall and narrow — the two emplacements should not be
+       confusable at a glance. */
+    const tTop = py - 44, tBot = py + 4;
+    const turret = (dx, dy, fill) => {
+      g.beginPath();
+      g.moveTo(px - 64 + dx, tBot + dy);
+      g.lineTo(px - 50 + dx, tTop + dy);
+      g.lineTo(px + 48 + dx, tTop + dy);
+      g.lineTo(px + 66 + dx, tBot + dy);
+      g.closePath();
+      g.fillStyle = fill; g.fill();
+    };
+    turret(8, 5, BACK); turret(0, 0, BODY);
+    glowStroke(g, c => {
+      c.moveTo(px - 64, tBot); c.lineTo(px - 50, tTop);
+      c.lineTo(px + 48, tTop); c.lineTo(px + 66, tBot); c.closePath();
+    }, col, 2.3);
+    glowStroke(g, c => {
+      c.moveTo(px - 50, tTop + 16); c.lineTo(px + 49, tTop + 16);
+      c.moveTo(px + 18, tTop); c.lineTo(px + 22, tBot);
+    }, col, 1.2, undefined, 0.42);
+    extrudeRect(g, px + 26, tTop + 4, 26, 10, col, { depth: 3, width: 1.3, body: BODY, back: BACK });
+
+    /* Ammunition boxes on the crown. A rotary gun's problem is feed, and the
+       boxes are the visible answer — they say "this one never stops" more than
+       the barrels do. */
+    for (let i = 0; i < 3; i++) {
+      extrudeRect(g, px - 40 + i * 30, tTop - 16, 26, 17, col,
+        { depth: 4, width: 1.4, body: BODY, back: BACK });
+    }
+    glowStroke(g, c => {
+      c.moveTo(px + 6, tTop - 2); c.lineTo(px + 26, tTop + 10);
+    }, col, 1.6, undefined, 0.7);
+  } else if (deck) {
+    /* The MOUNT: the fixed body between the turret drum and the trunnion. It
+       traverses with the gun but never elevates — everything that elevates is
+       drawn in barrel space further down (housing, counterweight, rails).
+       Naming these apart matters: calling this the housing is what hid the fact
+       that the elevating housing was missing entirely. */
+    const face = [
+      [px - 50, py + 26], [px - 44, py - 14], [px - 16, py - 38],
+      [px + 34, py - 38], [px + 52, py - 8], [px + 52, py + 26],
+    ];
+    const hs = (dx, dy, fill) => {
+      g.beginPath();
+      face.forEach(([x, y], i) => i ? g.lineTo(x + dx, y + dy) : g.moveTo(x + dx, y + dy));
+      g.closePath();
+      g.fillStyle = fill; g.fill();
+    };
+    hs(9, 6, BACK); hs(0, 0, BODY);
+    glowStroke(g, c => {
+      face.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
+      c.closePath();
+    }, col, 2.4);
+
+    /* Armour facets. Panel seams that follow the shape rather than a grid —
+       a rectangular grid on a faceted body reads as a texture laid over it,
+       which is the thing that makes vector armour look like wallpaper. */
+    glowStroke(g, c => {
+      c.moveTo(px - 44, py - 6); c.lineTo(px + 51, py - 6);     // the belt line
+      c.moveTo(px - 16, py - 38); c.lineTo(px - 8, py - 6);     // the chamfer edges
+      c.moveTo(px + 34, py - 38); c.lineTo(px + 30, py - 6);
+      c.moveTo(px + 12, py - 6); c.lineTo(px + 12, py + 26);
+    }, col, 1.2, undefined, 0.42);
+
+    // raised spine over the crown, the cue that says armour rather than casing
+    glowStroke(g, c => {
+      c.moveTo(px - 12, py - 38); c.lineTo(px - 8, py - 46);
+      c.lineTo(px + 28, py - 46); c.lineTo(px + 32, py - 38);
+    }, col, 1.8, undefined, 0.9);
+
+    // capacitor bank down the near flank, and an access hatch beside it
+    for (let i = 0; i < 5; i++) {
+      glowStroke(g, c => {
+        c.moveTo(px - 40, py - 6 + i * 8); c.lineTo(px - 20, py - 6 + i * 8);
+      }, col, 1.3, undefined, 0.55);
+    }
+    extrudeRect(g, px + 18, py + 2, 26, 22, col, { depth: 3, width: 1.3, body: BODY, back: BACK });
+    // hazard flash by the hatch, the one deliberately asymmetric mark
+    glowDot(g, px + 47, py + 30, 2.6, col, 0.8);
+  } else {
+  extrudeRect(g, px - 30, py - 14, 62, 36, col, { depth: 7, width: 2, body: BODY, back: BACK });
+  // handwheels: elevation on the near side, traverse below it
+  for (const [hx, hy, hr] of [[px + 36, py + 6, 8], [px - 34, py + 12, 6]]) {
+    glowStroke(g, c => c.arc(hx, hy, hr, 0, TAU), col, 1.5, undefined, 0.85);
+    glowStroke(g, c => {
+      c.moveTo(hx - hr, hy); c.lineTo(hx + hr, hy);
+      c.moveTo(hx, hy - hr); c.lineTo(hx, hy + hr);
+    }, col, 1, undefined, 0.6);
+  }
+  /* Layer's sight gear, off the left of the body. Two small boxes on a bracket
+     — not readable as optics at this size, but the asymmetric cluster is what
+     stops the gun looking like a symmetrical toy. */
+  extrudeRect(g, px - 58, py - 22, 22, 14, col, { depth: 4, width: 1.4, body: BODY, back: BACK });
+  glowStroke(g, c => { c.moveTo(px - 40, py - 8); c.lineTo(px - 30, py + 2); }, col, 1.4, undefined, 0.8);
+  glowStroke(g, c => { c.moveTo(px - 52, py - 22); c.lineTo(px - 52, py - 30); }, col, 1.6, undefined, 0.7);
+  }
+
+  /* --- the barrel assembly, per type. `len`/`bore` are the silhouette; each
+         branch then adds the detail that names the gun. */
+  /* `bore2` is the bore at the muzzle where it differs from the breech. A real
+     tube tapers, and a parallel-sided bar is most of why the cannon read as a
+     length of pipe. Only the guns that would actually taper get one — the rail
+     is a pair of rails, the ion an emitter housing. */
+  const spec = {
+    standard: { len: 212, bore: 16, bore2: 10 },
+    auto:     { len: 134, bore: 46, open: true, rise: 0.30 },
+    rail:     { len: 232, bore: 32, open: true, rise: 0.23 },
+    mortar:   { len: 104, bore: 30, rise: -0.5 },
+    ion:      { len: 178, bore: 17 },
+  }[type] || { len: 172, bore: 15 };
+
+  const elev = PORTRAIT_ANGLE + (spec.rise !== undefined ? spec.rise + 0.12 : 0);
+  g.save();
+  g.translate(px, pvy);
+  g.rotate(elev);
+
+  const bx = 18, half = spec.bore / 2, half2 = (spec.bore2 ?? spec.bore) / 2;
+  /* The tube, as a tapered quad rather than a rectangle. Back face first, so
+     it reads as a cylinder rather than a flat bar. */
+  const tube = (c, off, h0, h1) => {
+    c.moveTo(bx + off, -h0 + off * 0.8);
+    c.lineTo(bx + spec.len + off, -h1 + off * 0.8);
+    c.lineTo(bx + spec.len + off, h1 + off * 0.8);
+    c.lineTo(bx + off, h0 + off * 0.8);
+    c.closePath();
+  };
+  /* `open` guns have no tube to fill — a railgun accelerates its round down a
+     pair of rails in open air, and drawing a solid barrel around them would be
+     drawing the one thing the weapon does not have. */
+  if (!spec.open) {
+    g.beginPath(); tube(g, 6, half, half2); g.fillStyle = BACK; g.fill();
+    g.beginPath(); tube(g, 0, half, half2); g.fillStyle = BODY; g.fill();
+    glowStroke(g, c => tube(c, 0, half, half2), col, 2.2);
+    // muzzle: a reinforced band at the tip, not just an end cap
+    glowStroke(g, c => {
+      c.moveTo(bx + spec.len - 14, -half2 - 3); c.lineTo(bx + spec.len - 14, half2 + 3);
+      c.moveTo(bx + spec.len, -half2 - 3); c.lineTo(bx + spec.len, half2 + 3);
+      c.moveTo(bx + spec.len - 14, -half2 - 3); c.lineTo(bx + spec.len, -half2 - 3);
+      c.moveTo(bx + spec.len - 14, half2 + 3); c.lineTo(bx + spec.len, half2 + 3);
+    }, col, 2);
+  }
+
+  if (type === 'standard') {
+    /* Breech end, *behind* the trunnion. A gun does not pivot at the back of
+       its own barrel — the breech and its counterweight swing down as the
+       muzzle comes up, which is the single clearest cue that the thing is
+       elevating rather than just pointing. Drawing it also fills the wedge
+       under the raised tube that used to be conspicuously empty. */
+    extrudeRect(g, -46, -half - 3, 62, spec.bore + 6, col,
+      { depth: 6, width: 1.8, body: BODY, back: BACK });
+    // breech ring and the block face
+    glowStroke(g, c => { c.moveTo(6, -half - 4); c.lineTo(6, half + 4); }, col, 2);
+    glowStroke(g, c => { c.moveTo(-46, -half + 1); c.lineTo(-46, half + 1); }, col, 1.6, undefined, 0.8);
+
+    /* Recoil cradle: the sleeve the barrel runs back into, with its cylinder
+       slung underneath. Short — a third of the tube — because the barrel has to
+       stay obviously longer than everything wrapped around it. */
+    extrudeRect(g, bx + 4, -half - 6, 74, spec.bore + 12, col,
+      { depth: 5, width: 1.6, body: BODY, back: BACK });
+    extrudeRect(g, bx + 12, half + 6, 58, 11, col,
+      { depth: 4, width: 1.4, body: BODY, back: BACK });
+    // the two guide ribs along the cradle
+    for (const sy of [-1, 1]) {
+      glowStroke(g, c => {
+        c.moveTo(bx + 8, sy * (half + 4)); c.lineTo(bx + 74, sy * (half + 4));
+      }, col, 1.1, undefined, 0.55);
+    }
+    // one reinforcing band out along the tube, where the taper starts
+    glowStroke(g, c => {
+      const x = bx + spec.len * 0.46;
+      c.moveTo(x, -half * 0.9 - 2); c.lineTo(x, half * 0.9 + 2);
+    }, col, 1.6, undefined, 0.85);
+  } else if (type === 'auto') {
+    /* A rotary cluster, not a tube. Six barrels on a drum is the one thing that
+       names this gun instantly, and it cannot be said with a single fatter
+       barrel — the read is *many*, and many means you can see them individually.
+       Drawn as a bundle seen slightly from above: the barrels furthest around
+       the drum sit higher and dimmer, the nearest lowest and brightest, so the
+       cluster has a round section rather than being a stack of pipes. */
+    const R = half - 4;                     // radius of the barrel circle
+    const N = 6;                            // barrels on the drum
+    const bl = spec.len;
+
+    /* Only the front arc of a barrel cluster is ever visible side-on — the rest
+       are behind the drum. Drawing all six merged them into one fat tube at this
+       size, so four are drawn as tubes and the full six appear where they can
+       actually be counted: on the muzzle face. Showing what can be seen beats
+       modelling what is there. */
+    const shown = [
+      { y: -R,        depth: 0.15 },
+      { y: -R * 0.34, depth: 0.5  },
+      { y:  R * 0.34, depth: 0.8  },
+      { y:  R,        depth: 1    },
+    ];
+    for (const b of shown) {
+      const t = 6, lit = 0.4 + b.depth * 0.6;
+      const skew = (1 - b.depth) * -6;       // the ones further round sit back
+      const tip = 6 + skew + bl;
+      g.fillStyle = b.depth > 0.6 ? BODY : BACK;
+      g.fillRect(6 + skew, b.y - t / 2, bl, t);
+      glowStroke(g, c => c.rect(6 + skew, b.y - t / 2, bl, t), col, 1.25, undefined, lit);
+      // a muzzle collar and its own bore, per barrel
+      glowStroke(g, c => c.rect(tip - 11, b.y - t / 2 - 2, 11, t + 4), col, 1.3, undefined, lit * 0.9);
+      inkDot(g, tip - 3, b.y, 2.1);
+    }
+
+    /* No muzzle disc and no drum arc. A filled face across the cluster read as a
+       cap stuck on the end, and an arc behind it read as a handle — the
+       staggered barrel tips already describe the circle they are set into. The
+       bores are what say "rotary", one per barrel, at the tip it belongs to. */
+
+    /* The rotor housing at the breech, and the drive can beside it. A rotary
+       gun is spun by something, and the can is where the "something" lives. */
+    extrudeRect(g, -34, -R - 9, 44, R * 2 + 18, col,
+      { depth: 6, width: 1.8, body: BODY, back: BACK });
+    glowStroke(g, c => c.ellipse(10, 0, R + 7, (R + 7) * 0.4, 0, 0, TAU), col, 1.5, undefined, 0.7);
+    extrudeRect(g, -30, R + 2, 30, 15, col, { depth: 4, width: 1.4, body: BODY, back: BACK });
+    // the feed throat, angled up to meet the boxes on the turret crown
+    glowStroke(g, c => {
+      c.moveTo(-18, -R - 9); c.lineTo(-26, -R - 22); c.lineTo(-2, -R - 22);
+    }, col, 1.5, undefined, 0.72);
+  } else if (type === 'rail') {
+    /* An open accelerator, drawn as a box truss in three-quarter view rather
+       than a flat side-on rectangle.
+
+       Side-on, two rails and a ladder between them read as a girder — a shape
+       with no inside. Offsetting a second pair of rails back and up gives the
+       frame a top face and a near face, so the round's path reads as a channel
+       running *through* something. It is the same trick the rest of the art
+       uses for depth (a back face drawn behind an offset body), applied to a
+       structure that is mostly hole. */
+    const x0 = 34, x1 = 34 + spec.len;
+    const fx = -8, fy = -15;                 // toward the far side of the frame
+
+    /* The HOUSING: the armoured body that elevates with the gun, sitting on the
+       mount with the rails running out of its front and the counterweight
+       hanging off its back. This is the mass of the weapon — the receiver, the
+       feed, whatever drives the rails — and without it the rails and the
+       counterweight float either side of a bare pivot with nothing between
+       them. Drawn in barrel space, so it swings as the gun elevates. */
+    const hh = half + 20;
+    /* Everything that elevates shares ONE projection — the same (fx, fy) the
+       rails use. The housing was built with the generic back-face offset
+       instead, which points down-right where the rails' points back-up-left, so
+       the two halves of the same rigid body appeared to be seen from opposite
+       sides. A depth cue is only a cue if every part agrees on it. */
+    const hface = [
+      [-56, hh - 4], [-56, -hh + 6], [-42, -hh], [18, -hh],
+      [34, -hh + 12], [34, hh - 6], [-44, hh],
+    ];
+    const trace = (c, pts, dx, dy) => {
+      pts.forEach(([x, y], i) => i ? c.lineTo(x + dx, y + dy) : c.moveTo(x + dx, y + dy));
+      c.closePath();
+    };
+    // far side first, dimmer — it is further away, not merely behind
+    g.beginPath(); trace(g, hface, fx, fy); g.fillStyle = BACK; g.fill();
+    glowStroke(g, c => trace(c, hface, fx, fy), col, 1.5, undefined, 0.55);
+
+    /* The top face, bridging near to far across the housing's crown. Without it
+       the two outlines read as two flat cut-outs rather than as one solid. */
+    const crown = (c) => {
+      c.moveTo(-42, -hh); c.lineTo(18, -hh);
+      c.lineTo(18 + fx, -hh + fy); c.lineTo(-42 + fx, -hh + fy); c.closePath();
+    };
+    g.beginPath(); crown(g); g.fillStyle = BODY; g.fill();
+    glowStroke(g, crown, col, 1.4, undefined, 0.7);
+    // the chamfer facets either side of the crown, so the box is not a slab
+    glowStroke(g, c => {
+      c.moveTo(34, -hh + 12); c.lineTo(34 + fx, -hh + 12 + fy);
+      c.moveTo(-56, -hh + 6); c.lineTo(-56 + fx, -hh + 6 + fy);
+    }, col, 1.2, undefined, 0.5);
+
+    // near side last and brightest, the face you actually read
+    g.beginPath(); trace(g, hface, 0, 0); g.fillStyle = BODY; g.fill();
+    glowStroke(g, c => trace(c, hface, 0, 0), col, 2.3);
+
+    // panel seams, following the facets rather than gridding over them
+    glowStroke(g, c => {
+      c.moveTo(-56, -hh + 20); c.lineTo(34, -hh + 20);
+      c.moveTo(-8, -hh + 2); c.lineTo(-8, hh - 5);
+      c.moveTo(-42, -hh); c.lineTo(-36, -hh + 20);
+      c.moveTo(18, -hh); c.lineTo(22, -hh + 20);
+    }, col, 1.2, undefined, 0.42);
+    // the drive housing on the near flank, and its cooling stack
+    extrudeRect(g, -30, hh - 22, 30, 18, col, { depth: 4, width: 1.4, body: BODY, back: BACK });
+    for (let i = 0; i < 4; i++) {
+      glowStroke(g, c => {
+        c.moveTo(2 + i * 7, -hh + 24); c.lineTo(2 + i * 7, -hh + 38);
+      }, col, 1.2, undefined, 0.5);
+    }
+    /* A box on the shared projection: far face, top face, then near face. Used
+       for the parts of the elevating group that are plain blocks. */
+    const boxP = (bx0, by0, bw, bh, lit) => {
+      const pts = [[bx0, by0], [bx0 + bw, by0], [bx0 + bw, by0 + bh], [bx0, by0 + bh]];
+      g.beginPath(); trace(g, pts, fx, fy); g.fillStyle = BACK; g.fill();
+      glowStroke(g, c => trace(c, pts, fx, fy), col, 1.3, undefined, 0.5);
+      const top = (c) => {
+        c.moveTo(bx0, by0); c.lineTo(bx0 + bw, by0);
+        c.lineTo(bx0 + bw + fx, by0 + fy); c.lineTo(bx0 + fx, by0 + fy); c.closePath();
+      };
+      g.beginPath(); top(g); g.fillStyle = BODY; g.fill();
+      glowStroke(g, top, col, 1.3, undefined, 0.65);
+      g.beginPath(); trace(g, pts, 0, 0); g.fillStyle = BODY; g.fill();
+      glowStroke(g, c => trace(c, pts, 0, 0), col, 1.8, undefined, lit);
+    };
+
+    // where the rails leave the housing: a heavy collar, so they are anchored
+    boxP(28, -half - 10, 12, spec.bore + 20, 1);
+
+    // a single rail beam, at yc, offset (ox, oy) for its side of the truss
+    const rail = (yc, ox, oy, t, lit) => {
+      g.fillStyle = BODY;
+      g.fillRect(x0 + ox, yc + oy - t / 2, spec.len, t);
+      glowStroke(g, c => c.rect(x0 + ox, yc + oy - t / 2, spec.len, t), col, 1.7, undefined, lit);
+    };
+
+    // far pair first — painter's order is what sells the depth
+    rail(-half, fx, fy, 6, 0.62);
+    rail(+half, fx, fy, 6, 0.62);
+
+    /* The top face: the panel between the near and far top rails. Filled, not
+       just outlined, so the truss has a surface catching light and the coils
+       below it read as being inside a structure. */
+    const topFace = (c) => {
+      c.moveTo(x0, -half); c.lineTo(x1, -half);
+      c.lineTo(x1 + fx, -half + fy); c.lineTo(x0 + fx, -half + fy); c.closePath();
+    };
+    g.beginPath(); topFace(g); g.fillStyle = BACK; g.fill();
+    glowStroke(g, topFace, col, 1.3, undefined, 0.5);
+
+    /* The coil ladder, on the top face only. The near side is a closed plate —
+       these are the sides of the accelerator housing, and the coils live inside
+       it. Running the ladder down the near face as well made the whole assembly
+       read as open lattice from every angle, which is a ladder, not a machine.
+       Seen from the top the coils are exposed along the channel; seen from the
+       side you get a clean flank, and the contrast between the two is what
+       gives the frame a solid near face and an open top. */
+    const rungs = 15;
+    for (let i = 0; i <= rungs; i++) {
+      const x = x0 + 14 + (i * (spec.len - 28)) / rungs;
+      glowStroke(g, c => {
+        c.moveTo(x, -half + 2); c.lineTo(x + fx, -half + fy + 2);
+      }, col, 1.4, undefined, 0.62);
+      // every other coil carries a heavier band, so the ladder has a rhythm
+      if (i % 2 === 0) {
+        glowStroke(g, c => {
+          c.moveTo(x - 2, -half + fy + 3); c.lineTo(x + fx + 2, -half + fy + 3);
+        }, col, 1.2, undefined, 0.4);
+      }
+    }
+
+    /* The near flank: a closed plate between the two near rails. Filled before
+       the rails are drawn, so they read as the edges capping it. */
+    g.fillStyle = BODY;
+    g.fillRect(x0, -half, spec.len, spec.bore);
+    // a single seam along the flank, and the access panels down its length
+    glowStroke(g, c => {
+      c.moveTo(x0 + 4, half - 9); c.lineTo(x1 - 6, half - 9);
+    }, col, 1.1, undefined, 0.34);
+    for (let i = 0; i < 4; i++) {
+      const px2 = x0 + 30 + i * ((spec.len - 60) / 3);
+      glowStroke(g, c => c.rect(px2, -half + 7, 16, 10), col, 1, undefined, 0.28);
+    }
+
+    // muzzle brace, tying all four rails together at the business end
+    const brace = (c) => {
+      c.moveTo(x1 - 15, -half - 6); c.lineTo(x1 - 1, -half - 6);
+      c.lineTo(x1 - 1 + fx, -half - 6 + fy); c.lineTo(x1 - 15 + fx, -half - 6 + fy);
+      c.closePath();
+    };
+    g.beginPath(); brace(g); g.fillStyle = BODY; g.fill();
+    glowStroke(g, brace, col, 1.6);
+    boxP(x1 - 15, -half - 6, 14, spec.bore + 12, 1);
+    glowDot(g, x1 + 5, 0, 3.2, col);
+
+    /* Breech end: the counterweight and feed block behind the trunnion, which
+       balances a frame this long and is plainly there in the reference. */
+    boxP(-86, -half - 12, 32, spec.bore + 24, 1);
+    glowStroke(g, c => {
+      c.moveTo(-74, -half - 8); c.lineTo(-74, half + 8);
+    }, col, 1.2, undefined, 0.5);
+    // the end cap, square and heavy — this is ballast, not machinery
+    boxP(-93, -half - 6, 8, spec.bore + 12, 0.85);
+  } else if (type === 'mortar') {
+    // squat, wide-bored, with a recoil spring stack and a baseplate
+    for (let i = 0; i < 5; i++) {
+      const x = bx + 14 + i * 17;
+      glowStroke(g, c => { c.moveTo(x, -half - 5); c.lineTo(x, half + 5); }, col, 1.6, undefined, 0.8);
+    }
+    glowStroke(g, c => {
+      c.moveTo(bx + spec.len + 2, -half - 7); c.lineTo(bx + spec.len + 2, half + 7);
+    }, col, 3);
+  } else if (type === 'ion') {
+    // an emitter ring near the muzzle and a charge core at the breech
+    glowStroke(g, c => c.arc(bx + spec.len - 26, 0, half + 9, 0, TAU), col, 2);
+    glowStroke(g, c => c.arc(bx + spec.len - 8, 0, half + 5, 0, TAU), col, 1.6);
+    glowDot(g, bx + 14, 0, 4.2, col);
+    // conduits running the length of the tube
+    for (const s of [-1, 1]) {
+      glowStroke(g, c => {
+        c.moveTo(bx + 20, s * (half - 3)); c.lineTo(bx + spec.len - 30, s * (half - 3));
+      }, col, 1.2, undefined, 0.6);
+    }
+  }
+
+  /* Flanking barrels, one per purchased extra, drawn parallel to the main one
+     and smaller — matching the rounds they fire, which are also parallel and
+     also smaller. The offsets come from the engine so the picture cannot drift
+     away from the geometry.
+
+     They used to be flat `fillRect` slabs with one outline, sitting beside a
+     main barrel that has extrusion, a collar, a muzzle and per-type detail —
+     which is what made them read as bars rather than as guns. They get the same
+     `extrudeRect` treatment as the receiver now, plus a muzzle ring and a root
+     collar, so a three-barrel mount looks like three barrels. Still visibly
+     subordinate: shorter, thinner, and shallower-extruded than the main one. */
+  const offs = E.BARREL_OFFSETS[barrels] || [];
+  for (const off of offs) {
+    const sub = spec.bore * 0.62, sh = sub / 2;
+    const y = off * 1.7;                    // scaled for the portrait's size
+    const x0 = bx + 10, len = spec.len * 0.76;
+    // the barrel itself, solid and lit like every other block on the gun
+    extrudeRect(g, x0, y - sh, len, sub, col, { depth: 4, width: 1.5, body: BODY, back: BACK });
+    // a collar where it leaves the receiver, so it is attached to something
+    extrudeRect(g, x0 - 4, y - sh - 2, 9, sub + 4, col, { depth: 3, width: 1.2, body: BODY, back: BACK });
+    // and a muzzle ring at the business end, the cue the main barrel uses too
+    extrudeRect(g, x0 + len - 7, y - sh - 2, 8, sub + 4, col, { depth: 3, width: 1.3, body: BODY, back: BACK });
+    // the bore, a dark dot punched in the muzzle face
+    inkDot(g, x0 + len - 3, y, Math.max(1.4, sub * 0.22));
+  }
+  g.restore();
+
+  /* --- equilibrator, back in world space.
+
+     The spring strut that balances the barrel's weight about the trunnion, and
+     the piece that makes the reference photograph read as artillery: it ties
+     the cradle down to the carriage in a visible triangle, so the gun looks
+     *held* at its elevation rather than balanced there. Drawn after the barrel
+     restores because one end lives in the rotated frame and the other does
+     not — the attach point is transformed by hand rather than by the canvas.
+
+     Only for the guns with a recoil cradle to attach it to. The rail rides its
+     own rails, the ion has no recoiling mass, and the mortar's whole point is
+     that it is light enough not to need one. */
+  if (mount === 'towed' && (type === 'standard' || type === 'auto')) {
+    const ax = 62, ay = (spec.bore / 2) + 20;            // on the cradle, underside
+    const wx = px + Math.cos(elev) * ax - Math.sin(elev) * ay;
+    const wy = pvy + Math.sin(elev) * ax + Math.cos(elev) * ay;
+    const bxw = px + 30, byw = py + 16;                  // on the body, low and forward
+    const dx = wx - bxw, dy = wy - byw;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len * 5, ny = dx / len * 5;
+    const strut = (c) => {
+      c.moveTo(bxw + nx, byw + ny); c.lineTo(wx + nx * 0.7, wy + ny * 0.7);
+      c.lineTo(wx - nx * 0.7, wy - ny * 0.7); c.lineTo(bxw - nx, byw - ny);
+      c.closePath();
+    };
+    g.beginPath(); strut(g); g.fillStyle = BODY; g.fill();
+    glowStroke(g, strut, col, 1.7);
+    // the gland where the rod enters the cylinder, two thirds along
+    glowStroke(g, c => {
+      const gx = bxw + dx * 0.62, gy2 = byw + dy * 0.62;
+      c.moveTo(gx + nx, gy2 + ny); c.lineTo(gx - nx, gy2 - ny);
+    }, col, 1.5, undefined, 0.8);
+    glowDot(g, wx, wy, 2.6, col);
+  }
+
+  // --- the pivot itself, last so it sits over the barrel root
+  extrudeDisc(g, px, pvy, 17, col, { depth: 6, width: 2.2, body: BODY, back: BACK });
+  glowDot(g, px, pvy, 3, col);
+  g.restore();
+}
+
+const TYPES = [
+  ['standard', 'Cannon',      'The one this round was about. Cradle, breech, equilibrator, tapered tube.'],
+  ['auto',     'Autocannon',  'Cooling fins and a box magazine. Shares the cannon\'s cradle and strut.'],
+  ['rail',     'Railgun',     'Deck plate, mount, housing, counterweight, rails. Flat-trajectory and open.'],
+  ['mortar',   'Mortar',      'Squat and wide-bored, and steeper than the rest by design.'],
+  ['ion',      'Ion Cannon',  'Emitter rings and a charge core. No recoiling mass to balance.'],
+];
+
+const plates = document.getElementById('plates');
+const canvases = TYPES.map(([key, name, note], i) => {
+  const fig = document.createElement('figure');
+  if (i === 0) fig.className = 'lead';
+  const cv = document.createElement('canvas');
+  cv.width = PORTRAIT_W; cv.height = PORTRAIT_H;
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', name + ' portrait');
+  const cap = document.createElement('figcaption');
+  cap.innerHTML = '<span class="name" style="color:' + GUN_TYPES[key].col + '">' + name + '</span>' +
+                  '<span class="note">' + note + '</span>';
+  fig.append(cv, cap);
+  plates.appendChild(fig);
+  return { key, cv };
+});
+
+let exposure = 'true';
+
+/* Lift the gamma so shape is legible. Applied after the draw, never inside it —
+   the drawing code here has to stay byte-identical to the game's. */
+function lift(cv) {
+  const g = cv.getContext('2d');
+  const img = g.getImageData(0, 0, cv.width, cv.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3] / 255;
+    for (let c = 0; c < 3; c++) {
+      d[i + c] = Math.min(255, Math.round(255 * Math.pow((d[i + c] * a) / 255, 0.42)));
+    }
+    d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+}
+
+function render() {
+  const barrels = +document.getElementById('barrels').value;
+  for (const { key, cv } of canvases) {
+    const g = cv.getContext('2d');
+    g.clearRect(0, 0, cv.width, cv.height);
+    drawCannonPortrait(g, key, barrels);
+    if (exposure === 'lift') lift(cv);
+  }
+}
+
+const elev = document.getElementById('elev');
+const elevVal = document.getElementById('elevVal');
+const barrels = document.getElementById('barrels');
+const barVal = document.getElementById('barVal');
+const expTrue = document.getElementById('expTrue');
+const expLift = document.getElementById('expLift');
+const expHint = document.getElementById('expHint');
+
+elev.addEventListener('input', () => {
+  elevVal.textContent = elev.value + '\u00b0';
+  PORTRAIT_ANGLE = -(elev.value * Math.PI / 180);
+  render();
+});
+barrels.addEventListener('input', () => { barVal.textContent = barrels.value; render(); });
+
+function setExposure(mode) {
+  exposure = mode;
+  expTrue.setAttribute('aria-pressed', String(mode === 'true'));
+  expLift.setAttribute('aria-pressed', String(mode === 'lift'));
+  expHint.textContent = mode === 'true'
+    ? 'True brightness: dark fills under additive glow, on the board\'s own ground.'
+    : 'Gamma lifted hard. Not what the game looks like — what its silhouette is.';
+  render();
+}
+expTrue.addEventListener('click', () => setExposure('true'));
+expLift.addEventListener('click', () => setExposure('lift'));
+
+PORTRAIT_ANGLE = -(60 * Math.PI / 180);
+render();
+</script>

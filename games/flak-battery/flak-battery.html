@@ -1425,11 +1425,18 @@ function buyResearch(buy) {
    ~212px above the trunnion — so the canvas is taller and the carriage sits at
    the bottom of it. PORTRAIT_LIFT is where that 190-tall space begins. */
 const PORTRAIT_W = 420, PORTRAIT_H = 372, PORTRAIT_LIFT = 182;
-/** Barrel elevation in the shop portrait, ~70°. Flat-on (-0.12, about 7°) the
+/** Barrel elevation in the shop portrait, ~60°. Flat-on (-0.12, about 7°) the
  *  gun needed a wide letterbox, which is what forced the art and the stats
  *  into separate stacked blocks. Raised, it fits a column beside them — and it
- *  reads as a piece of artillery rather than a side-on diagram. */
-const PORTRAIT_ANGLE = -1.22;
+ *  reads as a piece of artillery rather than a side-on diagram.
+ *
+ *  60 rather than the 70 first tried: past about 65° the equilibrator, cradle
+ *  and breech all fold in behind the tube and the gun loses the triangle of
+ *  linkage that is most of what says "artillery". Real guns do tuck up like
+ *  that at high elevation — it is honest and it is unreadable, which is the
+ *  wrong trade for a portrait whose whole job is to be identified at a
+ *  glance. */
+const PORTRAIT_ANGLE = -1.05;
 
 function drawCannonPortrait(g, type, barrels = 1) {
   const G = E.GUN_TYPES[type];
@@ -1443,64 +1450,158 @@ function drawCannonPortrait(g, type, barrels = 1) {
   const BACK = 'rgba(13,26,34,.98)';
   const px = 130, py = 132;                 // trunnion: where the barrel pivots
 
-  // --- carriage: a wide splayed base, drawn back-face first for depth
-  const carriage = (dx, dy, fill) => {
+  /* --- the mount: a cruciform platform on jack pads, then a pedestal.
+
+     This was a plain splayed trapezoid, which reads as a mortar baseplate — a
+     wedge with a tube coming out of it. Real towed AA artillery sits on a
+     cross of outriggers, levelled on screw jacks, with the traversing body on
+     a pedestal above them; that outline is most of what makes a gun look like
+     a gun rather than a launcher, and it is the one part of the drawing that
+     is the same for every type. Shared, as the mount always was. */
+  const gy = H2 - 15;                       // ground line
+
+  // ground first, so everything stands on it
+  glowStroke(g, c => { c.moveTo(14, gy); c.lineTo(W2 - 14, gy); }, col, 1.6, undefined, 0.5);
+
+  /* Outriggers. Two run left and right nearly along the ground line, two run
+     fore and aft — foreshortened, so they read as a cross seen from the side
+     rather than as four legs in a row. Each is a tapered arm, not a stick:
+     a plain line at this size disappears next to the barrel. */
+  const arm = (x2, y2, w0, w1) => {
+    const dx = x2 - px, dy = y2 - (gy - 12);
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;    // unit normal, for the taper
+    const path = (c) => {
+      c.moveTo(px + nx * w0, (gy - 12) + ny * w0);
+      c.lineTo(x2 + nx * w1, y2 + ny * w1);
+      c.lineTo(x2 - nx * w1, y2 - ny * w1);
+      c.lineTo(px - nx * w0, (gy - 12) - ny * w0);
+      c.closePath();
+    };
+    g.beginPath(); path(g); g.fillStyle = BODY; g.fill();
+    glowStroke(g, path, col, 1.6);
+  };
+  /* A jack pad: the screw post and the dish it stands on. Drawn as a flat
+     ellipse because that is what a disc lying on the ground looks like from
+     here — the same perspective cue the board uses for craft on the deck. */
+  const pad = (x, y, r) => {
+    g.beginPath(); g.ellipse(x, y, r, r * 0.34, 0, 0, TAU);
+    g.fillStyle = BACK; g.fill();
+    glowStroke(g, c => c.ellipse(x, y, r, r * 0.34, 0, 0, TAU), col, 1.5);
+    extrudeRect(g, x - 3.5, y - 13, 7, 13, col, { depth: 3, width: 1.2, body: BODY, back: BACK });
+  };
+
+  // the far pair first, so the near pair overlaps them
+  arm(px - 52, gy - 22, 7, 3);   pad(px - 52, gy - 22, 11);
+  arm(px + 62, gy - 24, 7, 3);   pad(px + 62, gy - 24, 11);
+  arm(px - 104, gy + 4, 8, 4);   pad(px - 104, gy + 4, 15);
+  arm(px + 118, gy + 2, 8, 4);   pad(px + 118, gy + 2, 15);
+
+  // pedestal: the drum the whole gun traverses on
+  const ped = (dx, dy, fill) => {
     g.beginPath();
-    g.moveTo(px - 74 + dx, H2 - 16 + dy);
-    g.lineTo(px - 40 + dx, py + 10 + dy);
-    g.lineTo(px + 46 + dx, py + 10 + dy);
-    g.lineTo(px + 84 + dx, H2 - 16 + dy);
+    g.moveTo(px - 24 + dx, gy - 10 + dy);
+    g.lineTo(px - 18 + dx, py + 22 + dy);
+    g.lineTo(px + 26 + dx, py + 22 + dy);
+    g.lineTo(px + 32 + dx, gy - 10 + dy);
     g.closePath();
     g.fillStyle = fill; g.fill();
   };
-  carriage(7, 6, BACK);
-  carriage(0, 0, BODY);
+  ped(6, 4, BACK); ped(0, 0, BODY);
   glowStroke(g, c => {
-    c.moveTo(px - 74, H2 - 16); c.lineTo(px - 40, py + 10);
-    c.lineTo(px + 46, py + 10); c.lineTo(px + 84, H2 - 16);
-  }, col, 2.4);
-  // ground line
-  glowStroke(g, c => { c.moveTo(20, H2 - 15); c.lineTo(W2 - 20, H2 - 15); }, col, 1.6, undefined, 0.5);
-  // the joining edges that say "solid", same cue the board's craft use
-  glowStroke(g, c => {
-    c.moveTo(px - 74, H2 - 16); c.lineTo(px - 67, H2 - 10);
-    c.moveTo(px + 84, H2 - 16); c.lineTo(px + 91, H2 - 10);
-  }, col, 1.4, undefined, 0.6);
+    c.moveTo(px - 24, gy - 10); c.lineTo(px - 18, py + 22);
+    c.lineTo(px + 26, py + 22); c.lineTo(px + 32, gy - 10);
+  }, col, 2.2);
+  // the traversing race: a band where the pedestal meets the body
+  glowStroke(g, c => { c.moveTo(px - 19, py + 21); c.lineTo(px + 27, py + 21); }, col, 1.8, undefined, 0.8);
 
-  // --- the receiver block at the pivot
-  extrudeRect(g, px - 26, py - 16, 58, 32, col, { depth: 7, width: 2, body: BODY, back: BACK });
+  // --- the traversing body, and the trunnion the barrel pivots on
+  extrudeRect(g, px - 30, py - 14, 62, 36, col, { depth: 7, width: 2, body: BODY, back: BACK });
+  // handwheels: elevation on the near side, traverse below it
+  for (const [hx, hy, hr] of [[px + 36, py + 6, 8], [px - 34, py + 12, 6]]) {
+    glowStroke(g, c => c.arc(hx, hy, hr, 0, TAU), col, 1.5, undefined, 0.85);
+    glowStroke(g, c => {
+      c.moveTo(hx - hr, hy); c.lineTo(hx + hr, hy);
+      c.moveTo(hx, hy - hr); c.lineTo(hx, hy + hr);
+    }, col, 1, undefined, 0.6);
+  }
+  /* Layer's sight gear, off the left of the body. Two small boxes on a bracket
+     — not readable as optics at this size, but the asymmetric cluster is what
+     stops the gun looking like a symmetrical toy. */
+  extrudeRect(g, px - 58, py - 22, 22, 14, col, { depth: 4, width: 1.4, body: BODY, back: BACK });
+  glowStroke(g, c => { c.moveTo(px - 40, py - 8); c.lineTo(px - 30, py + 2); }, col, 1.4, undefined, 0.8);
+  glowStroke(g, c => { c.moveTo(px - 52, py - 22); c.lineTo(px - 52, py - 30); }, col, 1.6, undefined, 0.7);
 
   /* --- the barrel assembly, per type. `len`/`bore` are the silhouette; each
          branch then adds the detail that names the gun. */
+  /* `bore2` is the bore at the muzzle where it differs from the breech. A real
+     tube tapers, and a parallel-sided bar is most of why the cannon read as a
+     length of pipe. Only the guns that would actually taper get one — the rail
+     is a pair of rails, the ion an emitter housing. */
   const spec = {
-    standard: { len: 172, bore: 15 },
-    auto:     { len: 150, bore: 11 },
+    standard: { len: 212, bore: 16, bore2: 10 },
+    auto:     { len: 150, bore: 11, bore2: 9 },
     rail:     { len: 226, bore: 10 },
     mortar:   { len: 104, bore: 30, rise: -0.5 },
     ion:      { len: 178, bore: 17 },
   }[type] || { len: 172, bore: 15 };
 
+  const elev = PORTRAIT_ANGLE + (spec.rise !== undefined ? spec.rise + 0.12 : 0);
   g.save();
   g.translate(px, py);
-  // mortars still sit steeper than the rest, relative to the raised default
-  g.rotate(PORTRAIT_ANGLE + (spec.rise !== undefined ? spec.rise + 0.12 : 0));
+  g.rotate(elev);
 
-  const bx = 18, half = spec.bore / 2;
-  // back face then body, so the barrel reads as a tube rather than a bar
-  g.fillStyle = BACK; g.fillRect(bx + 6, -half + 5, spec.len, spec.bore);
-  g.fillStyle = BODY; g.fillRect(bx, -half, spec.len, spec.bore);
-  glowStroke(g, c => c.rect(bx, -half, spec.len, spec.bore), col, 2.2);
-  // muzzle
+  const bx = 18, half = spec.bore / 2, half2 = (spec.bore2 ?? spec.bore) / 2;
+  /* The tube, as a tapered quad rather than a rectangle. Back face first, so
+     it reads as a cylinder rather than a flat bar. */
+  const tube = (c, off, h0, h1) => {
+    c.moveTo(bx + off, -h0 + off * 0.8);
+    c.lineTo(bx + spec.len + off, -h1 + off * 0.8);
+    c.lineTo(bx + spec.len + off, h1 + off * 0.8);
+    c.lineTo(bx + off, h0 + off * 0.8);
+    c.closePath();
+  };
+  g.beginPath(); tube(g, 6, half, half2); g.fillStyle = BACK; g.fill();
+  g.beginPath(); tube(g, 0, half, half2); g.fillStyle = BODY; g.fill();
+  glowStroke(g, c => tube(c, 0, half, half2), col, 2.2);
+  // muzzle: a reinforced band at the tip, not just an end cap
   glowStroke(g, c => {
-    c.moveTo(bx + spec.len, -half - 3); c.lineTo(bx + spec.len, half + 3);
-  }, col, 3);
+    c.moveTo(bx + spec.len - 14, -half2 - 3); c.lineTo(bx + spec.len - 14, half2 + 3);
+    c.moveTo(bx + spec.len, -half2 - 3); c.lineTo(bx + spec.len, half2 + 3);
+    c.moveTo(bx + spec.len - 14, -half2 - 3); c.lineTo(bx + spec.len, -half2 - 3);
+    c.moveTo(bx + spec.len - 14, half2 + 3); c.lineTo(bx + spec.len, half2 + 3);
+  }, col, 2);
 
   if (type === 'standard') {
-    // reinforcing bands along the tube
-    for (let i = 1; i <= 3; i++) {
-      const x = bx + (spec.len * i) / 4;
-      glowStroke(g, c => { c.moveTo(x, -half - 3); c.lineTo(x, half + 3); }, col, 1.8);
+    /* Breech end, *behind* the trunnion. A gun does not pivot at the back of
+       its own barrel — the breech and its counterweight swing down as the
+       muzzle comes up, which is the single clearest cue that the thing is
+       elevating rather than just pointing. Drawing it also fills the wedge
+       under the raised tube that used to be conspicuously empty. */
+    extrudeRect(g, -46, -half - 3, 62, spec.bore + 6, col,
+      { depth: 6, width: 1.8, body: BODY, back: BACK });
+    // breech ring and the block face
+    glowStroke(g, c => { c.moveTo(6, -half - 4); c.lineTo(6, half + 4); }, col, 2);
+    glowStroke(g, c => { c.moveTo(-46, -half + 1); c.lineTo(-46, half + 1); }, col, 1.6, undefined, 0.8);
+
+    /* Recoil cradle: the sleeve the barrel runs back into, with its cylinder
+       slung underneath. Short — a third of the tube — because the barrel has to
+       stay obviously longer than everything wrapped around it. */
+    extrudeRect(g, bx + 4, -half - 6, 74, spec.bore + 12, col,
+      { depth: 5, width: 1.6, body: BODY, back: BACK });
+    extrudeRect(g, bx + 12, half + 6, 58, 11, col,
+      { depth: 4, width: 1.4, body: BODY, back: BACK });
+    // the two guide ribs along the cradle
+    for (const sy of [-1, 1]) {
+      glowStroke(g, c => {
+        c.moveTo(bx + 8, sy * (half + 4)); c.lineTo(bx + 74, sy * (half + 4));
+      }, col, 1.1, undefined, 0.55);
     }
+    // one reinforcing band out along the tube, where the taper starts
+    glowStroke(g, c => {
+      const x = bx + spec.len * 0.46;
+      c.moveTo(x, -half * 0.9 - 2); c.lineTo(x, half * 0.9 + 2);
+    }, col, 1.6, undefined, 0.85);
   } else if (type === 'auto') {
     // cooling fins: many short ribs, the read for a fast-firing gun
     for (let i = 0; i < 11; i++) {
@@ -1569,6 +1670,41 @@ function drawCannonPortrait(g, type, barrels = 1) {
     inkDot(g, x0 + len - 3, y, Math.max(1.4, sub * 0.22));
   }
   g.restore();
+
+  /* --- equilibrator, back in world space.
+
+     The spring strut that balances the barrel's weight about the trunnion, and
+     the piece that makes the reference photograph read as artillery: it ties
+     the cradle down to the carriage in a visible triangle, so the gun looks
+     *held* at its elevation rather than balanced there. Drawn after the barrel
+     restores because one end lives in the rotated frame and the other does
+     not — the attach point is transformed by hand rather than by the canvas.
+
+     Only for the guns with a recoil cradle to attach it to. The rail rides its
+     own rails, the ion has no recoiling mass, and the mortar's whole point is
+     that it is light enough not to need one. */
+  if (type === 'standard' || type === 'auto') {
+    const ax = 62, ay = (spec.bore / 2) + 20;            // on the cradle, underside
+    const wx = px + Math.cos(elev) * ax - Math.sin(elev) * ay;
+    const wy = py + Math.sin(elev) * ax + Math.cos(elev) * ay;
+    const bxw = px + 30, byw = py + 16;                  // on the body, low and forward
+    const dx = wx - bxw, dy = wy - byw;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len * 5, ny = dx / len * 5;
+    const strut = (c) => {
+      c.moveTo(bxw + nx, byw + ny); c.lineTo(wx + nx * 0.7, wy + ny * 0.7);
+      c.lineTo(wx - nx * 0.7, wy - ny * 0.7); c.lineTo(bxw - nx, byw - ny);
+      c.closePath();
+    };
+    g.beginPath(); strut(g); g.fillStyle = BODY; g.fill();
+    glowStroke(g, strut, col, 1.7);
+    // the gland where the rod enters the cylinder, two thirds along
+    glowStroke(g, c => {
+      const gx = bxw + dx * 0.62, gy2 = byw + dy * 0.62;
+      c.moveTo(gx + nx, gy2 + ny); c.lineTo(gx - nx, gy2 - ny);
+    }, col, 1.5, undefined, 0.8);
+    glowDot(g, wx, wy, 2.6, col);
+  }
 
   // --- the pivot itself, last so it sits over the barrel root
   extrudeDisc(g, px, py, 17, col, { depth: 6, width: 2.2, body: BODY, back: BACK });

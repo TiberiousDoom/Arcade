@@ -1348,3 +1348,117 @@ would separate the two is exactly what a node-canvas harness renders
 unreliably. The vacuous assertion was removed rather than kept: the test now
 pins what a machine can honestly judge (the canvas has the headroom a raised
 barrel needs, and the art is not blank) and the elevation is a device check.
+
+## 2026-08-19 — The cannon is artillery now, and the mount is what did most of it
+
+The basic cannon read as a length of pipe on a wedge. Working from a reference
+photograph of a towed heavy AA gun, four things were missing, and only one of
+them was the barrel:
+
+**The mount.** It was a splayed trapezoid, which is a mortar baseplate — a
+wedge with a tube coming out of it. Real towed artillery sits on a cross of
+outriggers levelled on screw jacks, with the traversing body on a pedestal
+above them. That outline is most of what separates "gun" from "launcher", and
+it is shared by every type, so all five got it at once: four tapered arms (the
+fore-and-aft pair foreshortened so it reads as a cross seen from the side),
+jack pads drawn as flat ellipses, a pedestal, and a traversing race.
+
+**The breech, behind the trunnion.** A gun does not pivot at the back of its
+own barrel. The breech and its counterweight swing *down* as the muzzle comes
+up, which is the clearest single cue that the thing is elevating rather than
+merely pointing — and it fills the wedge under the raised tube that used to be
+conspicuously empty.
+
+**The cradle**, with its recoil cylinder slung under it, kept to a third of the
+tube so the barrel stays obviously the longest thing on the gun.
+
+**A tapered tube.** `bore2` gives the bore at the muzzle where it differs from
+the breech; the old parallel-sided `fillRect` was most of the pipe impression.
+A reinforced muzzle band replaces the plain end cap, and the three evenly
+spaced reinforcing bands drop to one, where the taper starts — evenly spaced
+bands read as a ladder, which is what made the old cannon look like a mortar.
+
+**The elevation came back down from 70° to 60°.** Past about 65° the
+equilibrator, cradle and breech all fold in behind the tube and the gun loses
+the triangle of linkage that says artillery. Real guns do tuck up like that at
+high elevation; it is honest and it is unreadable, which is the wrong trade for
+a portrait whose whole job is to be identified at a glance. Still inside the
+60–80° the raised layout needs.
+
+**A note on method, since this is the second art round to hit it.** The render
+harness cannot judge this art: it is dark body fills plus additive glow, and
+node-canvas renders the glow far dimmer than a GPU, so a faithful capture is
+unreadable and an "is there ink here" assertion answers yes wherever it is
+pointed. What worked was a throwaway inspector that composites the portrait
+over the board background and then lifts the gamma hard — deliberately *not*
+faithful, and useful precisely because silhouette is the only thing it shows.
+Paired with `window.__drawGun`, the temporary hook CLAUDE.md already recommends
+for this situation, it made each change checkable in one render. Both were
+removed afterwards.
+
+## 2026-08-19 — Art is drawn on a bench before it reaches the repo
+
+Two rounds of art work hit the same wall, and the second one is what settled
+the method.
+
+**The render harness cannot judge this art.** It is dark body fills under
+additive glow; node-canvas renders the glow far dimmer than a real GPU, so a
+faithful capture is unreadable. Worse, nearly every pixel of a portrait canvas
+carries *some* alpha, which means an "is there ink here" assertion answers yes
+wherever it is pointed. Two separate attempts to pin the cannon's barrel
+elevation both passed with the gun still lying flat. The vacuous assertions
+were deleted rather than kept: the render test now pins what a machine can
+honestly judge — the canvas has the headroom a raised barrel needs, the art is
+not blank — and the elevation is reviewed by eye.
+
+So there is a bench: **docs/art/gun-bench.html**, the five guns drawn live with
+elevation, barrel-count and exposure controls. Two things make it work.
+
+**It is assembled from repo sources by script**, not retyped — `shared/glow.js`,
+the engine's `GUN_TYPES`/`BARREL_OFFSETS`, and the shell's
+`drawCannonPortrait` — so a bench built from a clean tree cannot drift from the
+game.
+
+**It has two exposures.** "As it renders" is true brightness on the board's own
+ground. "Silhouette" lifts the gamma hard — deliberately unfaithful, and useful
+precisely because shape is the only thing it shows. Neither alone is honest: the
+first is what a player sees, the second is the only way shape is checkable at
+all.
+
+The rule that follows: **draw art on the bench, review it, then port it.** The
+cannon redesign went the other way — applied, pushed, and only then reviewed —
+and it shipped a 70° elevation that had to come back to 60 once it could
+actually be looked at.
+
+## 2026-08-19 — What a gun stands on is its identity (decided, not yet applied)
+
+Recorded now because the code is not in the repo yet — it is in the bench
+snapshot, awaiting a port.
+
+`drawCannonPortrait` shared one mount across all five guns, on the reasoning
+that "mount and carriage are shared; everything above the trunnion is per
+type". Two reference images broke that: a railgun is an emplacement bolted to a
+deck plate, and an autocannon in a bunker is a casemate. Neither is a towed
+field piece, and the mount is the **widest thing on the card** — it is read
+before the barrel is. So there are three mount kinds now (`towed`, `deck`,
+`bunker`), and the trunnion height is per mount: a towed gun pivots on top of
+its carriage, a turret pivots high above its armour.
+
+Three findings from drawing them, each of which cost a revision:
+
+**Naming hid a missing part.** What sat below the trunnion was called "the
+housing", so a request to make the housing more prominent enlarged *that* — and
+the real housing, the one that elevates with the gun between barrel and
+counterweight, was simply absent. Five parts, named apart, is what fixed it:
+base plate, mount, housing, counterweight, barrel.
+
+**A depth cue only works if every part agrees on it.** The rails were drawn in
+three-quarter view with an offset pointing back and up; the housing used
+`extrudeRect`'s generic offset, which points down and right. Two halves of one
+rigid body appeared to be seen from opposite sides.
+
+**Show what can be seen, not what is there.** Six barrels on a rotary drum
+project onto a vertical line when viewed side-on, and merged into one fat tube.
+Four are drawn as tubes with staggered tips and their own bores. A filled muzzle
+disc read as a cap stuck on the end, and an arc behind it read as a handle; both
+were removed, because the staggered tips already describe the circle.
