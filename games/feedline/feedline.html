@@ -274,7 +274,7 @@ function showBanner(h, p, btn) {
   $('go').textContent = btn;
 }
 function start() {
-  if (world.over) E.resetGame(world);
+  if (world.over) E.resetGame(world, Date.now() & 0x7fffffff);
   world.running = true;
   gfx.clear();               // don't let the death flash bleed into a fresh run
   hideExtraButtons();

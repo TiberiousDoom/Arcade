@@ -1221,3 +1221,130 @@ of the suite, all of them buying late branches at wave 1 — they were never abo
 onboarding, and they now say which player they mean via a `veteran(w)` helper.
 That several tests were silently relying on the opening shop being wide is
 itself the argument for stating it.
+
+## 2026-08-19 — The command ship is killable again, and the green bar was heat
+
+Two round-11 items on Flak Battery's emplacement cards and its head armour.
+
+**The bar under each emplacement card was live gun heat.** That is a real
+number about a gun that is not currently firing: it sat at whatever the heat
+happened to be when the shop opened, so it read as a progress bar that moved at
+random and told you nothing. It now shows tiers bought over tiers available,
+which is what the card is about and what it was being mistaken for anyway.
+Counted over *open* branches, so it agrees with the `n/m tiers` text beside it
+and does not show a new player a ceiling the ramp has not given them yet.
+
+**Head armour went from `1/(1+bodyLeft)` to `1/(1+bodyLeft^0.7)`.** The linear
+divisor scaled the penalty with chain length, and late waves are long, so
+decapitation stopped being reachable inside the breach window around wave 18
+for anything but a maxed battery and was gone by wave 45 — the mechanic died
+exactly where a command ship reaching the floor hurts most. At `^0.7` a
+two-mount opening battery still never gets it, three mounts at tier 3 gets it
+to wave 30, and four mounts at tier 4 gets it throughout.
+
+**The measurement that changed the framing:** decapitation was already the
+*faster* route whenever it was feasible, under the old divisor — 13s against
+14s for clearing the column at wave 10 — and it pays out every segment still
+attached, so it is not poorer either. Clearing the body was never the efficient
+route; it was the only available one. What gates decapitation is feasibility,
+not efficiency, and that is what the exponent tunes.
+
+Two engine tests asserted the old shape and were rewritten rather than nudged.
+One claimed a full chain makes the head "near-immune" (`< 0.05`); it now pins
+the band that keeps it both protected and reachable. The other asserted
+head-first costs more raw damage than body-first, which is no longer true — its
+methodology spent one oversized shot per body segment, and the property it
+stood in for ("decapitation is not the default route") was never true on time
+in the first place. It now pins the load-bearing claim: a protected head costs
+many times a bare one, so the attempt is a burst-damage gamble.
+
+If decapitation ever needs a real counterweight, **cut the payout, not the
+damage** — a fast kill that forfeits the column's scrap is a trade a player can
+weigh; a slow one nobody can land is just a dead mechanic.
+
+Also corrected: the comment above this code claimed the railgun was the tool
+for an early decapitation. Measured, it is the worst of them — slow rate, and
+its pierce is wasted on a single target (25.9s against the plain cannon's
+8.2s at wave 18). Rail's edge is `railBonus` against hardened hulls. And
+convergence turns out to be what makes a decapitation possible at all: 8.2s
+with it, 57.5s without.
+
+## 2026-08-19 — Convergence is fire control, and fire control is not per-gun
+
+Convergence was one of the nine per-emplacement scrap branches, and it was
+quietly incoherent. Every gun fires toward one shared focal point, so five
+mounts cannot converge on five different points — `aimPointFor` read the
+*best* convergence on the battery and the other four purchases did nothing at
+all. The shop charged five times for one effect, which is the kind of thing a
+player only finds out by feeling cheated.
+
+It is one permanent research track now (`CONV_MAX`, `convergeLevel`,
+`researchConverge`), bought with RP, applying to the whole battery including
+mounts built later. The tree drops to eight scrap branches.
+
+**What a level buys changed too, and the new shape is simpler.** It used to buy
+how far *out* the focus would commit — a threshold distance, with a blend either
+side. Now the focal point sits at `focusDefault(L)` and **contracts inward** to
+follow the leading command ship as it closes, down to the floor the level
+allows. Level 0 cannot move it at all; the last level commits to `MIN_FOCUS`.
+It never travels outward, because above the default there is nothing to gain:
+several mounts aiming at one distant point sweep a dense column better than a
+point does. The 2026-08-08 finding still holds and is not re-litigated —
+interpolating the *degree* of convergence made the middle tiers worse than the
+low ones, and nothing here does that.
+
+**The default is five rungs of the serpentine, not a pixel count.**
+`focusDefault(L) = 5 * L.ROW_GAP`, so it is five rungs on the landscape board
+(310px) and five on the portrait one (520px). It was a flat 620px, which is past
+the top of the board on either layout — the "fixed focal point" was effectively
+at infinity and the guns fired parallel. Same reasoning as Hull Breach deriving
+ball speed from board height.
+
+Measured after the change, with the v36 head armour: the decapitation ladder
+holds and improves at the top — a maxed battery now takes a full chain's head at
+wave 45 in 8s, where before it could not at all. A two-mount opening battery
+still never gets it.
+
+Two engine tests were rewritten rather than adjusted, since they asserted the
+old mechanism directly (tiers buying engagement reach). The replacements pin
+the new one as behaviour: the point never extends past the default, it
+contracts monotonically as the ship closes, and it never passes the floor its
+level allows.
+
+## 2026-08-19 — The shop is three groups, one gun card, and prices without arithmetic
+
+Round 11's shop items, which were mostly one problem wearing several hats.
+
+**Buttons were covering words.** The buy button sized itself to its own text,
+and its widest state was the shortfall label — "142 · −80". So the longest
+price in a list set the column width for every row, and the branch names beside
+them were ellipsised to fit. Both reported items ("only show cost" and "buttons
+are covering up words") are the same fix: the button shows the price alone and
+has a *fixed* width rather than a minimum. The scrap you hold is already on
+screen permanently, and "can't afford" is carried by the disabled styling.
+Applied to the research tab's buttons too, which had the same label.
+
+**Eight rows became three groups.** Ammunition (damage, calibre, velocity,
+munitions) is what the round is and does; Thermal (cooling, breech, interlock)
+is the heat gauge, whose branches are otherwise the most confusable rows in the
+shop. Optics is deliberately left ungrouped — it is the only branch about range,
+and a group of one is a heading with nothing to organize.
+
+**The portrait and the stats table became one card.** They were stacked, which
+put a picture between the player and the only thing on screen that answers "is
+this mount any good". Side by side the drawing labels the numbers and the
+numbers explain the drawing, in about the height the portrait alone used. This
+is what required raising the barrel to ~70°: flat-on, the gun needs a wide
+letterbox, and a wide letterbox is why the two blocks had to be stacked.
+
+**"Refit" named two things** — the panel, and the gun-type swap inside it. The
+panel is "Upgrade" now; Refit is where you change which gun it is.
+
+A note on verifying the raised barrel: two attempts to assert the elevation in
+the render test both passed with the gun still lying flat. Nearly every pixel
+of that canvas carries some alpha (dark body fills, wide glow falloff), so "is
+there ink up here" answers yes wherever it is pointed, and the luminance that
+would separate the two is exactly what a node-canvas harness renders
+unreliably. The vacuous assertion was removed rather than kept: the test now
+pins what a machine can honestly judge (the canvas has the headroom a raised
+barrel needs, and the art is not blank) and the elevation is a device check.

@@ -583,34 +583,6 @@ export const UPGRADES = {
     tiers: [{ pierce: 0, bounces: 2 }, { pierce: 0, bounces: 3 }, { pierce: 1, bounces: 3 },
             { pierce: 1, bounces: 4 }, { pierce: 2, bounces: 5 }, { pierce: 2, bounces: 6 }],
   },
-  /* Convergence: how far the battery's focal point tracks the column.
-
-     Every gun fires at one shared point (`aimPointFor`), which sat at a flat
-     620px out. With one mount that is invisible; with five spread across the
-     board it is the whole problem — the guns converge at a fixed distance while
-     the column advances past it. This buys the focal point the freedom to
-     follow the nearest craft on the aim line.
-
-     **The focus tightens as they close, and that is the whole mechanic.** Far
-     out the battery keeps its fan — five mounts aiming at one distant point
-     sweep a dense column and hit many craft at once, and collapsing that is
-     measurably worse. Close in the fan is the problem: the guns converge past
-     the target and their rounds pass either side of it.
-
-     That is why a command ship in the last stretch was very nearly unkillable
-     however upgraded the battery was, which is the reported bug this exists to
-     fix. Measured, with the escort thinned to 12 and the head at 137px: **9.9s
-     to kill without it, 3.5s with it maxed.**
-
-     Still a trade at the top tiers — focused fire is less total coverage, so a
-     long column leaks more past you. The blurb says so. */
-  convergence: {
-    name: 'Convergence', stat: 'converge',
-    blurb: 'Fire tightens as they close — the answer to a command ship in your face',
-    costs: [46, 98, 172, 276, 418],
-    tiers: [{ converge: 0 }, { converge: 0.25 }, { converge: 0.45 },
-            { converge: 0.65 }, { converge: 0.83 }, { converge: 1.0 }],
-  },
 };
 
 export const BRANCHES = Object.keys(UPGRADES);
@@ -641,7 +613,6 @@ export const BRANCH_UNLOCK = {
   velocity: 5,
   optics: 7,
   munitions: 9,
-  convergence: 11,
 };
 
 /** Best wave ever reached, which is what the branch ramp is measured against.
@@ -1165,7 +1136,7 @@ export function newResearch() {
   const marks = {};
   for (const t of GUN_KEYS) marks[t] = 0;      // permanent upgrades per gun type
   return {
-    points: 0, best: 1, depth, marks,
+    points: 0, best: 1, converge: 0, depth, marks,
     guns: { auto: false, rail: false, mortar: false, ion: false },
   };
 }
@@ -1177,6 +1148,7 @@ export function sanitizeResearch(raw) {
   if (!raw || typeof raw !== 'object') return r;
   r.points = Math.max(0, Math.floor(Number(raw.points) || 0));
   r.best = Math.max(1, Math.floor(Number(raw.best) || 1));
+  r.converge = clamp(Math.floor(Number(raw.converge) || 0), 0, CONV_MAX);
   for (const b of BRANCHES) {
     r.depth[b] = clamp(Math.floor(Number(raw.depth?.[b]) || 0), 0, MAX_TIER - FREE_TIER);
   }
@@ -1204,6 +1176,59 @@ export function researchDepth(w, branch) {
   if (cost === null || w.research.points < cost) return false;
   w.research.points -= cost;
   w.research.depth[branch]++;
+  return true;
+}
+
+/* ---------- convergence: fire control, bought once for the whole battery ----
+
+   Every gun fires toward one shared point (`aimPointFor`). Where that point
+   sits is the battery's fire control, and it was a per-emplacement scrap branch
+   until v36 — which never made sense: five mounts cannot converge on five
+   different points, so the engine read the *best* convergence on the battery
+   and the other four purchases did nothing. Paying five times for one effect is
+   the kind of thing a player only discovers by feeling cheated.
+
+   It is one permanent research track now. What a level buys is **how far in
+   the focal point may follow the command ship**:
+
+   - With nothing researched the point sits at `focusDefault(L)` — five rungs of
+     the serpentine out from the centre emplacement — and never moves. Far out
+     that fan is an asset: several mounts aiming at one distant point sweep a
+     dense column and hit many craft at once.
+   - As the command ship closes past that mark, the focal point contracts to
+     follow it, down to the floor the researched level allows. Close in the fan
+     is the whole problem — the guns converge *past* the target and their rounds
+     pass either side of it, which is why a command ship in the last stretch
+     used to be very nearly unkillable.
+   - It never travels outward. Above the default there is nothing to gain: the
+     fan already covers a distant column better than a point does.
+
+   So level 0 is the old flat fan, and the last level lets the battery commit
+   all the way to `MIN_FOCUS`. */
+
+/** How many levels of convergence there are to research. */
+export const CONV_MAX = 5;
+/** RP for each successive level. Steeper than gun marks: this is battery-wide
+ *  fire control, and the top level is what makes a decapitation land. */
+export const CONV_RP = [3, 5, 8, 12, 17];
+
+/** RP for the next level of convergence, or null when fully researched. */
+export function convergeCost(w) {
+  const have = convergeLevel(w);
+  return have >= CONV_MAX ? null : CONV_RP[have];
+}
+
+/** Levels of convergence this battery has. Defaults to 0 for a world built
+ *  without research, which is every engine test that does not opt in. */
+export function convergeLevel(w) {
+  return clamp(Math.floor(w.research?.converge ?? 0), 0, CONV_MAX);
+}
+
+export function researchConverge(w) {
+  const cost = convergeCost(w);
+  if (cost === null || w.research.points < cost) return false;
+  w.research.points -= cost;
+  w.research.converge = convergeLevel(w) + 1;
   return true;
 }
 
@@ -1329,9 +1354,21 @@ export function setGunType(w, mountIndex, type, free = false) {
   return true;
 }
 
-/** The fixed focal distance, used at convergence tier 0 and as the fallback
- *  whenever there is nothing on the aim line to focus on. */
-export const FOCUS_RANGE = 620;
+/** Where the battery's fire crosses when nothing is pulling it in: **five rungs
+ *  of the serpentine** out from the centre emplacement.
+ *
+ *  Derived from the layout's row spacing rather than written as a pixel count,
+ *  for the same reason Hull Breach derives its ball speed — the portrait board
+ *  has much taller rungs (104px against 62px), and a flat number would put the
+ *  focus five rungs up on one board and two on the other. It was a flat 620px
+ *  until v36, which is past the top of the board on either layout: the "fixed
+ *  focal point" was effectively at infinity, and the guns fired parallel. */
+export const FOCUS_RUNGS = 5;
+export const focusDefault = (L) => FOCUS_RUNGS * L.ROW_GAP;
+
+/** Kept as the name every caller already used for "the default focal range",
+ *  now resolved per layout. */
+export const FOCUS_RANGE = focusDefault(LAYOUT);
 /** The focal point never comes closer than this, however hard convergence
  *  pulls it in: at very short focal ranges the outer mounts have to angle
  *  almost sideways, and their rounds cross the column at a glance. */
@@ -1405,13 +1442,26 @@ function targetRange(w) {
  *  measurably *worse* than the fixed point it replaced, because five guns
  *  converging on one craft is four wasted rounds. Staggered, the battery rakes
  *  a stretch of the column instead of drilling one hole in it. */
+/** The closest the focal point may be pulled, at this level of research.
+ *  Level 0 cannot move it at all — the floor *is* the default — and the last
+ *  level lets it come all the way in to `MIN_FOCUS`. */
+export function focusFloor(w) {
+  const def = focusDefault(w.L);
+  const k = convergeLevel(w) / CONV_MAX;
+  return def + (MIN_FOCUS - def) * k;
+}
+
 export function aimPointFor(w, gun) {
   const b = w.battery;
-  const conv = gun ? (stats(w, gun).converge || 0) : 0;
-  let range = FOCUS_RANGE;
-  if (conv > 0) {
+  const def = focusDefault(w.L);
+  const floor = focusFloor(w);
+  let range = def;
+  {
     const t = targetRange(w);
-    if (t !== null) {
+    /* Contract to follow the command ship, never extend past the default.
+       Above the default there is nothing to gain — a distant column is better
+       served by the fan than by a point — so the focus simply parks. */
+    if (t !== null && t < def) {
       /* What the tiers buy is **how far out the focus engages**, not how
          partial it is — and that distinction is the whole design.
 
@@ -1425,26 +1475,30 @@ export function aimPointFor(w, gun) {
          Inside the engagement range the focus goes fully onto the target, which
          is what makes a close command ship killable at all. Outside it the fan
          is untouched, because far out the spread is an asset. */
-      const engage = ENGAGE_MIN + conv * (ENGAGE_MAX - ENGAGE_MIN);
-      // a short blend either side of the threshold, so it eases rather than snaps
-      const k = clamp((engage + ENGAGE_BLEND - t) / ENGAGE_BLEND, 0, 1);
-      if (k > 0) {
-        range = Math.max(MIN_FOCUS, FOCUS_RANGE + (t - FOCUS_RANGE) * k);
-        /* Staggered, so the battery does not collapse to a single point. Total
-           convergence kills whatever you aimed at and lets the rest of the
-           column walk past. A few craft of spread around the focus keeps fire
-           on the column while still putting enough of it on the near threat. */
-        const n = b.guns.length;
-        const rank = b.guns.indexOf(gun);
-        if (n > 1 && rank >= 0) {
-          range = Math.max(MIN_FOCUS, range * (1 + (rank - (n - 1) / 2) * FOCUS_STAGGER * k));
-        }
+      range = Math.max(t, floor);
+      /* Staggered, so the battery does not collapse to a single point. Total
+         convergence kills whatever you aimed at and lets the rest of the column
+         walk past. A few craft of spread around the focus keeps fire on the
+         column while still putting enough of it on the near threat.
+
+         Scaled by how far the point has actually come in: at the default there
+         is no stagger to apply (every mount is on the same fan), and it grows
+         as the focus commits. */
+      const pulled = def > floor ? clamp((def - range) / (def - floor), 0, 1) : 0;
+      const n = b.guns.length;
+      const rank = b.guns.indexOf(gun);
+      if (n > 1 && rank >= 0 && pulled > 0) {
+        range = Math.max(MIN_FOCUS, range * (1 + (rank - (n - 1) / 2) * FOCUS_STAGGER * pulled));
       }
     }
   }
+  /* `range` rides along with the point: it is what the mechanic is actually
+     about, the shell draws its aim line to it, and a test that wants to pin
+     "the focus contracted" should not have to re-derive it from x and y. */
   return {
     x: w.L.W / 2 + Math.cos(b.ang) * range,
     y: b.y + Math.sin(b.ang) * range,
+    range,
   };
 }
 
@@ -1714,7 +1768,7 @@ export const DROP_CHANCE = 0.26;
  *  yields nothing — the same LCG decides both, so one call is one advance and
  *  a seeded run stays exactly reproducible. */
 export function rollDrop(w) {
-  const n = (w.dropSeed = (w.dropSeed * 1103515245 + 12345) & 0x7fffffff);
+  const n = (w.dropSeed = (Math.imul(w.dropSeed, 1103515245) + 12345) & 0x7fffffff);
   // top bits for the yes/no, low bits for the kind: an LCG's low bits are the
   // least random part of it, so the coarser decision gets the better ones
   if ((n >>> 8) % 1000 >= DROP_CHANCE * 1000) return null;
@@ -1904,16 +1958,55 @@ export function splitChain(w, ci, i) {
    board an instant win and left recoil, mid-chain cutting, splitters and
    shielded flanking pointless.
 
-   Instead the body armors the head. Damage to it is divided by how much body
-   is still alive, so clearing the chain first is the efficient route — but a
-   rail shot or an overdrive burst can still attempt an early decapitation for
-   a large payoff. That turns the head into a risk/reward decision rather than
-   a shortcut, and killing it does end the whole snake. */
+   Instead the body armors the head, so stripping the chain is what opens the
+   head up — but a committed battery can attempt an early decapitation for a
+   large payoff. That makes the head a risk/reward decision rather than a
+   shortcut, and killing it does end the whole snake.
+
+   **The divisor is sublinear, and that is the whole point.** It was a flat
+   `1/(1+bodyLeft)` until v36, so the penalty scaled with chain length — and
+   late waves are long. Measured against the time a column actually gives you
+   before it breaches, decapitation stopped being reachable around wave 18 for
+   anything but a maxed battery and was gone entirely by wave 45. The mechanic
+   died exactly where a command ship reaching the floor hurts most.
+
+   At `^0.7` the ladder is (standard guns, full chain, vs the breach window):
+
+     build              w10    w18    w30    w45
+     2 mounts, tier 2   13s ✓  22s ✗  29s ✗  39s ✗    never, past the opening
+     3 mounts, tier 3    7s ✓  13s ✓  17s ✓  23s ✗    the committed build
+     4 mounts, tier 4    6s ✓  11s ✓  13s ✓  17s ✓    reliably
+     6 mounts, tier 5    3s ✓   9s ✓   8s ✓  19s ✗
+
+   **What gates decapitation is feasibility, not efficiency**, and that was
+   already true before this change. Measured in real play, aiming at the head
+   killed the chain *faster* than fighting it whenever it was possible at all —
+   13s against 14s at wave 10 under the old linear divisor. Clearing the body
+   was never the efficient route; it was the only available one. Decapitation
+   also pays out every segment still attached, so the price of the attempt is
+   the battery it takes to land it inside the window, and nothing else. If that
+   ever needs a real counterweight, cut the payout rather than the damage — a
+   fast kill that forfeits the column's scrap is a trade; a slow one nobody can
+   land is just a dead mechanic.
+
+   Two things measured along the way, worth not re-learning: **convergence is
+   what makes a decapitation possible at all** (8.2s with it, 57.5s without, at
+   wave 18), and **the railgun is the wrong tool** despite what this comment
+   used to claim — its slow rate and wasted pierce make it worse on a single
+   target than the plain cannon (25.9s against 8.2s). Rail's edge is
+   `railBonus` against hardened hulls, which is a different job. */
+
+/** Tuned by measuring decapitation time against the breach window at several
+ *  waves and build depths — see the table above. Toward 1 the mechanic dies
+ *  late; toward 0.5 a two-mount opening battery decapitates at wave 30, which
+ *  makes the body pointless. */
+export const HEAD_ARMOR_EXP = 0.7;
 
 /** Fraction of normal damage the head takes with `bodyLeft` segments behind it.
- *  1 at full exposure, falling away steeply while the body is intact. */
+ *  1 at full exposure, falling away steeply — but sublinearly, so a long chain
+ *  protects more than a short one without ever making the head immune. */
 export function headDamageFactor(bodyLeft) {
-  return 1 / (1 + Math.max(0, bodyLeft));
+  return 1 / (1 + Math.pow(Math.max(0, bodyLeft), HEAD_ARMOR_EXP));
 }
 
 /* ---------- hit-stop ----------

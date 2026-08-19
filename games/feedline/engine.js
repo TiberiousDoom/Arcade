@@ -73,9 +73,19 @@ export const BONUS_TTL = 42;        // in ticks
 
 /* ---------- randomness ---------- */
 
+/* `Math.imul`, not `*`. The multiply overflows 2^53 for any seed above about
+   8 million, and a float that has lost its low bits is then masked to 31 —
+   which throws away exactly the bits an LCG carries its randomness in. Seeded
+   from a constant nobody noticed; seeded from `Date.now()` it collapsed the
+   sequence onto a coarse lattice. Measured in Feedline: a clock-seeded first
+   food could land in **8 of 32 columns**, against all 32 with a small seed,
+   which is why the opening food kept landing in the same few places and why
+   retrying — which reseeds from a small constant — looked like it fixed it.
+   `imul` is exact 32-bit multiplication, so every seed behaves like the small
+   ones always did. */
 /** Same LCG as Flak Battery's drop roll. Deterministic per seed. */
 export function rand(w) {
-  return (w.seed = (w.seed * 1103515245 + 12345) & 0x7fffffff);
+  return (w.seed = (Math.imul(w.seed, 1103515245) + 12345) & 0x7fffffff);
 }
 
 /** Every cell not occupied by the wire, the food, or the bonus. Returned in a
@@ -261,7 +271,11 @@ export function createWorld(opts = {}) {
   return w;
 }
 
-export function resetGame(w) {
+/** Restart. `seed` is optional so tests keep their fixed, replayable run while
+ *  the shell hands in a fresh one — every retry used to reuse one hardcoded
+ *  constant, so the food sequence after a death was identical every single
+ *  time, in a game whose only variable is where the food goes. */
+export function resetGame(w, seed) {
   w.wire = startWire(w.L);
   w.dir = { x: 1, y: 0 };
   w.queue = [];
@@ -271,7 +285,7 @@ export function resetGame(w) {
   w.acc = 0;
   w.over = false; w.won = false;
   w.checkpoint = -1; w.justCheckpoint = false;
-  w.seed = 20260722;
+  w.seed = (seed ?? 20260722) & 0x7fffffff;
   spawnFood(w);
 }
 

@@ -82,12 +82,18 @@
      and a full-width button was most of a screen of furniture for nine numbers.
      Qualified with `.branch` so this wins on specificity rather than on source
      order — `.branch` sets `flex-direction:column` and is declared after. */
-  .branch.buyRow{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px}
+  .branch.buyRow{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;
+    padding:6px 8px;min-height:58px;box-sizing:border-box}
   .branch.buyRow .rowHead{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 auto}
   .branch.buyRow h3{font-size:10px;letter-spacing:.1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .branch.buyRow .pips{width:100%}
   /* Still a thumb target — the row got shorter, the tap area did not. */
-  .branch.buyRow .buy{width:auto;flex:0 0 auto;min-width:72px;min-height:44px;padding:10px 10px;font-size:10px}
+  /* A fixed width, not a minimum. The button used to size to its own text, so
+     the longest state in a list ("142 · −80") set the column for every row and
+     the branch names beside them were ellipsised to fit. Fixed, the text column
+     is the same on every row and nothing moves when a price changes. */
+  .branch.buyRow .buy{width:76px;flex:0 0 76px;min-height:44px;padding:10px 6px;font-size:10px;
+    display:flex;align-items:center;justify-content:center}
   /* current → next for the tier on offer, under the name and pips. Small and
      dim: it answers "is this worth 142 scrap" on the one glance you give it
      between waves, and must not turn the dense row back into a card. */
@@ -114,6 +120,7 @@
   .branchGroup{
     border:1px solid var(--line);border-radius:5px;
     padding:7px 8px 3px;margin-bottom:6px;
+    grid-column:1/-1;
   }
   .branchGroup .groupName{
     margin:0 0 4px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
@@ -148,6 +155,20 @@
 
   /* The portrait spans the whole grid: it is the identity of the tab, not one
      card among four. */
+  /* Art and numbers as one card. The columns are fixed fractions rather than
+     content-sized, so every gun type gives the same layout however long its
+     name or blurb is — a card that reflows per gun reads as a different card. */
+  .gunCard{
+    grid-column:1/-1;display:grid;grid-template-columns:44% 1fr;gap:10px;
+    border:1px solid var(--line);background:#0b1a20;border-radius:5px;
+    padding:8px;margin-bottom:8px;align-items:start;
+  }
+  .gunCard .portrait{grid-column:auto;border:0;background:none;padding:0;margin:0}
+  .gunCard .statBlock{grid-column:auto;min-width:0}
+  @media (max-width:340px){
+    /* below this the two columns starve each other; stack rather than squeeze */
+    .gunCard{grid-template-columns:1fr}
+  }
   .portrait{grid-column:1/-1;border:1px solid var(--line);background:#0b1a20;
     border-radius:3px;padding:6px;display:flex;flex-direction:column;gap:4px}
   .portrait canvas{width:100%;height:auto;display:block}
@@ -206,8 +227,13 @@
   .empMeta{display:flex;flex-direction:column;gap:2px;padding:0 2px 2px}
   .empMeta b{font-size:11px;letter-spacing:.1em;text-transform:uppercase}
   .empMeta span{font-size:9px;color:var(--dim);letter-spacing:.04em}
-  .empMeta .heatline{height:3px;background:#1b3038;border-radius:1px;overflow:hidden;margin-top:2px}
-  .empMeta .heatline i{display:block;height:100%;background:var(--scale)}
+  /* How far this emplacement is built out — tiers bought over tiers available.
+     It was live gun heat until v36, which is a real number about a gun that is
+     not currently firing: it sat wherever the heat happened to be when the shop
+     opened, so it read as a progress bar that moved at random and meant
+     nothing here. Depth is what the card is actually about. */
+  .empMeta .xpline{height:3px;background:#1b3038;border-radius:1px;overflow:hidden;margin-top:2px}
+  .empMeta .xpline i{display:block;height:100%;background:var(--accent);transition:width .2s ease-out}
   .addCard{align-items:center;justify-content:center;border-style:dashed;
     border-left-style:dashed;min-height:110px;color:var(--dim)}
   .addCard b{font-size:22px;color:var(--brass);line-height:1}
@@ -272,7 +298,7 @@
     </div>
     <div id="shop">
       <div id="shopHead">
-        <h2>Refit</h2>
+        <h2>Upgrade</h2>
         <div id="shopScrap">Scrap 0</div>
       </div>
       <!-- Tabs and Next Wave share ONE sticky bar. Two `position:sticky`
@@ -755,7 +781,16 @@ function renderShop(bought) {
   const gun = world.battery.guns[shopTab];
   const G = E.GUN_TYPES[gun.type];
 
-  // the portrait: a big, detailed drawing of this mount's actual gun type
+  /* One card: the gun's portrait beside its resolved numbers.
+
+     They were two stacked blocks, which put a picture between the player and
+     the only thing on the screen that answers "is this mount any good". Side by
+     side, the drawing labels the numbers and the numbers explain the drawing,
+     and the pair costs about the height the portrait alone used to. The gun is
+     drawn raised (see PORTRAIT_ANGLE) so it fits a tall narrow column rather
+     than the wide letterbox it needed lying flat. */
+  const card = document.createElement('div');
+  card.className = 'gunCard';
   const port = document.createElement('div');
   port.className = 'portrait';
   const pc = document.createElement('canvas');
@@ -765,14 +800,15 @@ function renderShop(bought) {
   cap.className = 'caption';
   cap.innerHTML = `<b style="color:${G.col}">${G.name}</b><span>${gunBlurb(gun.type)}</span>`;
   port.appendChild(cap);
-  host.appendChild(port);
+  card.appendChild(port);
+  card.appendChild(renderGunStats(gun));
+  host.appendChild(card);
   drawCannonPortrait(pc.getContext('2d'), gun.type, E.barrelsOf(gun));
-  host.appendChild(renderGunStats(gun));
 
   /* This mount's branches — only the ones the branch ramp has opened, and
      with the thermal three inside a single card (see THERMAL). */
   const open = E.openBranches(world);
-  let thermalHost = null;
+  const groupHosts = new Map();
   for (const b of open) {
     const U = E.UPGRADES[b];
     const tier = gun.upgrades[b];
@@ -815,11 +851,15 @@ function renderShop(bought) {
 
     const btn = document.createElement('button');
     btn.className = 'buy' + (gated ? ' gated' : (!maxed && !afford ? ' poor' : ''));
-    // spell out the shortfall: "40" while holding 25 leaves you counting
-    btn.textContent = gated ? 'Research'
-      : maxed ? 'Max'
-      : afford ? `${cost}`
-      : `${cost} · −${cost - world.scrap}`;
+    /* The price, and nothing else.
+    
+       It used to append the shortfall ("142 · −80"), which was well meant and
+       cost more than it gave: the button is sized to its text, so the widest
+       state of every row set the column width, squeezing the branch name and
+       its preview into an ellipsis. The scrap you hold is already on screen at
+       the top of the panel, permanently, and "can't afford" is carried by the
+       disabled styling. */
+    btn.textContent = gated ? 'Research' : maxed ? 'Max' : `${cost}`;
     btn.disabled = maxed || !afford;
     el.appendChild(btn);
     if (!gated) {
@@ -835,17 +875,23 @@ function renderShop(bought) {
        three knobs. **UI only**: `stats()` folds over BRANCHES and a test pins
        one-stat-per-branch, so merging them in the engine would cost real
        structure to fix a presentation problem. */
-    if (THERMAL.includes(b)) {
-      if (!thermalHost) {
+    /* Grouped branches go inside one card, built the first time one of its
+       members is reached and reused after. Ungrouped ones sit on their own, so
+       a group of one never becomes a heading with a single row under it. */
+    const grp = groupOf(b);
+    if (grp) {
+      let rows = groupHosts.get(grp.name);
+      if (!rows) {
         const card = document.createElement('div');
         card.className = 'branchGroup';
-        card.innerHTML = '<h3 class="groupName">Thermal</h3>';
-        thermalHost = document.createElement('div');
-        thermalHost.className = 'groupRows';
-        card.appendChild(thermalHost);
+        card.innerHTML = `<h3 class="groupName">${grp.name}</h3>`;
+        rows = document.createElement('div');
+        rows.className = 'groupRows';
+        card.appendChild(rows);
         host.appendChild(card);
+        groupHosts.set(grp.name, rows);
       }
-      thermalHost.appendChild(el);
+      rows.appendChild(el);
     } else {
       host.appendChild(el);
     }
@@ -885,10 +931,26 @@ function hasResearch() {
   return Object.values(r.marks || {}).some(v => v > 0);
 }
 
-/* The heat branches, grouped in the shop as one card. Named here rather than
-   derived from the stat they move, because the grouping is an editorial claim
-   about what a player thinks of as one system, not something the tables know. */
-const THERMAL = ['cooling', 'breech', 'interlock'];
+/* How the branches are grouped in the shop.
+
+   Editorial, not derived — the grouping is a claim about what a player thinks
+   of as one system, which is not something the tables know. Eight rows in a
+   flat list is a wall; three headings is a menu.
+
+   **Ammunition** is what the round is and does: how hard it hits, how big it
+   is, how fast it flies, and what it does after first contact.
+   **Thermal** is the heat gauge, whose three branches are otherwise the most
+   confusable rows in the shop — all three move one bar, in near-identical
+   language, at near-identical prices.
+   Optics is deliberately left ungrouped: it is the only branch about *range*,
+   and a group of one is a heading with nothing to organize. */
+const BRANCH_GROUPS = [
+  { name: 'Ammunition', of: ['damage', 'calibre', 'velocity', 'munitions'] },
+  { name: 'Thermal',    of: ['cooling', 'breech', 'interlock'] },
+];
+
+/** The group a branch belongs to, or null if it stands alone. */
+const groupOf = (b) => BRANCH_GROUPS.find(g => g.of.includes(b)) || null;
 
 /** "Velocity opens at wave 5" for the next branch still to come, or null once
  *  the tree is fully met. Reads BRANCH_UNLOCK so it cannot drift from the gate. */
@@ -947,7 +1009,7 @@ function renderBarrels(gun) {
   btn.className = 'buy' + (cost !== null && !afford ? ' poor' : '');
   btn.textContent = cost === null ? 'Maxed'
     : afford ? `Add Barrel · ${cost}`
-    : `${cost} · need ${cost - world.scrap} more`;
+    : `${cost}`;
   btn.disabled = cost === null || !afford;
   btn.addEventListener('click', () => {
     if (E.buyBarrel(world, shopTab)) { renderShop(); sync(); }
@@ -1057,7 +1119,7 @@ function renderOverview(host) {
     cap.innerHTML =
       `<b style="color:${G.col}">${i + 1} · ${G.name}</b>` +
       `<span>${E.barrelsOf(gun)} barrel${E.barrelsOf(gun) > 1 ? 's' : ''} · ${depth}/${most} tiers</span>` +
-      `<span class="heatline"><i style="width:${Math.round(gun.heat * 100)}%"></i></span>`;
+      `<span class="xpline" title="${depth} of ${most} tiers bought"><i style="width:${most ? Math.round(depth / most * 100) : 0}%"></i></span>`;
     el.appendChild(cap);
 
     el.addEventListener('click', () => { shopTab = i; renderShop(); });
@@ -1106,7 +1168,6 @@ function renderGunStats(gun) {
     ['Heat/shot', (S.heatPerShot * n).toFixed(2), 'breech'],
     ['Cooling', '×' + S.cool.toFixed(2), 'cooling'],
     ['Lockout', '×' + S.lock.toFixed(2), 'interlock'],
-    ['Convergence', S.converge ? Math.round(S.converge * 100) + '%' : '—', 'convergence'],
   ];
 
   const el = document.createElement('div');
@@ -1185,7 +1246,7 @@ function renderBattery() {
       const afford = world.research.points >= cost;
       btn.className += afford ? '' : ' poor';
       btn.textContent = afford ? `Research · ${cost} RP`
-        : `${cost} RP · need ${cost - world.research.points} more`;
+        : `${cost} RP`;
       btn.disabled = !afford;
       btn.addEventListener('click', () => { buyResearch(() => E.researchGun(world, type)); });
     } else {
@@ -1212,7 +1273,7 @@ function renderBattery() {
         const afford = world.research.points >= mCost;
         btn.className += afford ? '' : ' poor';
         btn.textContent = afford ? `Mark ${have + 1} · ${mCost} RP`
-          : `${mCost} RP · need ${mCost - world.research.points} more`;
+          : `${mCost} RP`;
         btn.disabled = !afford;
         btn.addEventListener('click', () => { buyResearch(() => E.researchMark(world, type)); });
       }
@@ -1248,9 +1309,44 @@ function renderBattery() {
       const afford = world.research.points >= mCost;
       btn.className += afford ? '' : ' poor';
       btn.textContent = afford ? `Mark ${have + 1} · ${mCost} RP`
-        : `${mCost} RP · need ${mCost - world.research.points} more`;
+        : `${mCost} RP`;
       btn.disabled = !afford;
       btn.addEventListener('click', () => { buyResearch(() => E.researchMark(world, type)); });
+    }
+    el.appendChild(btn);
+    host.appendChild(el);
+  }
+
+  /* Convergence: fire control for the whole battery, not a per-gun tier.
+
+     It was one of the nine scrap branches, which never made sense — the guns
+     share a single focal point, so the engine read the *best* convergence on
+     the battery and every other mount's purchase did nothing. One permanent
+     track, bought once, applying to every emplacement including ones built
+     later. */
+  {
+    const level = E.convergeLevel(world);
+    const cost = E.convergeCost(world);
+    const el = document.createElement('div');
+    el.className = 'branch';
+    const pips = Array.from({ length: E.CONV_MAX }, (_, i) =>
+      `<i class="${i < level ? 'on' : ''}"></i>`).join('');
+    el.innerHTML =
+      `<h3>Convergence</h3>` +
+      `<div class="pips">${pips}</div>` +
+      `<p>How far in the battery's fire will follow a command ship. ` +
+      `${level ? `Now closes to ${Math.round(E.focusFloor(world))}px` : 'Fire holds its fan at all ranges'}.</p>`;
+
+    const btn = document.createElement('button');
+    btn.className = 'buy rp';
+    if (cost === null) {
+      btn.textContent = 'Research Completed';
+      btn.disabled = true;
+    } else {
+      const afford = world.research.points >= cost;
+      btn.textContent = `${cost} RP`;
+      btn.disabled = !afford;
+      btn.addEventListener('click', () => { buyResearch(() => E.researchConverge(world)); });
     }
     el.appendChild(btn);
     host.appendChild(el);
@@ -1280,7 +1376,7 @@ function renderBattery() {
       const afford = world.research.points >= cost;
       btn.className += afford ? '' : ' poor';
       btn.textContent = afford ? `Open tier ${cap + 1} · ${cost} RP`
-        : `${cost} RP · need ${cost - world.research.points} more`;
+        : `${cost} RP`;
       btn.disabled = !afford;
       btn.addEventListener('click', () => { buyResearch(() => E.researchDepth(world, b)); });
     }
@@ -1324,7 +1420,16 @@ function buyResearch(buy) {
    every card is the same height and no gun is clipped. The mortar is what sets
    the top: its barrel is genuinely steep, and flattening it to save 18 more
    pixels would be letting the grid dictate the art. */
-const PORTRAIT_W = 420, PORTRAIT_H = 150, PORTRAIT_TOP = 36;
+/* The carriage is drawn in a 420x190 space. A barrel raised to PORTRAIT_ANGLE
+   throws its muzzle up out of that box — the longest (rail, 226px) reaches
+   ~212px above the trunnion — so the canvas is taller and the carriage sits at
+   the bottom of it. PORTRAIT_LIFT is where that 190-tall space begins. */
+const PORTRAIT_W = 420, PORTRAIT_H = 372, PORTRAIT_LIFT = 182;
+/** Barrel elevation in the shop portrait, ~70°. Flat-on (-0.12, about 7°) the
+ *  gun needed a wide letterbox, which is what forced the art and the stats
+ *  into separate stacked blocks. Raised, it fits a column beside them — and it
+ *  reads as a piece of artillery rather than a side-on diagram. */
+const PORTRAIT_ANGLE = -1.22;
 
 function drawCannonPortrait(g, type, barrels = 1) {
   const G = E.GUN_TYPES[type];
@@ -1332,7 +1437,7 @@ function drawCannonPortrait(g, type, barrels = 1) {
   const W2 = 420, H2 = 190;
   g.clearRect(0, 0, PORTRAIT_W, PORTRAIT_H);
   g.save();
-  g.translate(0, -PORTRAIT_TOP);
+  g.translate(0, PORTRAIT_LIFT);
 
   const BODY = 'rgba(24,44,56,.98)';
   const BACK = 'rgba(13,26,34,.98)';
@@ -1377,7 +1482,8 @@ function drawCannonPortrait(g, type, barrels = 1) {
 
   g.save();
   g.translate(px, py);
-  g.rotate(spec.rise || -0.12);            // mortars sit steeply up; the rest barely
+  // mortars still sit steeper than the rest, relative to the raised default
+  g.rotate(PORTRAIT_ANGLE + (spec.rise !== undefined ? spec.rise + 0.12 : 0));
 
   const bx = 18, half = spec.bore / 2;
   // back face then body, so the barrel reads as a tube rather than a bar
@@ -1491,7 +1597,10 @@ function openShop() {
      says which, and the button says what leaving it will actually do. Without
      that, losing a life and landing in a shop titled "Refit / Next Wave" reads
      as the game having skipped the wave you just lost. */
-  $('shopHead').querySelector('h2').textContent = 'Refit';
+  /* "Refit" named two different things — this panel, and the gun-type swap
+     inside it. The panel is where you spend scrap on the gun you have; Refit is
+     where you change which gun it is. */
+  $('shopHead').querySelector('h2').textContent = 'Upgrade';
   $('shopGo').textContent = 'Next Wave';
   /* Always opens on mount 1, never on whatever tab was left showing.
 
@@ -2162,9 +2271,19 @@ function draw() {
     }
   }
 
-  // aim guide runs from the battery center through the aim point
+  /* Aim guide, from the battery centre through the aim point.
+
+     Brightened from .13 to .30 and given a longer dash. It was drawn faint on
+     the theory that a bold line across the board competes with the craft — but
+     this is the one piece of UI that answers "where will the round go", it is
+     read at a glance in the middle of a fight, and on a phone in daylight .13
+     over a dark board is very close to invisible.
+
+     Note `fadeFrame`: static content accumulates to roughly 1/fade times the
+     alpha written, and this line is static whenever the player is not turning,
+     so the value here is deliberately well below what it looks like in motion. */
   const cx = W / 2;
-  ctx.strokeStyle = 'rgba(230,233,226,.13)'; ctx.setLineDash([3, 9]); ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(230,233,226,.30)'; ctx.setLineDash([5, 8]); ctx.lineWidth = 1.4;
   ctx.beginPath();
   let gx = cx, gy = b.y, gdx = Math.cos(b.ang), gdy = Math.sin(b.ang);
   ctx.moveTo(gx, gy);
@@ -2181,7 +2300,8 @@ function draw() {
 
   // convergence marker at the aim point when more than one gun is mounted
   if (b.guns.length > 1) {
-    ctx.strokeStyle = 'rgba(255,217,168,.4)'; ctx.lineWidth = 1;
+    // the focal point is what convergence now buys, so it is worth seeing
+    ctx.strokeStyle = 'rgba(255,217,168,.6)'; ctx.lineWidth = 1.4;
     ctx.beginPath(); ctx.arc(tp.x, tp.y, 7, 0, TAU); ctx.stroke();
   }
 

@@ -587,7 +587,7 @@ export function hpScale(wave, difficulty = DEFAULT_DIFFICULTY) {
 
 /** Same LCG the other engines use. Deterministic per seed. */
 export function rand(w) {
-  return (w.seed = (w.seed * 1103515245 + 12345) & 0x7fffffff);
+  return (w.seed = (Math.imul(w.seed, 1103515245) + 12345) & 0x7fffffff);
 }
 
 /* ---------- world ---------- */

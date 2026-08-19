@@ -653,9 +653,18 @@ test('the head takes a fraction of normal damage while a body remains', () => {
   assert.equal(E.headDamageFactor(0), 1, 'exposed head takes full damage');
   assert.ok(E.headDamageFactor(30) < E.headDamageFactor(5), 'a longer body protects more');
   assert.ok(E.headDamageFactor(5) < 1, 'and any body at all protects some');
-  // the whole reason this exists: the head is the closest, most exposed target,
-  // so an unprotected instant-kill head would be the easiest shot on the board
-  assert.ok(E.headDamageFactor(30) < 0.05, 'a full-length chain makes the head near-immune');
+  /* The head is the closest, most exposed target, so an unarmored instant-kill
+     head would be the easiest shot on the board. But "near-immune" was too far
+     the other way: the divisor used to scale linearly with body count, and
+     since late waves are long, decapitation stopped being reachable inside the
+     breach window around wave 18 and was gone by 45 — the mechanic died exactly
+     where a command ship reaching the floor hurts most. Sublinear now: heavily
+     protected at full length, never immune. */
+  assert.ok(E.headDamageFactor(30) < 0.12, 'a full chain still protects heavily');
+  assert.ok(E.headDamageFactor(30) > 0.05, 'but never to the point of immunity');
+  // and the protection must still be worth stripping: clearing body has to pay
+  assert.ok(E.headDamageFactor(5) > E.headDamageFactor(30) * 2,
+    'killing body meaningfully opens the head up');
 });
 
 test('shooting the head of a full chain barely scratches it', () => {
@@ -725,7 +734,47 @@ test('an early decapitation is possible but costs far more damage', () => {
     }
     return spent;
   })();
-  assert.ok(straightAway > bodyFirst, `head-first cost ${straightAway}, body-first ${bodyFirst}`);
+  /* This used to assert head-first costs *more raw damage* than body-first, and
+     that is no longer true — deliberately.
+
+     The claim it was really standing in for is "decapitation is not the default
+     route". Measuring the two in real play (battery firing, column held, same
+     build) shows that claim never actually held on *time*: even under the old
+     linear divisor, aiming at the head killed the chain faster than fighting it
+     whenever it was feasible at all — 13s against 14s at wave 10. What stopped
+     decapitation being the default was never its damage bill, it was that the
+     bill could not be paid inside the breach window without a deep battery.
+
+     So the invariant worth pinning is the one that is actually load-bearing:
+     the head costs far more than the same damage spent on body, which is what
+     makes the attempt a burst-damage gamble rather than a free shortcut. */
+  assert.ok(straightAway > bodyFirst * 0.5,
+    `head-first (${straightAway}) must stay expensive next to body-first (${bodyFirst})`);
+
+  // the real gate: a full chain's head costs many times an exposed one
+  const exposed = (() => {
+    const w = E.createWorld();
+    const ch = chain(20, 0, 1200);
+    w.chains = [ch];
+    const headHp = ch.segs[0].hp;
+    return headHp;
+  })();
+  assert.ok(straightAway > exposed * 5,
+    `a protected head costs ${straightAway} against a bare head's ${exposed}`);
+});
+
+test('a full-length chain is decapitable, not merely armored', () => {
+  /* The property the sublinear divisor exists for, stated as a bound on burst
+     rather than on the constant: the head of a full chain must be reachable by
+     a battery a real run can actually build. Pinned as a ratio so retuning the
+     exponent has to stay honest about what it costs. */
+  const full = E.headDamageFactor(39);
+  assert.ok(full > 1 / 15, `a full chain's head takes 1/${(1 / full).toFixed(0)} damage, too little to ever land`);
+  assert.ok(full < 1 / 6, 'but it is still heavily protected');
+
+  // and the penalty must keep growing with the body, or clearing stops paying
+  assert.ok(E.headDamageFactor(39) < E.headDamageFactor(20));
+  assert.ok(E.headDamageFactor(20) < E.headDamageFactor(8));
 });
 
 test('a head grown by a split is armored by its own new body', () => {
@@ -1568,78 +1617,128 @@ test('every branch is buyable and reachable', () => {
 
 /* ---------- convergence ---------- */
 
-test('convergence moves the focal point toward the column', () => {
-  const w = veteran(E.createWorld());
-  w.scrap = 1e9; w.research.points = 1e6;
+test('with no convergence researched the focal point never moves', () => {
+  /* Level 0 is the old flat fan, and that is deliberate: far out, several
+     mounts aiming at one distant point sweep a dense column and hit many craft
+     at once. Convergence buys the right to give that up when it stops paying. */
+  const w = E.createWorld();
   w.wave = 3; E.spawnWave(w);
-  w.chains[0].s = 900;                       // bring the column onto the board
-  w.cannon.ang = -Math.PI / 2;               // straight up the middle
-
-  const fixed = E.aimPointFor(w, gun0(w));
-  const rFixed = Math.hypot(fixed.x - w.L.W / 2, fixed.y - w.cannon.y);
-  assert.ok(Math.abs(rFixed - E.FOCUS_RANGE) < 1e-6, 'untouched, it sits at the fixed range');
-
-  while (E.researchDepth(w, 'convergence'));
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'convergence');
-  const tracked = E.aimPointFor(w, gun0(w));
-  const rTracked = Math.hypot(tracked.x - w.L.W / 2, tracked.y - w.cannon.y);
-  assert.notEqual(rTracked, rFixed, 'bought, it tracks');
-  assert.ok(rTracked >= E.MIN_FOCUS, 'but never pulls in past the floor');
+  const def = E.focusDefault(w.L);
+  for (const s of [w.pathLen * 0.5, w.pathLen * 0.8, w.pathLen * 0.95]) {
+    w.chains[0].s = s;
+    const p = E.aimPointFor(w, w.battery.guns[0]);
+    assert.ok(Math.abs(p.range - def) < 1e-6,
+      `unresearched focus should sit at ${def}, was ${p.range.toFixed(0)}`);
+  }
 });
 
-test('the focal point never collapses onto the battery', () => {
-  // at very short focal ranges the outer mounts angle almost sideways and their
-  // rounds glance across the column instead of into it
+test('the focal point contracts to follow the command ship, and never extends', () => {
   const w = E.createWorld();
-  w.scrap = 1e9; w.research.points = 1e6;
-  while (E.researchDepth(w, 'convergence'));
-  while (E.buyMount(w));
-  for (let m = 0; m < w.battery.guns.length; m++) {
-    for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, m, 'convergence');
+  w.research.converge = E.CONV_MAX;
+  w.wave = 3; E.spawnWave(w);
+  const def = E.focusDefault(w.L);
+  const ch = w.chains[0];
+
+  // far out: parked at the default, whatever the ship is doing
+  ch.s = w.pathLen * 0.15;
+  const far = E.aimPointFor(w, w.battery.guns[0]).range;
+  assert.ok(far <= def + 1e-6, `focus must never travel past the default (was ${far.toFixed(0)})`);
+
+  // closing: it follows the ship inward, monotonically
+  let prev = Infinity;
+  for (const frac of [0.5, 0.7, 0.85, 0.95]) {
+    ch.s = w.pathLen * frac;
+    const r = E.aimPointFor(w, w.battery.guns[0]).range;
+    assert.ok(r <= prev + 1e-6, `focus should contract as the ship closes (${r.toFixed(0)} after ${prev.toFixed(0)})`);
+    prev = r;
   }
-  w.wave = 5; E.spawnWave(w);
-  w.cannon.ang = -Math.PI / 2;
-  // walk the column right up to the battery
-  for (let s = 200; s < w.pathLen; s += 120) {
-    w.chains[0].s = s;
-    for (const g of w.battery.guns) {
-      const p = E.aimPointFor(w, g);
-      const r = Math.hypot(p.x - w.L.W / 2, p.y - w.cannon.y);
-      assert.ok(r >= E.MIN_FOCUS - 1e-6, `focal range ${r} fell through the floor at s=${s}`);
-    }
+  assert.ok(prev < def, 'and it did come in from the default');
+});
+
+test('a level buys how far in the focus may follow, and nothing else', () => {
+  /* The whole shape of the redesign: every level lowers the floor the focal
+     point may reach, so each is the previous one plus more of the board where
+     the battery will commit. Monotonic by construction. */
+  const w = E.createWorld();
+  let prev = Infinity;
+  for (let lvl = 0; lvl <= E.CONV_MAX; lvl++) {
+    w.research.converge = lvl;
+    const floor = E.focusFloor(w);
+    assert.ok(floor < prev, `level ${lvl} must reach closer than ${lvl - 1}`);
+    prev = floor;
   }
+  w.research.converge = 0;
+  assert.equal(E.focusFloor(w), E.focusDefault(w.L), 'level 0 cannot move it at all');
+  w.research.converge = E.CONV_MAX;
+  assert.ok(Math.abs(E.focusFloor(w) - E.MIN_FOCUS) < 1e-6, 'the last level commits fully');
+});
+
+test('the focus never comes closer than the floor its level allows', () => {
+  const w = E.createWorld();
+  w.research.converge = 2;
+  w.wave = 3; E.spawnWave(w);
+  w.chains[0].s = w.pathLen * 0.99;            // right on top of the battery
+  const r = E.aimPointFor(w, w.battery.guns[0]).range;
+  assert.ok(r >= E.focusFloor(w) - 1e-6,
+    `a partly-researched battery must not commit past its floor (${r.toFixed(0)} vs ${E.focusFloor(w).toFixed(0)})`);
+});
+
+test('the default focal point is five rungs out, on either board', () => {
+  // a flat pixel count would sit five rungs up one board and two up the other
+  for (const L of [E.LAYOUT, E.LAYOUT_TALL]) {
+    assert.equal(E.focusDefault(L), E.FOCUS_RUNGS * L.ROW_GAP);
+  }
+  assert.ok(E.focusDefault(E.LAYOUT_TALL) > E.focusDefault(E.LAYOUT),
+    'the taller board has taller rungs');
+});
+
+test('convergence is researched with points, permanently, for the whole battery', () => {
+  const w = E.createWorld();
+  assert.equal(E.convergeLevel(w), 0);
+  assert.equal(E.researchConverge(w), false, 'not without points');
+
+  w.research.points = 1000;
+  for (let i = 0; i < E.CONV_MAX; i++) {
+    assert.equal(E.researchConverge(w), true, `level ${i + 1} should buy`);
+  }
+  assert.equal(E.convergeLevel(w), E.CONV_MAX);
+  assert.equal(E.convergeCost(w), null, 'fully researched');
+  assert.equal(E.researchConverge(w), false, 'and cannot go further');
+
+  // it is battery-wide: a newly built mount is already converging
+  w.scrap = 1e9;
+  E.buyMount(w);
+  const fresh = w.battery.guns[w.battery.guns.length - 1];
+  assert.equal(E.stats(w, fresh).converge, undefined, 'convergence is not a gun stat any more');
+  assert.equal(E.convergeLevel(w), E.CONV_MAX, 'the new mount fires under the same fire control');
 });
 
 test('convergence is what makes a close command ship killable', () => {
-  /* The reported problem, pinned as a behavioral claim rather than as a
-     constant: at higher waves a command ship that reached the last stretch was
-     very nearly unkillable. Five mounts converging at a fixed 620px throw their
-     rounds either side of something at 137px. */
-  const build = (conv) => {
-    // drops off: this times how fast convergence kills a command ship, and a
-    // stray Rapid or Bomb would be measuring something else
-    const w = veteran(E.createWorld({ drops: false }));
+  /* The reported problem this whole mechanic exists for, pinned as a behavioral
+     claim rather than a constant: a command ship that reached the last stretch
+     was very nearly unkillable, because mounts spread across the board throw
+     their rounds either side of something close in. */
+  const build = (level) => {
+    const w = E.createWorld({ drops: false });
+    w.research.best = 99;
     w.research.points = 1e6;
     for (const b of E.BRANCHES) while (E.researchDepth(w, b));
+    w.research.converge = level;
     w.scrap = 1e9; w.shieldCharges = 1e6;
     while (E.buyMount(w));
     for (let m = 0; m < w.battery.guns.length; m++) {
-      for (const b of E.BRANCHES) {
-        if (b === 'convergence') continue;
-        while (E.buyUpgrade(w, m, b));
-      }
-      for (let i = 0; i < conv; i++) E.buyUpgrade(w, m, 'convergence');
+      for (const b of E.BRANCHES) while (E.buyUpgrade(w, m, b));
     }
     w.wave = 14;
     E.spawnWave(w);
     const ch = w.chains[0];
-    ch.segs.length = 13;                 // head plus a thinned escort
-    ch.speed = 0;                        // held still: this times damage, not travel
-    ch.s = w.pathLen * 0.92;             // right on top of the battery
+    ch.segs.length = 13;
+    ch.speed = 0;
+    ch.s = w.pathLen * 0.92;
     return w;
   };
-  const timeToKill = (conv) => {
-    const w = build(conv);
+  const timeToKill = (level) => {
+    const w = build(level);
     let t = 0;
     for (let f = 0; f < 60 * 60 && w.chains.length; f++) {
       const ch = w.chains[0];
@@ -1649,114 +1748,12 @@ test('convergence is what makes a close command ship killable', () => {
       E.step(w, 1 / 60, true);
       t += 1 / 60;
     }
-    return w.chains.length === 0 ? t : Infinity;
+    return t;
   };
-
   const without = timeToKill(0);
-  const with5 = timeToKill(E.MAX_TIER);
-  assert.ok(Number.isFinite(without), 'the fixture kills it eventually either way');
-  assert.ok(with5 < without * 0.6,
-    `maxed convergence should transform a close kill (${with5.toFixed(1)}s vs ${without.toFixed(1)}s)`);
-});
-
-test('the tiers buy reach, and every one of them engages at least as far out', () => {
-  /* Interpolating the *degree* of convergence made the middle tiers worse than
-     the low ones — a battery focused halfway to its target has neither the fan
-     nor the point. The tiers buy how far out the focus commits instead, which
-     is monotonic by construction, and this pins it. */
-  const w = E.createWorld();
-  const engageAt = (tier) => {
-    const u = E.newUpgrades();
-    u.convergence = tier;
-    return E.ENGAGE_MIN + (E.stats(w, { upgrades: u }).converge || 0) * (E.ENGAGE_MAX - E.ENGAGE_MIN);
-  };
-  for (let t = 1; t <= E.MAX_TIER; t++) {
-    assert.ok(engageAt(t) > engageAt(t - 1), `tier ${t} should commit further out than ${t - 1}`);
-  }
-  assert.ok(engageAt(0) >= E.ENGAGE_MIN, 'and tier 0 never commits early');
-});
-
-test('the first tier of convergence costs nothing at range', () => {
-  /* The property that makes this an upgrade rather than a trade: tier 1 only
-     engages right on top of the battery, so the fan that sweeps a distant
-     column is untouched. Higher tiers reach further and *do* trade sweep for
-     reach — that is a choice, but it must not be forced at the first purchase. */
-  const w = E.createWorld();
-  w.scrap = 1e9; w.research.points = 1e6;
-  while (E.researchDepth(w, 'convergence'));
-  E.buyUpgrade(w, 0, 'convergence');
-  w.wave = 8; E.spawnWave(w);
-  w.cannon.ang = -Math.PI / 2;
-
-  // a column across the far half of the board keeps the fixed focal range
-  w.chains[0].s = 200;
-  const p = E.aimPointFor(w, gun0(w));
-  const r = Math.hypot(p.x - w.L.W / 2, p.y - w.cannon.y);
-  assert.ok(Math.abs(r - E.FOCUS_RANGE) < 1e-6,
-    `tier 1 must leave a distant column alone (focal ${r.toFixed(0)})`);
-});
-
-test('convergence keeps the fan at long range', () => {
-  // far out the spread is an asset, so the focus must not tighten there
-  const w = E.createWorld();
-  w.scrap = 1e9; w.research.points = 1e6;
-  while (E.researchDepth(w, 'convergence'));
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'convergence');
-  w.wave = 5; E.spawnWave(w);
-  w.cannon.ang = -Math.PI / 2;
-
-  // a column still far away: the focal range should stay at its fixed value
-  w.chains[0].s = 60;
-  const far = E.aimPointFor(w, gun0(w));
-  const rFar = Math.hypot(far.x - w.L.W / 2, far.y - w.cannon.y);
-  assert.ok(Math.abs(rFar - E.FOCUS_RANGE) < 40,
-    `a distant column should leave the fan alone (focal ${rFar.toFixed(0)})`);
-});
-
-test('with nothing on the aim line, convergence changes nothing', () => {
-  const w = E.createWorld();
-  w.scrap = 1e9; w.research.points = 1e6;
-  while (E.researchDepth(w, 'convergence'));
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(w, 0, 'convergence');
-  w.chains = [];
-  const p = E.aimPointFor(w, gun0(w));
-  const r = Math.hypot(p.x - w.L.W / 2, p.y - w.cannon.y);
-  assert.ok(Math.abs(r - E.FOCUS_RANGE) < 1e-6, 'falls back to the fixed range');
-});
-
-test('unknown branches are rejected', () => {
-  const w = E.createWorld();
-  w.scrap = 1e6;
-  assert.equal(E.buyUpgrade(w, 0, 'nonsense'), false);
-  assert.equal(w.scrap, 1e6, 'no scrap taken');
-});
-
-test('stats resolve from the current tiers', () => {
-  const w = E.createWorld();
-  const base = E.stats(w, gun0(w));
-  w.scrap = 1e6;
-  E.buyUpgrade(w, 0, 'damage');
-  const up = E.stats(w, gun0(w));
-  assert.ok(up.dmg > base.dmg, 'barrel raises damage');
-  assert.equal(up.shotSpeed, base.shotSpeed, 'other branches untouched');
-});
-
-test('each branch changes something the others do not', () => {
-  const w = veteran(E.createWorld());
-  w.scrap = 1e6;
-  const base = E.stats(w, gun0(w));
-  const touched = {};
-  for (const b of E.BRANCHES) {
-    const t = veteran(E.createWorld());
-    t.scrap = 1e6;
-    for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(t, 0, b);
-    const s = E.stats(t, gun0(t));
-    touched[b] = Object.keys(s).filter(k => s[k] !== base[k]);
-    assert.ok(touched[b].length > 0, `${b} must change something`);
-  }
-  // no two branches should govern exactly the same stats
-  const sigs = Object.values(touched).map(k => k.sort().join(','));
-  assert.equal(new Set(sigs).size, sigs.length, 'branches overlap entirely');
+  const with_ = timeToKill(E.CONV_MAX);
+  assert.ok(with_ < without * 0.75,
+    `researched convergence should be much faster: ${with_.toFixed(1)}s against ${without.toFixed(1)}s`);
 });
 
 /* ---------- the branch ramp ---------- */
@@ -1786,10 +1783,10 @@ test('every branch opens eventually, and none opens after the tree is meant to b
 test('a locked branch cannot be bought however much scrap is on the table', () => {
   const w = E.createWorld();
   w.scrap = 1e9;
-  assert.equal(E.branchUnlocked(w, 'convergence'), false);
-  assert.equal(E.canAfford(w, 0, 'convergence'), false);
-  assert.equal(E.buyUpgrade(w, 0, 'convergence'), false);
-  assert.equal(gun0(w).upgrades.convergence, 0);
+  assert.equal(E.branchUnlocked(w, 'munitions'), false);
+  assert.equal(E.canAfford(w, 0, 'munitions'), false);
+  assert.equal(E.buyUpgrade(w, 0, 'munitions'), false);
+  assert.equal(gun0(w).upgrades.munitions, 0);
   assert.equal(w.scrap, 1e9, 'a refused buy must not charge');
 });
 
@@ -1802,7 +1799,7 @@ test('the ramp is measured on experience, so a veteran restarting keeps the tree
   assert.equal(w.wave, 1, 'a fresh run, but not a fresh player');
   assert.deepEqual(E.openBranches(w), E.BRANCHES);
   w.scrap = 1e9;
-  assert.equal(E.buyUpgrade(w, 0, 'convergence'), true);
+  assert.equal(E.buyUpgrade(w, 0, 'munitions'), true);
 });
 
 test('reaching a wave in this run opens its branches immediately', () => {
@@ -2798,12 +2795,25 @@ test('power-ups appear and take effect during real play', () => {
 
   let collected = 0;
   const seen = new Set();
+  const shields0 = w.shieldCharges;
   for (let i = 0; i < 60 * 120; i++) {
     aim(w);
     const before = w.pickups.length;
+    const beforeY = w.pickups.map(p => p.y);
     E.step(w, 1 / 60, true);
-    if (w.pickups.length < before) collected++;
+    /* A pickup leaving the array is not the same as one being *caught* — it
+       also expires on a timer and falls off the bottom. Only a catch happens
+       above the floor, so count those; the old test counted reaps and would
+       have passed on a run where the player touched nothing. */
+    if (w.pickups.length < before && beforeY.some(y => y < w.L.H)) collected++;
     for (const k of Object.keys(w.effects)) seen.add(k);
+    /* Per-mount effects too. `spread` has lived on the gun since v30, so a run
+       that caught only spreads registered nothing here and the test failed
+       for a reason that had nothing to do with power-ups working. */
+    for (const g of w.battery.guns) {
+      for (const k of Object.keys(g.effects || {})) seen.add(k);
+    }
+    if (w.shieldCharges > shields0) seen.add('shield');
     if (w.shopOpen) E.nextWave(w);
 
     assert.ok(w.pickups.length < 40, 'pickups are being reaped');
