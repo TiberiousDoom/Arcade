@@ -1,25 +1,3 @@
-<!-- WORK IN PROGRESS — NOT LOADED BY THE GAME.
-
-     A review bench for the shop gun portraits: the five guns drawn live, with
-     elevation, barrel-count and exposure controls. Open it directly in a
-     browser (it needs no server — everything is inlined).
-
-     **This file is a snapshot, not a source of truth.** Its drawing code was
-     assembled from shared/glow.js, the engine's GUN_TYPES/BARREL_OFFSETS and
-     the Flak Battery shell's drawCannonPortrait — and then *edited further*
-     with railgun and autocannon redesigns that are NOT yet in the shell. So it
-     is deliberately ahead of the game, and it will be behind the game the
-     moment the port lands. Treat it as a design document with a render
-     attached; delete it once the art is ported and the bench is rebuilt from
-     repo sources.
-
-     Why it exists at all: the render-test harness cannot judge this art. It is
-     dark body fills under additive glow, which node-canvas renders far dimmer
-     than a real GPU, so a faithful capture is unreadable and an "is there ink
-     here" assertion answers yes wherever it is pointed — two such assertions
-     passed with a gun lying flat. Seeing the art is the only way to review it.
-     See docs/DECISIONS.md, 2026-08-19.
--->
 <title>Flak Battery Gun Bench</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -102,7 +80,7 @@
 
 <div class="wrap">
   <header>
-    <div class="stamp"><span>Flak Battery</span><span>·</span><span>shop portraits</span><span>·</span><span>build <b>v38</b></span></div>
+    <div class="stamp"><span>Flak Battery</span><span>·</span><span>shop portraits</span><span>·</span><span>build <b>v39</b></span></div>
     <h1>Gun <span>Bench</span></h1>
     <p class="sub">The five gun portraits, drawn by the repo's own code — <code>shared/glow.js</code> and
     <code>drawCannonPortrait</code>, lifted verbatim. Change the elevation here before it changes in the game. The railgun keeps its own offset from the slider — it is a flat-trajectory gun.</p>
@@ -208,9 +186,8 @@
 </div>
 
 <script>
-/* Lifted verbatim from the repo, so this bench cannot drift from the game:
-   shared/glow.js, GUN_TYPES and BARREL_OFFSETS from the engine, and
-   drawCannonPortrait from the Flak Battery shell. */
+/* Lifted verbatim from the repo at build time — see tools/gun-bench.mjs. */
+
 const TAU = Math.PI * 2;
 
 /* The vector/CRT look, as Canvas 2D primitives.
@@ -531,11 +508,13 @@ const GUN_TYPES = {
   ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', refitBase: 260 },
 };
 
+
 const BARREL_OFFSETS = { 1: [], 2: [11], 3: [-13, 13] };;
-const PORTRAIT_W = 420, PORTRAIT_H = 372, PORTRAIT_LIFT = 182;
-let PORTRAIT_ANGLE = -1.05;
 
 const E = { GUN_TYPES, BARREL_OFFSETS };
+
+const PORTRAIT_W = 420, PORTRAIT_H = 372, PORTRAIT_LIFT = 182;
+let PORTRAIT_ANGLE = -1.05;
 
 function drawCannonPortrait(g, type, barrels = 1) {
   const G = E.GUN_TYPES[type];
@@ -544,6 +523,11 @@ function drawCannonPortrait(g, type, barrels = 1) {
   g.clearRect(0, 0, PORTRAIT_W, PORTRAIT_H);
   g.save();
   g.translate(0, PORTRAIT_LIFT);
+
+  /* Anything that has to be painted *over* the finished gun. The mound's near
+     lip uses it: a berm the gun stands behind rather than on, which only works
+     if it is drawn last. */
+  let foreground = null;
 
   const BODY = 'rgba(24,44,56,.98)';
   const BACK = 'rgba(13,26,34,.98)';
@@ -568,20 +552,114 @@ function drawCannonPortrait(g, type, barrels = 1) {
        towed   outriggers on screw jacks   the field guns
        deck    bolted plate and drum       the railgun, an emplacement
        bunker  armoured casemate           the autocannon, dug in
+       mound   a low earthwork berm        the ion cannon, sited not built
 
      Started as a boolean and did not survive the second one. */
-  const mount = type === 'rail' ? 'deck' : type === 'auto' ? 'bunker' : 'towed';
+  const mount = type === 'rail' ? 'deck' : type === 'auto' ? 'bunker'
+    : type === 'ion' ? 'mound' : 'towed';
   const deck = mount === 'deck';
   /* Where the barrel actually pivots. A towed gun's trunnion sits on top of its
      carriage; a turret's sits high above its armour, with the mass *below* the
      gun rather than wrapped around it. Pivoting at the mount's centre was what
      kept burying it behind the breech. */
-  const pvy = mount === 'towed' ? py : mount === 'deck' ? py - 34 : py - 52;
+  const pvy = mount === 'deck' ? py - 34 : mount === 'bunker' ? py - 52
+    : mount === 'mound' ? py + 6 : py;
 
   // ground first, so everything stands on it
   glowStroke(g, c => { c.moveTo(14, gy); c.lineTo(W2 - 14, gy); }, col, 1.6, undefined, 0.5);
 
-  if (mount === 'bunker') {
+  if (mount === 'mound') {
+    /* A low earthwork. Every other mount here is *built* — welded, bolted,
+       poured. This one is dug: the ion cannon is sited rather than constructed,
+       and a soft berm with the emitter growing out of it says that in one
+       shape. It is also the only curved silhouette on the card, which is most
+       of why it reads as a different kind of thing at a glance.
+       
+       Kept deliberately low and wide. A tall mound would be a hill with a gun
+       on it; a low one is a gun with earth banked around it. */
+    const mTop = gy - 52;
+    const berm = (dx, dy, fill) => {
+      g.beginPath();
+      g.moveTo(px - 132 + dx, gy + 6 + dy);
+      g.bezierCurveTo(px - 104 + dx, gy - 2 + dy, px - 82 + dx, mTop + 4 + dy, px - 34 + dx, mTop + dy);
+      g.lineTo(px + 40 + dx, mTop + dy);
+      g.bezierCurveTo(px + 92 + dx, mTop + 4 + dy, px + 116 + dx, gy - 2 + dy, px + 146 + dx, gy + 6 + dy);
+      g.closePath();
+      g.fillStyle = fill; g.fill();
+    };
+    berm(8, 4, BACK); berm(0, 0, BODY);
+    glowStroke(g, c => {
+      c.moveTo(px - 132, gy + 6);
+      c.bezierCurveTo(px - 104, gy - 2, px - 82, mTop + 4, px - 34, mTop);
+      c.lineTo(px + 40, mTop);
+      c.bezierCurveTo(px + 92, mTop + 4, px + 116, gy - 2, px + 146, gy + 6);
+    }, col, 2.2);
+
+    /* Contour lines following the slope. Two, not a hatch — the mound has to
+       read as a surface without turning into texture, and additive strokes
+       stack fast on a shape this size. */
+    for (const [k, a, w] of [[0.34, 0.4, 62], [0.66, 0.28, 92]]) {
+      const yy = mTop + (gy - mTop) * k;
+      glowStroke(g, c => {
+        c.moveTo(px - w, yy);
+        c.bezierCurveTo(px - w * 0.3, yy - 7, px + w * 0.4, yy - 7, px + w + 10, yy);
+      }, col, 1.1, undefined, a);
+    }
+
+    /* Revetment at the crown: the sandbag or gabion lip that stops the earth
+       slumping into the pit. It also gives the gun something to stand on that
+       is not a curve, which the eye needs. */
+    /* No revetment on the back rim. It is the near parapet the crew stands
+       behind, and blocks along both crowns read as two walls rather than as one
+       pit with a gun in it. */
+    // cable runs from the mound down to the ground: this gun is fed from somewhere
+    for (const [sx, sy] of [[px - 44, mTop + 6], [px + 46, mTop + 10]]) {
+      glowStroke(g, c => {
+        c.moveTo(sx, sy);
+        c.bezierCurveTo(sx - 18, sy + 20, sx - 30, gy - 10, sx - 46, gy + 2);
+      }, col, 1.3, undefined, 0.5);
+    }
+    // and the ground line, drawn over the berm's skirt so it sits *in* the earth
+    glowStroke(g, c => { c.moveTo(14, gy + 5); c.lineTo(W2 - 14, gy + 5); }, col, 1.4, undefined, 0.4);
+
+    /* The near lip, painted after the gun so the gun stands *in* the earthwork
+       rather than on top of it. This is the whole reason the mound is split in
+       two: with one shape the emplacement reads as a gun perched on a hill, and
+       the point of digging in is that the earth is between you and what is
+       shooting at you. Lower than the back crown, so the cage and the rod clear
+       it and only the stand is buried. */
+    foreground = () => {
+      const lTop = gy - 37;
+      const lip = (dx, dy, fill) => {
+        g.beginPath();
+        g.moveTo(px - 158 + dx, gy + 14 + dy);
+        g.bezierCurveTo(px - 118 + dx, gy + 8 + dy, px - 92 + dx, lTop + 4 + dy, px - 40 + dx, lTop + dy);
+        g.lineTo(px + 54 + dx, lTop + dy);
+        g.bezierCurveTo(px + 106 + dx, lTop + 4 + dy, px + 132 + dx, gy + 8 + dy, px + 172 + dx, gy + 14 + dy);
+        g.closePath();
+        g.fillStyle = fill; g.fill();
+      };
+      // an opaque fill, not a translucent one — this has to actually hide things
+      lip(0, 0, '#0d1a20');
+      lip(0, 0, BODY);
+      glowStroke(g, c => {
+        c.moveTo(px - 158, gy + 14);
+        c.bezierCurveTo(px - 118, gy + 8, px - 92, lTop + 4, px - 40, lTop);
+        c.lineTo(px + 54, lTop);
+        c.bezierCurveTo(px + 106, lTop + 4, px + 132, gy + 8, px + 172, gy + 14);
+      }, col, 2.2);
+      // revetment along the near crown, the parapet the crew works behind
+      for (let i = 0; i < 6; i++) {
+        extrudeRect(g, px - 46 + i * 18, lTop - 6, 17, 9, col,
+          { depth: 3, width: 1.2, body: BODY, back: BACK });
+      }
+      // one contour on the near face, to keep it from reading as a flat card
+      glowStroke(g, c => {
+        c.moveTo(px - 104, gy - 4);
+        c.bezierCurveTo(px - 40, gy - 12, px + 50, gy - 12, px + 118, gy - 4);
+      }, col, 1.1, undefined, 0.32);
+    };
+  } else if (mount === 'bunker') {
     /* An armoured casemate: a truncated pyramid, wide at the ground and stepped
        in as it rises, with a heavy skirt where it meets the deck. A dug-in
        emplacement, not a vehicle — the autocannon is the gun you put where the
@@ -767,6 +845,21 @@ function drawCannonPortrait(g, type, barrels = 1) {
     glowStroke(g, c => {
       c.moveTo(px + 6, tTop - 2); c.lineTo(px + 26, tTop + 10);
     }, col, 1.6, undefined, 0.7);
+  } else if (mount === 'mound') {
+    /* Just enough to stand on: a low ring set into the revetment and a short
+       collar. The mound is the feature here — a field carriage on top of it
+       would be two mounts stacked, and the earthwork would stop reading. */
+    const ringY = py + 26;
+    for (const [ry, rr, a] of [[ringY, 40, 1], [ringY - 9, 33, 0.8]]) {
+      g.beginPath(); g.ellipse(px + 4, ry, rr, rr * 0.3, 0, 0, TAU);
+      g.fillStyle = a > 0.9 ? BACK : BODY; g.fill();
+      glowStroke(g, c => c.ellipse(px + 4, ry, rr, rr * 0.3, 0, 0, TAU), col, 1.6, undefined, a);
+    }
+    extrudeRect(g, px - 24, py - 2, 50, 30, col, { depth: 6, width: 1.9, body: BODY, back: BACK });
+    // the feed trunk running back into the earth
+    glowStroke(g, c => {
+      c.moveTo(px - 22, py + 14); c.lineTo(px - 46, py + 26);
+    }, col, 1.5, undefined, 0.65);
   } else if (deck) {
     /* The MOUNT: the fixed body between the turret drum and the trunnion. It
        traverses with the gun but never elevates — everything that elevates is
@@ -843,7 +936,7 @@ function drawCannonPortrait(g, type, barrels = 1) {
     auto:     { len: 134, bore: 46, open: true, rise: 0.30 },
     rail:     { len: 232, bore: 32, open: true, rise: 0.23 },
     mortar:   { len: 104, bore: 30, rise: -0.5 },
-    ion:      { len: 178, bore: 17 },
+    ion:      { len: 200, bore: 62, open: true },
   }[type] || { len: 172, bore: 15 };
 
   const elev = PORTRAIT_ANGLE + (spec.rise !== undefined ? spec.rise + 0.12 : 0);
@@ -1128,16 +1221,72 @@ function drawCannonPortrait(g, type, barrels = 1) {
       c.moveTo(bx + spec.len + 2, -half - 7); c.lineTo(bx + spec.len + 2, half + 7);
     }, col, 3);
   } else if (type === 'ion') {
-    // an emitter ring near the muzzle and a charge core at the breech
-    glowStroke(g, c => c.arc(bx + spec.len - 26, 0, half + 9, 0, TAU), col, 2);
-    glowStroke(g, c => c.arc(bx + spec.len - 8, 0, half + 5, 0, TAU), col, 1.6);
-    glowDot(g, bx + 14, 0, 4.2, col);
-    // conduits running the length of the tube
-    for (const s of [-1, 1]) {
-      glowStroke(g, c => {
-        c.moveTo(bx + 20, s * (half - 3)); c.lineTo(bx + spec.len - 30, s * (half - 3));
-      }, col, 1.2, undefined, 0.6);
+    /* A thin central rod inside a cage of three arms bent around it.
+
+       Every other gun here is a tube, or a frame pretending to be one. This one
+       is deliberately not: the ion cannon is the gun that ignores a shielded
+       craft's frontal deflection, and it should look like it works on a
+       different principle rather than like a cannon with a glow on it. What is
+       doing the work is the rod; the arms are the field that shapes it. */
+    const R = half - 6;                    // how far the arms bow off the axis
+    const rod = spec.len;
+
+    /* Three arms around the axis, projected. One rides low and near, the other
+       two splay above with opposite depth — so the cage reads as three arms in
+       the round and not as two lines either side of a stick. `depth` runs 0
+       (far) to 1 (near) and sets both brightness and how far the arm sits back,
+       the same convention the railgun's truss uses. */
+    const arms = [
+      { y:  R * 0.92, depth: 0.85 },   // near, riding low
+      { y: -R * 0.92, depth: 0.6  },   // above
+      { y: -R * 0.22, depth: 0.1  },   // the third, back behind the rod
+    ].sort((a, b) => a.depth - b.depth);
+
+    for (const a of arms) {
+      const lit = 0.4 + a.depth * 0.6;
+      const sk = (1 - a.depth) * -7;        // the further round, the further back
+      const t = 5;
+      /* Bowed, not straight: out from the root, wide at mid-length, and back in
+         to meet the rod near the tip. A straight arm is a strut; a bent one is
+         a field coil, and the brief was arms *bent around* the rod. */
+      const end = rod * 0.70;               // the cage ends here; the rod goes on
+      const spine = (c, off) => {
+        c.moveTo(2 + sk, off * 0.4);
+        c.bezierCurveTo(rod * 0.20 + sk, a.y * 1.35 + off,
+                        rod * 0.48 + sk, a.y * 1.35 + off,
+                        end + sk, a.y * 0.5 + off);
+      };
+      // a body pass under the glow, so the arm reads as solid rather than as light
+      g.strokeStyle = a.depth > 0.6 ? BODY : BACK;
+      g.lineWidth = t; g.lineCap = 'round';
+      g.beginPath(); spine(g, 0); g.stroke();
+      glowStroke(g, c => spine(c, 0), col, 1.6, undefined, lit);
+
+      // the root shoe where the arm bolts to the collar
+      extrudeRect(g, -2 + sk, a.y * 0.18 - 6, 13, 12, col,
+        { depth: 3, width: 1.2, body: BODY, back: BACK });
+      // and the emitter node at its inner tip, where the field pinches in
+      glowDot(g, rod * 0.70 + sk, a.y * 0.5, 3.2, col, lit);
     }
+
+    /* The rod itself, last and brightest — it is the thing the cage is built
+       around, and it must not be lost among three arms crossing it. Thin, with
+       a hot node at the muzzle where the arms converge on it. */
+    g.fillStyle = BODY;
+    g.fillRect(0, -2, rod + 8, 4);
+    glowStroke(g, c => c.rect(0, -2, rod + 8, 4), col, 1.7);
+    // regular collars along the rod: the read for something charged in stages
+    for (let i = 1; i <= 5; i++) {
+      const x = (rod * i) / 6;
+      glowStroke(g, c => { c.moveTo(x, -5); c.lineTo(x, 5); }, col, 1.3, undefined, 0.55);
+    }
+    glowDot(g, rod + 10, 0, 5.5, col);
+    glowDot(g, rod + 10, 0, 2.6, '#fff3c4');
+
+    // the charge core at the breech, feeding the rod
+    extrudeRect(g, -40, -half + 4, 44, spec.bore - 8, col,
+      { depth: 6, width: 1.8, body: BODY, back: BACK });
+    glowDot(g, -18, 0, 4.2, col, 0.9);
   }
 
   /* Flanking barrels, one per purchased extra, drawn parallel to the main one
@@ -1205,6 +1354,9 @@ function drawCannonPortrait(g, type, barrels = 1) {
   // --- the pivot itself, last so it sits over the barrel root
   extrudeDisc(g, px, pvy, 17, col, { depth: 6, width: 2.2, body: BODY, back: BACK });
   glowDot(g, px, pvy, 3, col);
+
+  // and finally anything that occludes the gun rather than sitting behind it
+  if (foreground) foreground();
   g.restore();
 }
 
