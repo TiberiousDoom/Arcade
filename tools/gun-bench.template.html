@@ -1,0 +1,271 @@
+<title>Flak Battery Gun Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Chivo+Mono:wght@300;400;600;700&display=swap">
+<style>
+  /* One visual world on purpose: this art only ever exists on a dark board,
+     and a light ground would misrepresent every value in it. Every colour is
+     painted explicitly so the page holds whatever ground the viewer's theme
+     paints behind it. Tokens are the game's own. */
+  :root{
+    --board:#050b0d; --panel:#0b1a20; --panel-hi:#10242c;
+    --line:#16303a; --bone:#e6e9e2; --dim:#5d7681;
+    --brass:#c9a227; --brass-hot:#e3b929; --ink:#1a1405;
+    --plate:520px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--board); color:var(--bone);
+    font:400 14px/1.6 'Chivo Mono',ui-monospace,monospace;
+    padding:32px 20px 64px;
+  }
+  .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+
+  header{display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line);padding-bottom:20px}
+  h1{
+    font:400 clamp(26px,4.4vw,42px)/1.05 'Archivo Black',system-ui,sans-serif;
+    margin:0; letter-spacing:.01em; text-wrap:balance; color:var(--bone);
+  }
+  h1 span{color:var(--brass)}
+  .sub{margin:0;color:var(--dim);max-width:62ch}
+  .stamp{
+    display:flex;gap:14px;flex-wrap:wrap;align-items:center;
+    font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
+  }
+  .stamp b{color:var(--brass);font-weight:700}
+
+  /* Control rail. Fixed-width fields so nothing reflows as values change. */
+  .rail{
+    display:flex;flex-wrap:wrap;gap:22px;align-items:flex-end;
+    background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 18px;
+  }
+  .field{display:flex;flex-direction:column;gap:7px;min-width:0}
+  .field>label{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+  .val{color:var(--brass);font-weight:700;font-variant-numeric:tabular-nums}
+  input[type=range]{width:210px;accent-color:var(--brass);background:transparent}
+  .seg{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .seg button{
+    font:600 11px/1 'Chivo Mono',monospace;letter-spacing:.12em;text-transform:uppercase;
+    background:var(--panel-hi);color:var(--dim);border:0;padding:11px 14px;cursor:pointer;
+    transition:background .12s ease-out,color .12s ease-out;
+  }
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button[aria-pressed=true]{background:var(--brass);color:var(--ink)}
+  .seg button:focus-visible{outline:2px solid var(--bone);outline-offset:-2px}
+  .hint{font-size:11px;color:var(--dim);max-width:34ch;line-height:1.5}
+
+  /* The plates. Fixed minimum so a gun is never squeezed into illegibility. */
+  .plates{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  figure{
+    margin:0;background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    padding:12px;display:flex;flex-direction:column;gap:8px;
+  }
+  figure.lead{grid-column:1/-1;background:linear-gradient(180deg,var(--panel-hi),var(--panel))}
+  canvas{width:100%;height:auto;display:block;background:var(--board);border-radius:3px}
+  figcaption{display:flex;flex-direction:column;gap:3px}
+  .name{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+  .note{font-size:11px;color:var(--dim);line-height:1.5}
+
+  .notes{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .note-card{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--brass);
+    border-radius:4px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+  .note-card h2{margin:0;font:700 11px/1.3 'Chivo Mono',monospace;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--brass)}
+  .note-card p{margin:0;font-size:12.5px;line-height:1.65;color:var(--bone)}
+  .note-card p em{color:var(--dim);font-style:normal}
+  footer{color:var(--dim);font-size:11.5px;line-height:1.7;border-top:1px solid var(--line);padding-top:18px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="stamp"><span>Flak Battery</span><span>·</span><span>shop portraits</span><span>·</span><span>build <b>__BUILD__</b></span></div>
+    <h1>Gun <span>Bench</span></h1>
+    <p class="sub">The five gun portraits, drawn by the repo's own code — <code>shared/glow.js</code> and
+    <code>drawCannonPortrait</code>, lifted verbatim. Change the elevation here before it changes in the game. The railgun keeps its own offset from the slider — it is a flat-trajectory gun.</p>
+  </header>
+
+  <div class="rail">
+    <div class="field">
+      <label for="elev">Elevation <span class="val" id="elevVal">60°</span></label>
+      <input type="range" id="elev" min="35" max="85" value="60" step="1">
+    </div>
+    <div class="field">
+      <label for="barrels">Barrels <span class="val" id="barVal">1</span></label>
+      <input type="range" id="barrels" min="1" max="3" value="1" step="1">
+    </div>
+    <div class="field">
+      <label>Exposure</label>
+      <div class="seg" role="group" aria-label="Exposure">
+        <button id="expTrue" aria-pressed="true">As it renders</button>
+        <button id="expLift" aria-pressed="false">Silhouette</button>
+      </div>
+    </div>
+    <p class="hint" id="expHint">True brightness: dark fills under additive glow, on the board's own ground.</p>
+  </div>
+
+  <div class="plates" id="plates"></div>
+
+  <div class="notes">
+    <div class="note-card">
+      <h2>The mount did most of it</h2>
+      <p>It was a splayed trapezoid — a mortar baseplate. Now a cruciform of outriggers on screw-jack pads,
+      with a pedestal and traversing race. <em>Shared by all five types, as the mount always was.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>The breech sits behind the trunnion</h2>
+      <p>A gun does not pivot at the back of its own barrel. The breech swings down as the muzzle comes up —
+      the clearest cue that the gun is elevating rather than merely pointing.</p>
+    </div>
+    <div class="note-card">
+      <h2>The tube tapers</h2>
+      <p>A parallel-sided rectangle was most of the pipe impression. It tapers to a reinforced muzzle band now,
+      and the three evenly spaced reinforcing bands drop to one. <em>Evenly spaced bands read as a ladder.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>Three mounts, not a boolean</h2>
+      <p><b>Towed</b> outriggers for the field guns · <b>deck</b> plate and drum for the railgun · <b>bunker</b>
+      casemate for the autocannon. <em>What a gun stands on is read first, because it is the widest thing on the
+      card. Started as a boolean and did not survive the second one.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>Four barrels, not six</h2>
+      <p>Only the front arc of a rotary cluster is visible side-on; all six merged into one fat tube at this size.
+      Four are drawn as tubes, each with its own collar and bore. <em>Showing what can be seen beats modelling
+      what is there.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>The railgun is emplaced, not towed</h2>
+      <p>A bolted deck plate and turret drum instead of outriggers, an armoured housing instead of an open
+      carriage, and a flat trajectory — it is a direct-fire weapon, so it does not sit at flak elevation.
+      <em>The mount is now per type, because which one a gun stands on is as much of its identity as the barrel.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>No tube, on purpose</h2>
+      <p>A railgun accelerates its round down a pair of rails in open air. Drawing a solid barrel around them
+      would be drawing the one thing the weapon does not have — so the frame is open, and the coil ladder
+      running its length is what makes it read as an accelerator rather than a girder.</p>
+    </div>
+    <div class="note-card">
+      <h2>Coils on the top, plate on the side</h2>
+      <p>A second pair of rails offset back and up gives the assembly a top face and a near face. The coils are
+      exposed along the top channel; the flank is closed. <em>Running the ladder down both faces made it read as
+      open lattice from every angle — which is a ladder, not a machine.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>The trunnion sits high on the mount</h2>
+      <p>A towed gun's trunnion sits on top of its carriage; a turret's sits high, with the fixed armour below the
+      rails rather than wrapped around them. <em>Pivoting at the mount's centre is what kept burying it behind
+      the counterweight.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>One projection for the whole gun</h2>
+      <p>Housing, counterweight, collar and muzzle brace all take the same depth offset as the rails — back and up.
+      <em>They were built with the generic back-face offset, which points down-right, so two halves of one rigid
+      body looked seen from opposite sides. A depth cue only works if every part agrees on it.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>Five parts, named apart</h2>
+      <p><b>Base plate</b> bolted down · <b>mount</b> traversing on the drum · <b>housing</b> elevating with the gun ·
+      <b>counterweight</b> behind it · <b>rails</b> out the front. <em>Calling the mount "the housing" is what hid
+      the fact that the housing was missing.</em></p>
+    </div>
+    <div class="note-card">
+      <h2>Why 60° and not 70°</h2>
+      <p>Past about 65° the equilibrator, cradle and breech fold in behind the tube and the gun loses the triangle
+      of linkage that reads as artillery. <em>Drag the slider past 70 and watch it happen.</em></p>
+    </div>
+  </div>
+
+  <footer>
+    Silhouette exposure lifts the gamma hard — deliberately unfaithful, and useful because shape is the only thing
+    it shows. It is how this art gets checked at all: a headless canvas renders the additive glow far dimmer than a
+    phone does, so a faithful capture is unreadable and an <q>is there ink here</q> test answers yes wherever it is pointed.
+  </footer>
+</div>
+
+<script>
+/*__ART__*/
+const TYPES = [
+  ['standard', 'Cannon',      'The one this round was about. Cradle, breech, equilibrator, tapered tube.'],
+  ['auto',     'Autocannon',  'Cooling fins and a box magazine. Shares the cannon\'s cradle and strut.'],
+  ['rail',     'Railgun',     'Deck plate, mount, housing, counterweight, rails. Flat-trajectory and open.'],
+  ['mortar',   'Mortar',      'Squat and wide-bored, and steeper than the rest by design.'],
+  ['ion',      'Ion Cannon',  'Emitter rings and a charge core. No recoiling mass to balance.'],
+];
+
+const plates = document.getElementById('plates');
+const canvases = TYPES.map(([key, name, note], i) => {
+  const fig = document.createElement('figure');
+  if (i === 0) fig.className = 'lead';
+  const cv = document.createElement('canvas');
+  cv.width = PORTRAIT_W; cv.height = PORTRAIT_H;
+  cv.setAttribute('role', 'img');
+  cv.setAttribute('aria-label', name + ' portrait');
+  const cap = document.createElement('figcaption');
+  cap.innerHTML = '<span class="name" style="color:' + GUN_TYPES[key].col + '">' + name + '</span>' +
+                  '<span class="note">' + note + '</span>';
+  fig.append(cv, cap);
+  plates.appendChild(fig);
+  return { key, cv };
+});
+
+let exposure = 'true';
+
+/* Lift the gamma so shape is legible. Applied after the draw, never inside it —
+   the drawing code here has to stay byte-identical to the game's. */
+function lift(cv) {
+  const g = cv.getContext('2d');
+  const img = g.getImageData(0, 0, cv.width, cv.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3] / 255;
+    for (let c = 0; c < 3; c++) {
+      d[i + c] = Math.min(255, Math.round(255 * Math.pow((d[i + c] * a) / 255, 0.42)));
+    }
+    d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+}
+
+function render() {
+  const barrels = +document.getElementById('barrels').value;
+  for (const { key, cv } of canvases) {
+    const g = cv.getContext('2d');
+    g.clearRect(0, 0, cv.width, cv.height);
+    drawCannonPortrait(g, key, barrels);
+    if (exposure === 'lift') lift(cv);
+  }
+}
+
+const elev = document.getElementById('elev');
+const elevVal = document.getElementById('elevVal');
+const barrels = document.getElementById('barrels');
+const barVal = document.getElementById('barVal');
+const expTrue = document.getElementById('expTrue');
+const expLift = document.getElementById('expLift');
+const expHint = document.getElementById('expHint');
+
+elev.addEventListener('input', () => {
+  elevVal.textContent = elev.value + '\u00b0';
+  PORTRAIT_ANGLE = -(elev.value * Math.PI / 180);
+  render();
+});
+barrels.addEventListener('input', () => { barVal.textContent = barrels.value; render(); });
+
+function setExposure(mode) {
+  exposure = mode;
+  expTrue.setAttribute('aria-pressed', String(mode === 'true'));
+  expLift.setAttribute('aria-pressed', String(mode === 'lift'));
+  expHint.textContent = mode === 'true'
+    ? 'True brightness: dark fills under additive glow, on the board\'s own ground.'
+    : 'Gamma lifted hard. Not what the game looks like — what its silhouette is.';
+  render();
+}
+expTrue.addEventListener('click', () => setExposure('true'));
+expLift.addEventListener('click', () => setExposure('lift'));
+
+PORTRAIT_ANGLE = -(60 * Math.PI / 180);
+render();
+</script>

@@ -1462,3 +1462,30 @@ project onto a vertical line when viewed side-on, and merged into one fat tube.
 Four are drawn as tubes with staggered tips and their own bores. A filled muzzle
 disc read as a cap stuck on the end, and an arc behind it read as a handle; both
 were removed, because the staggered tips already describe the circle.
+
+## 2026-08-19 — The mount taxonomy is applied, and the bench is generated
+
+Both halves of the previous two entries landed in v39.
+
+**Four mounts, not one** (`towed` / `deck` / `bunker` / `mound`), with a
+per-mount trunnion height. The taxonomy started as a boolean when the railgun
+needed a deck plate, and did not survive the autocannon; naming the kinds is
+what made the fourth one cheap to add. The ion cannon's earthwork brought one
+new mechanism with it: a **`foreground` hook**, called at the very end of
+`drawCannonPortrait`, for anything that must occlude the gun rather than sit
+behind it. The mound's near parapet uses it, and that painter's order is the
+whole difference between a gun standing *in* an emplacement and one perched on
+a hill.
+
+**The bench is generated now** — `node tools/gun-bench.mjs` assembles
+`docs/art/gun-bench.html` from `shared/glow.js`, the engine and the shell at
+build time. The first bench was a hand-kept copy committed to survive a session,
+which is exactly the staleness trap the standalone build was retired for in v26.
+Generating it removes the trap and keeps the value: a bench built from a clean
+tree cannot disagree with the game. Proof it was in sync at the port: the
+generated page renders pixel-for-pixel identical to the reviewed one.
+
+The mortar was deliberately left alone. It reads as itself beside the other
+four, and redesigning it to complete the set would have been change for
+symmetry's sake — the only reason to touch it now would be that it looks wrong
+next to the new work, which it does not.
