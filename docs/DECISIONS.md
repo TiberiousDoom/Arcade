@@ -1489,3 +1489,47 @@ The mortar was deliberately left alone. It reads as itself beside the other
 four, and redesigning it to complete the set would have been change for
 symmetry's sake — the only reason to touch it now would be that it looks wrong
 next to the new work, which it does not.
+
+## 2026-08-19 — The board art follows the portraits, at a tenth the size
+
+The battery drew one mount for all five guns — a trapezoid housing under a dome
+— with the barrel varying only in length. Now that the portraits give each gun
+a distinct emplacement, the board says the same thing at ~40px.
+
+**The mount is the whole identity at this size.** Nobody reads a breech or a
+coil ladder on a 40px sprite, but splayed legs, a flat slab, a sloped block and
+a round hump are four different shapes at a glance — and they are the same four
+the portraits establish, so the shop teaches the board. The barrel then gets one
+or two strokes: twin rails with three ticks, a staggered three-tube cluster, a
+thin rod in two arcs, a tapering tube. Everything else from the portraits is
+dropped, including the housing and the counterweight.
+
+Three things the draft got wrong, each caught by drawing a *mixed* row of six
+rather than one gun at a time:
+
+**The towed mount was linework beside three filled bodies**, so in a row it read
+as the unfinished one — and it is the mount the Cannon and the Mortar share,
+which makes it the first thing a new player sees. It has a filled trunk under
+the dome now. Still the airiest of the four, because seeing through it is what
+says "towed" against a casemate you cannot.
+
+**Trunnion heights were ragged.** Each mount wants its own, but at four
+different heights a row of six read as a broken line rather than a battery.
+Kept within 4px now.
+
+**The railgun's mount box was a grey blob at 1x.** Dropped; the rails sit
+straight on the drum, which needed the drum raised to meet them.
+
+Two things accepted rather than solved. The **sphere/cube rule** — invaders are
+cubes, defenders are spheres — is no longer absolute: only the towed mount keeps
+a dome. That was a deliberate call by the owner after it was raised, on the
+grounds that mount variety is worth more than the shape cue here. And **cannon
+and mortar are separated only by their barrel**, which is marginal at 1x; they
+are both towed field pieces, and it only reads as a flaw if the board is
+required to identify guns, which is the shop's job.
+
+Cost measured before shipping: **0.27 → 0.62 ms/frame** for six mounts, against
+a 16.7ms budget. Affordable, and noted here because this codebase has twice been
+bitten by a "small" per-frame addition. The number is node-canvas on a desktop;
+a phone at DPR 3 pushes several times the pixels. If it bites, drop the per-type
+mounts and keep the per-type barrels — most of the read for a third of the cost.
