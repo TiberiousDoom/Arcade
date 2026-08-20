@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-19 (v39 — the gun art round, ported)
+Last updated: 2026-08-19 (v40 — board art follows the portraits)
 
 ## Read this first
 
@@ -88,8 +88,20 @@ machine can judge (canvas geometry, not-blank) and review the rest by eye.
 - Every portrait is unverified on glass. They were reviewed on the bench, which
   is a desktop browser at a size the shop card never uses — the cards render
   these at roughly a third of bench scale.
-- **The board art is untouched.** Only the shop portraits were redesigned; the
-  battery drawn at ~40px on the board still looks as it did.
+- **The board art now follows the portraits** (v40). The battery draws the same
+  four mounts at ~40px — splayed legs, flat slab, sloped block, round hump —
+  with the barrel carrying gun type in one or two strokes. `BOARD_MOUNT`
+  mirrors the portrait taxonomy and must not drift from it, or a gun would be
+  towed in the shop and dug in on the board.
+- **Measured cost: 0.27 → 0.62 ms/frame** for six mounts, against a 16.7ms
+  budget. Fine in isolation, but measured in node-canvas on a desktop; a phone
+  at DPR 3 pushes several times the pixels through those fills. If it bites,
+  the cheap simplification is to drop the per-type mounts and keep the barrels.
+- **The cannon and mortar share the towed mount**, so only the barrel separates
+  them — short and fat against long and thin. That reads at 2x and is marginal
+  at 1x. Left as-is deliberately: they are both towed field pieces, and it only
+  reads as a flaw if the board is required to identify guns, which is the
+  shop's job.
 - Ammunition boxes on the autocannon turret are partly hidden behind the rotor
   at rest; they clear at lower elevation. A play call.
 - Choke Point's opening has the same shape of problem Flak Battery's had and
