@@ -147,6 +147,12 @@ export function pathCells(L, routeIndex = 0) {
    surcharged). That pairing is what keeps the three classes from converging on
    the same build — you can push a Node's fire rate cheaply and its splash only
    at a painful price, so a Node stays a Node however much you spend on it. */
+/* A note on the palette, since it has bitten once: no tower may share a colour
+   with another tower *or with an enemy*. Coil was `#5fc9a4`, which is a near
+   neighbour of Node's blue and the *exact* value the Patch enemy uses — so the
+   healer you most want to find looked like your own tower. It is electric lime
+   now, which the name was always asking for; Patch keeps the teal, because
+   green reads as healing and that is its whole job. */
 export const TOWER_TYPES = {
   /* The splash here is deliberately tiny — a fifth of a cell, and even maxed it
      stays well under half of one, so a Node never becomes a cut-price Breaker.
@@ -179,7 +185,7 @@ export const TOWER_TYPES = {
      `weak` moves to range in exchange, so the class is short-reach area
      support rather than a long-reach single-target debuff. */
   coil: {
-    name: 'Coil', cost: 20, col: '#5fc9a4', blurb: 'Chills a cluster; slowed takes more',
+    name: 'Coil', cost: 20, col: '#a8d84a', blurb: 'Chills a cluster; slowed takes more',
     base: { range: 84, rate: 0.8, dmg: 2, splash: 24, slow: 0.4, slowDur: 1.2 },
     spec: 'splash', weak: 'dmg',
   },
@@ -257,10 +263,23 @@ export const CLASS_MAX = 5;
  *  +1/3 — see the Breaker reach note on `stats`. */
 export const CLASS_GAIN = { dmg: 0.12, rate: 0.1, range: 1 / 15, splash: 0.15 };
 
-/* Raised across the board in v31: the armory is permanent, so it is the one
-   economy where being able to fill it quickly means the game solves itself for
-   good rather than for a run. */
-const CLASS_BASE_COST = { dmg: 95, rate: 88, range: 80, splash: 88 };
+/* Raised across the board in v31, and again in v41.
+   
+   The armory is permanent, so it is the one economy where filling it quickly
+   means the game solves itself for good rather than for a run — and it was
+   filling quickly. Measured against kill income: a full armory cost **1.9x**
+   what a whole Easy run to wave 50 pays, so two runs bought everything and
+   every later circuit and difficulty started already solved. That is the
+   reported "I have them all by wave 60 and then it is too easy".
+   
+   At 1.8x the base and a 2.5x per-level step it costs **5.7x** an Easy run,
+   before anything is spent on towers — so the armory is a running choice about
+   which class to invest in rather than a checklist that completes. The steeper
+   step is what does the work at the top: a track now runs 171 -> 6680 rather
+   than 95 -> 1900, so the last level of anything is a real decision.
+   
+   Balance numbers, so: measured, not played. */
+const CLASS_BASE_COST = { dmg: 171, rate: 158, range: 144, splash: 158 };
 /** A class buys its speciality at a discount and its opposite at a surcharge. */
 export const SPEC_DISCOUNT = 0.6;
 export const WEAK_PENALTY = 1.8;
@@ -273,7 +292,7 @@ export const WEAK_PENALTY = 1.8;
  *  curve in the repo (Flak Battery's branches run about 1.75x a tier, its
  *  mounts about 1.6x a step): the last level costs twelve times the first, and
  *  a full track runs roughly double what it did. */
-export const CLASS_COST_STEP = 2.15;
+export const CLASS_COST_STEP = 2.5;
 
 export function newClassUpgrades() {
   const out = {};
@@ -488,13 +507,23 @@ export function unlockedRoutes(progress, difficulty) {
   return n;
 }
 
-/** Easy is always open; each harder difficulty waits on a win below it. One
- *  win is enough — clearing every route on Easy before Medium appears would be
- *  three full runs of gate rather than a step up. */
-export function difficultyUnlocked(progress, difficulty) {
+/** Easy is always open; each harder difficulty waits on a win below it **on the
+ *  same circuit**.
+ *
+ *  It used to be one win anywhere, which meant beating Easy on the opening
+ *  circuit unlocked Hard's entry on every circuit you later reached — so a
+ *  board you had never played could be started on a difficulty you had never
+ *  proved against it. Per circuit, each board asks you to earn your way up it,
+ *  and the two axes stop leaking into each other.
+ *
+ *  `routeIndex` is optional so the older global question ("is this difficulty
+ *  open anywhere?") still has an answer, which is what a menu listing
+ *  difficulties before a circuit is chosen needs. */
+export function difficultyUnlocked(progress, difficulty, routeIndex = null) {
   const i = DIFFICULTY_KEYS.indexOf(difficulty);
   if (i <= 0) return i === 0;
-  return (progress?.wins?.[DIFFICULTY_KEYS[i - 1]] || []).length > 0;
+  const below = progress?.wins?.[DIFFICULTY_KEYS[i - 1]] || [];
+  return routeIndex === null ? below.length > 0 : below.includes(routeIndex);
 }
 
 /** Bank a win. Returns what it opened up, so the shell can say so. */
@@ -544,7 +573,20 @@ export function enemiesForWave(wave) {
  *  steeper (which would have made the confirmed-good opening harder too). */
 const past5 = (wave) => Math.max(0, wave - 5);
 
+/** Every tenth wave is a surge: a wave that arrives as an event rather than as
+ *  the next step on the curve.
+ *
+ *  The escalation between ordinary waves is smooth by design, which is right
+ *  for most of a run and means nothing ever *arrives*. A hard beat every ten
+ *  gives the run a pulse to prepare for and a milestone to survive, and it is
+ *  the point where a board that has been coasting gets told it was coasting. */
+export const isSurgeWave = (wave) => wave > 0 && wave % 10 === 0;
+/** How much more of everything a surge wave brings, and how much tougher. */
+export const SURGE_COUNT = 1.6;
+export const SURGE_HP = 1.35;
+
 export function wavePlan(wave) {
+  const surge = isSurgeWave(wave);
   const groups = [{ type: 'surge', count: 6 + wave * 2 + past5(wave) * 2, gap: 0.7 }];
   if (wave >= ENEMY_UNLOCK.spark) groups.push({ type: 'spark', count: 3 + Math.floor(wave / 2) + past5(wave), gap: 0.45 });
   // swarms come in a tight burst — that clustering is what makes splash pay
@@ -565,6 +607,18 @@ export function wavePlan(wave) {
   if (wave >= 12) groups.push({ type: 'surge', count: 4 + past5(wave), gap: 0.5 });
   if (wave >= 14) groups.push({ type: 'swarm', count: 6 + past5(wave), gap: 0.14 });
   if (wave >= 16) groups.push({ type: 'spark', count: 4 + Math.floor(wave / 3), gap: 0.35 });
+
+  /* A surge brings more of everything and brings it closer together. Scaling
+     the plan rather than writing a separate one keeps every enemy the wave
+     would normally contain — a surge is the same wave arriving harder, not a
+     different wave, so nothing a player has learned stops applying. */
+  if (surge) {
+    return groups.map(g => ({
+      ...g,
+      count: Math.max(1, Math.round(g.count * SURGE_COUNT)),
+      gap: g.gap * 0.82,
+    }));
+  }
   return groups;
 }
 
@@ -580,7 +634,8 @@ export const GROUP_OVERLAP = 0.55;
  *  fifth — same "bend it, don't tilt it" shape as `wavePlan` above, for the
  *  same reason: the early waves were already right. */
 export function hpScale(wave, difficulty = DEFAULT_DIFFICULTY) {
-  return (1 + (wave - 1) * 0.12 + past5(wave) * 0.08) * diffOf(difficulty).hp;
+  const base = (1 + (wave - 1) * 0.12 + past5(wave) * 0.08) * diffOf(difficulty).hp;
+  return isSurgeWave(wave) ? base * SURGE_HP : base;
 }
 
 /* ---------- randomness ---------- */
@@ -764,7 +819,7 @@ export function startWave(w) {
   let groupAt = startAt;
   for (const g of wavePlan(w.wave)) {
     let t = groupAt;
-    for (let i = 0; i < g.count; i++) { spawns.push({ type: g.type, at: t }); t += g.gap; }
+    for (let i = 0; i < g.count; i++) { spawns.push({ type: g.type, at: t, wave: w.wave }); t += g.gap; }
     groupAt += Math.max(0.4, (t - groupAt) * GROUP_OVERLAP);
   }
   spawns.sort((a, b) => a.at - b.at);
@@ -807,10 +862,15 @@ export function rushWave(w) {
 
 /** Put an enemy on the path. `dist` defaults to the start, but a Tank
  *  deploying its cargo needs to place Swarm where the Tank currently is. */
-function spawnEnemy(w, type, dist = 0) {
+/* `wave` is which wave this enemy belongs to, not which wave is current. Waves
+   overlap, so the two differ constantly — and telling one wave's enemies from
+   another's is what lets "wave 50 is beaten" be answered while wave 51 is
+   already on the board. Deployed cargo inherits its parent's wave, since a
+   tank's swarm is part of the wave the tank came from. */
+function spawnEnemy(w, type, dist = 0, wave = w.wave) {
   const E = ENEMY_TYPES[type];
   const hp = Math.round(E.hp * hpScale(w.wave, w.difficulty));
-  const e = { type, dist, hp, maxhp: hp, speed: E.speed, r: E.r, slow: 0 };
+  const e = { type, dist, hp, maxhp: hp, speed: E.speed, r: E.r, slow: 0, wave };
   // a deployer counts down to its next stop, then sits still while unloading
   if (E.deploys) { e.deployIn = E.deployEvery; e.stopFor = 0; }
   w.enemies.push(e);
@@ -824,7 +884,7 @@ function deployFrom(w, e, count) {
   for (let i = 0; i < count; i++) {
     // fan them slightly back along the path so they don't stack into one
     // sprite, and never past the start
-    spawnEnemy(w, E.deploys, Math.max(0, e.dist - i * 14));
+    spawnEnemy(w, E.deploys, Math.max(0, e.dist - i * 14), e.wave ?? w.wave);
   }
   return count;
 }
@@ -961,7 +1021,8 @@ export function step(w, dt) {
   if (w.waveActive) {
     w.clock += dt;
     while (w.spawnQueue.length && w.spawnQueue[0].at <= w.clock) {
-      spawnEnemy(w, w.spawnQueue.shift().type);
+      const q = w.spawnQueue.shift();
+      spawnEnemy(w, q.type, 0, q.wave ?? w.wave);
     }
   }
 
@@ -1068,10 +1129,29 @@ export function step(w, dt) {
 
      `justWon` is a one-frame edge for the shell; `won` stays set, so a player
      who keeps going is not congratulated again. */
-  if (!w.won && w.wave >= winWave(w.difficulty)
-      && w.spawnQueue.length === 0 && w.enemies.length === 0) {
+  if (!w.won && w.wave >= winWave(w.difficulty) && waveBeaten(w, winWave(w.difficulty))) {
     w.won = true; w.justWon = true;
   }
+}
+
+/** Is wave `n` beaten — everything it was going to send released, and nothing
+ *  it sent still alive?
+ *
+ *  Deliberately *not* "the board is clear". Waves overlap and the shell can
+ *  auto-start the next one, so a board that is clear of everything may never
+ *  happen at all: the win used to wait for it and could go a whole run without
+ *  firing, which is the reported "taking the circuit never shows up". Asking
+ *  only about the wave that matters lets wave 50 be beaten while 51 is already
+ *  coming down the path. */
+export function waveBeaten(w, n) {
+  if (w.wave < n) return false;
+  /* An untagged spawn or enemy counts as wave 1, so it *blocks*. That covers a
+     run resumed from a save written before waves were tagged, and it is the
+     safe direction to be wrong in: a win that arrives a little late is a
+     nuisance, a win awarded over a board that is not actually beaten is a bug
+     the player can see. */
+  if (w.spawnQueue.some(q => (q.wave ?? 1) <= n)) return false;
+  return !w.enemies.some(e => (e.wave ?? 1) <= n);
 }
 
 /* ---------- saving a run in progress ---------- */

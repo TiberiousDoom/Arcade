@@ -1533,3 +1533,58 @@ a 16.7ms budget. Affordable, and noted here because this codebase has twice been
 bitten by a "small" per-frame addition. The number is node-canvas on a desktop;
 a phone at DPR 3 pushes several times the pixels. If it bites, drop the per-type
 mounts and keep the per-type barrels — most of the read for a third of the cost.
+
+## 2026-08-19 — Choke Point: waves get names, and difficulty is earned per board
+
+Round 12. Two of the nine items were structural; the rest followed from them.
+
+**Waves are tagged, so "wave 50 is beaten" can be asked.** The win was a state
+asked every frame — the win wave reached *and the board clear* — which was
+already a fix for an earlier bug where it was an edge that never fired. It had
+the same shape of problem one level up: waves overlap and the shell auto-starts
+the next, so a board clear of everything may simply never occur, and the win
+waited for something that was not coming. Every spawn and every enemy now
+carries the wave it belongs to, and `waveBeaten(w, n)` asks only about wave *n*:
+nothing of it left queued, nothing of it left alive. Wave 51 on the board no
+longer holds back the wave-50 win.
+
+An untagged spawn or enemy counts as wave 1 and therefore blocks. That covers a
+run resumed from a pre-v41 save, and it is the safe direction to be wrong in — a
+win that arrives late is a nuisance, a win awarded over a board that is not
+beaten is a bug the player can see. The existing test that the win "cannot be
+had by starting waves you never clear" is what caught the first version, which
+had the fallback the other way round.
+
+**Difficulty is earned per circuit**, which turned three feedback items into
+one. It was one win anywhere, so holding circuit 1 on Easy opened Hard's entry
+on circuits never played — the two axes leaked into each other. `difficultyUnlocked`
+takes an optional `routeIndex`; passing none answers the older global question,
+which is what a menu listing difficulties *before* a circuit is chosen needs.
+
+That made "let the player pick difficulty when picking a circuit" and "add a
+level select" the same panel rather than two: a grid of circuits down and
+difficulties across, locked cells disabled, held ones ticked. A circuit shows as
+open if *any* difficulty has opened it — asking per difficulty would hide a board
+already played, which reads as progress being taken away.
+
+**The armory was solving the game.** Measured against kill income, a full
+armory cost 1.9x what an entire Easy run to wave 50 pays, so two runs bought
+everything and every later circuit and difficulty started already solved. It is
+~5.7x now, with a steeper per-level step so the top of a track is a real
+decision. The test pins the *ratio*, not a total, so a later retune has to stay
+honest about what it costs rather than quietly drifting back.
+
+**Coil shared a colour with an enemy.** Reported as "Coil and Node are too
+similar", which is true — but `#5fc9a4` was also the exact value the Patch
+enemy uses, so the healer you most want to pick out of a crowd looked like one
+of your own towers. It is electric lime now, which the name was always asking
+for; Patch keeps the teal, because green reads as healing. A test forbids any
+tower sharing a colour with another tower or with an enemy.
+
+Two smaller calls worth recording. **Surge waves scale the existing plan rather
+than replacing it**, so every enemy the wave would normally contain is still in
+it — a surge is the same wave arriving harder, and nothing a player has learned
+stops applying at the moment it matters most. And **`+5` is five calls to
+`startWave`**, not a new engine verb: waves already overlap by design, so "five
+at once" is something the engine can already express and did not need to be
+taught.

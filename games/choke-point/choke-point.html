@@ -74,7 +74,7 @@
      id alone), so it would silently lose and every button would come out the
      same width. */
   #waveRow #startWave, #waveRow #rushWave{flex:2 1 0}
-  #waveRow #ffWave, #waveRow #contWave, #waveRow #shopBtn{flex:1 1 0;font-size:16px;letter-spacing:0}
+  #waveRow #ffWave, #waveRow #contWave, #waveRow #shopBtn, #waveRow #fiveWave{flex:1 1 0;font-size:16px;letter-spacing:0}
 
   /* Sits with the two mode toggles rather than on a row of its own — see the
      comment where it is built. Tinted like them so the row reads as two verbs
@@ -117,6 +117,24 @@
 
   /* The armory. Covers the stage like Flak Battery's shop, and for the same
      reason: it is a place you stop and think, not an overlay you peek past. */
+  /* The circuit picker shares the armory's slab: same z, same ground, so the
+     two full-board panels feel like one piece of furniture. */
+  #pick{position:absolute;inset:0;display:none;flex-direction:column;z-index:7;
+    background:rgba(11,20,24,.96);padding:16px 14px;overflow-y:auto;gap:12px}
+  #pick.on{display:flex}
+  #pickHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,19px);
+    text-transform:uppercase;letter-spacing:-.02em}
+  #pick .note{font-size:10px;color:var(--dim);line-height:1.5}
+  #pickGrid{display:flex;flex-direction:column;gap:10px}
+  .pickRow{border:1px solid var(--line);border-radius:5px;padding:9px 10px;
+    display:flex;flex-direction:column;gap:7px;background:#0f2027}
+  .pickRow.locked{opacity:.45}
+  .pickRow h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--bone)}
+  .pickRow .lock{font-size:10px;color:var(--dim)}
+  .pickDiffs{display:flex;gap:6px}
+  /* Fixed widths, so a row does not reflow as difficulties unlock. */
+  .pickDiffs button{flex:1 1 0;min-height:44px;font-size:10px;letter-spacing:.1em}
+  .pickDiffs button.held{border:1px solid var(--accent)}
   #shop{position:absolute;inset:0;display:none;flex-direction:column;z-index:7;
     background:rgba(11,20,24,.96);padding:16px 14px;overflow-y:auto;gap:12px}
   #shop.on{display:flex}
@@ -196,6 +214,14 @@
       <p class="note">Per class, kept between runs.</p>
       <div id="shopClasses"></div>
       <button id="shopClose">Back to the board</button>
+    </div>
+    <div id="pick">
+      <div id="pickHead">
+        <h2>Select circuit</h2>
+      </div>
+      <p class="note">A circuit opens when the one before it is held. Each difficulty is earned per circuit.</p>
+      <div id="pickGrid"></div>
+      <button id="pickClose">Back</button>
     </div>
     <div id="banner">
       <h2>Choke Point</h2>
@@ -307,6 +333,83 @@ function nextRoute(difficulty) {
   return E.unlockedRoutes(progress, difficulty) - 1;
 }
 
+/* ---------- circuit picker ----------
+
+   Level select, and difficulty select, in one panel — because they are one
+   choice. Difficulty is earned per circuit now, so "which circuit" and "how
+   hard" cannot sensibly be asked in two different places: a difficulty means
+   nothing until you say which board it is for.
+
+   It appears once a second circuit exists. Before that there is one circuit
+   and one difficulty, and a picker offering a single cell is a menu that wastes
+   a tap. */
+function circuitsOpen() {
+  let n = 0;
+  for (const d of E.DIFFICULTY_KEYS) n = Math.max(n, E.unlockedRoutes(progress, d));
+  return n;
+}
+const pickerEarned = () => circuitsOpen() > 1;
+
+function renderPicker() {
+  const host = $('pickGrid');
+  host.innerHTML = '';
+  for (let r = 0; r < E.ROUTE_COUNT; r++) {
+    /* A circuit is open if *any* difficulty has opened it. Asking per
+       difficulty would hide a board you have already played, which reads as
+       progress being taken away. */
+    const open = E.DIFFICULTY_KEYS.some(d => E.routeUnlocked(progress, d, r));
+    const row = document.createElement('div');
+    row.className = 'pickRow' + (open ? '' : ' locked');
+
+    const h = document.createElement('h3');
+    h.textContent = `Circuit ${r + 1}`;
+    row.append(h);
+
+    if (!open) {
+      const lock = document.createElement('span');
+      lock.className = 'lock';
+      lock.textContent = `Hold circuit ${r} to open this one.`;
+      row.append(lock);
+      host.append(row);
+      continue;
+    }
+
+    const diffs = document.createElement('div');
+    diffs.className = 'pickDiffs';
+    for (const d of E.DIFFICULTY_KEYS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const canPlay = E.routeUnlocked(progress, d, r) && E.difficultyUnlocked(progress, d, r);
+      const held = E.hasWon(progress, d, r);
+      b.className = held ? 'held' : '';
+      b.textContent = E.DIFFICULTIES[d].name + (held ? ' ✓' : '');
+      b.disabled = !canPlay;
+      if (!canPlay) {
+        const prev = E.DIFFICULTY_KEYS[E.DIFFICULTY_KEYS.indexOf(d) - 1];
+        b.title = prev ? `Hold this circuit on ${E.DIFFICULTIES[prev].name} first.` : '';
+      }
+      b.addEventListener('click', () => {
+        if (!canPlay) return;
+        writeDifficulty(d);
+        E.resetGame(world, { difficulty: d, routeIndex: r });
+        world.classUpgrades = readArmory();
+        closePicker();
+        // start it straight away: choosing a circuit *is* the decision to play it
+        world.running = true;
+        gfx.clear();
+        hideBanner();
+        sync();
+      });
+      diffs.append(b);
+    }
+    row.append(diffs);
+    host.append(row);
+  }
+}
+
+function openPicker() { renderPicker(); $('pick').classList.add('on'); pause.pause(); }
+function closePicker() { $('pick').classList.remove('on'); pause.resume(); }
+
 /* short-lived hit beams, drawn by the shell. Purely cosmetic. */
 const beams = [];
 
@@ -316,7 +419,12 @@ const fx = {
   shot(x, y, target, type) {
     if (!reduce) {
       const p = E.enemyPos(world, target);
-      beams.push({ x1: x, y1: y, x2: p.x, y2: p.y, col: E.TOWER_TYPES[type].col, life: .08 });
+      /* `type` rides along so each class can discharge in its own way. A
+         hitscan zap gives no travel time to read, so the *shape* of the flash
+         is the only chance to say which tower fired — and with three classes on
+         one board, that is worth spending a few strokes on. */
+      const life = type === 'breaker' ? .13 : type === 'coil' ? .11 : .08;
+      beams.push({ x1: x, y1: y, x2: p.x, y2: p.y, col: E.TOWER_TYPES[type].col, type, life, max: life });
     }
     audio.fire();
   },
@@ -387,6 +495,38 @@ startBtn.type = 'button';
 startBtn.textContent = 'Start Wave';
 startBtn.addEventListener('click', () => { if (world.running) E.startWave(world); syncPalette(); });
 waveRow.append(startBtn);
+
+/* Start five waves at once. Earned alongside Medium, because it is a veteran's
+   button: five waves overlapping is far more than five times one wave, and the
+   bounty arrives all at once against a board that has to already be able to
+   take it. Anyone who has held a circuit knows enough to judge that; anyone who
+   has not would be handing themselves a loss they could not read.
+
+   Deliberately five calls to `startWave` rather than a new engine verb — waves
+   already overlap by design, so "five at once" is a thing the engine can
+   express and does not need to be taught. */
+const FIVE_WAVES = 5;
+const fiveBtn = document.createElement('button');
+fiveBtn.id = 'fiveWave';
+fiveBtn.type = 'button';
+fiveBtn.textContent = '+5';
+fiveBtn.title = 'Start five waves at once';
+fiveBtn.addEventListener('click', () => {
+  if (!world.running) return;
+  for (let i = 0; i < FIVE_WAVES; i++) E.startWave(world);
+  syncPalette();
+});
+
+function syncFiveButton() {
+  // "unlocked anywhere" rather than per circuit: it is a control, not content
+  const earned = E.difficultyUnlocked(progress, 'medium');
+  if (earned) {
+    if (!fiveBtn.isConnected) startBtn.after(fiveBtn);
+  } else if (fiveBtn.isConnected) {
+    fiveBtn.remove();
+  }
+}
+syncFiveButton();
 
 /* Rush: pull the rest of *this* wave forward. Deleted in v26 on the assumption
    that fast-forward covered it — it does not, and the difference is the point.
@@ -881,12 +1021,36 @@ syncDifficultyUI();
 
 /* ---------- banner ---------- */
 function showBanner(h, p, btn) {
+  syncPickerButton();
+  syncFiveButton();
   $('banner').classList.remove('hide');
   $('banner').querySelector('h2').textContent = h;
   $('hint').innerHTML = p;
   $('go').textContent = btn;
 }
 function hideBanner() { $('banner').classList.add('hide'); }
+
+$('pickClose').addEventListener('click', closePicker);
+
+/* The way in: a button on the opening banner, shown only once a second circuit
+   exists. Kept off the controls strip on purpose — choosing a board is a
+   between-runs decision, and the strip is for things done mid-wave. */
+const pickBtn = document.createElement('button');
+pickBtn.id = 'pickOpen';
+pickBtn.type = 'button';
+pickBtn.textContent = 'Select circuit';
+pickBtn.addEventListener('click', openPicker);
+
+function syncPickerButton() {
+  if (pickerEarned()) {
+    if (!pickBtn.isConnected) $('go').after(pickBtn);
+  } else if (pickBtn.isConnected) {
+    pickBtn.remove();
+  }
+}
+/* The opening banner is in the markup rather than raised by showBanner, so the
+   buttons hanging off it are synced once here as well as on every later banner. */
+syncPickerButton();
 
 $('go').addEventListener('click', () => {
   // a new run picks up whatever difficulty is currently selected; the armory
@@ -1494,12 +1658,41 @@ function drawEnemy(e) {
    the tower's own color sells it as discharge rather than as a drawn line. */
 function drawBeams() {
   for (const b of beams) {
-    const fade = Math.min(1, b.life * 12);
-    const line = (c) => { c.moveTo(b.x1, b.y1); c.lineTo(b.x2, b.y2); };
-    glowStroke(ctx, line, b.col, 2.4, undefined, fade);
-    glowStroke(ctx, line, '#ffffff', 0.9, [[1, .85]], fade);
-    // a flare where it lands, so a hit registers even when the target survives
-    glowDot(ctx, b.x2, b.y2, 3, b.col, fade);
+    const fade = Math.min(1, b.life / (b.max || .08));
+    const dx = b.x2 - b.x1, dy = b.y2 - b.y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;          // unit normal, for the arc
+
+    if (b.type === 'breaker') {
+      /* A heavy slug: a thick shaft and a shockwave ring where it lands. The
+         ring is the point — Breaker is the splash class, and the ring is the
+         only cue that says the damage went wider than the thing it hit. */
+      const line = (c) => { c.moveTo(b.x1, b.y1); c.lineTo(b.x2, b.y2); };
+      glowStroke(ctx, line, b.col, 4.2, undefined, fade);
+      glowStroke(ctx, line, '#ffffff', 1.4, [[1, .8]], fade);
+      const r = 5 + (1 - fade) * 13;
+      glowStroke(ctx, c => c.arc(b.x2, b.y2, r, 0, TAU), b.col, 2, GLOW_PASSES_CHEAP, fade * 0.85);
+    } else if (b.type === 'coil') {
+      /* An arc, not a line. Coil chills a cluster, and a bolt that bends reads
+         as a field rather than as a shot — which is also what stops it being
+         mistaken for Node's beam now that they no longer share a hue. */
+      const bow = (i) => (c) => {
+        const k = 8 * (i ? -1 : 1) * fade;
+        c.moveTo(b.x1, b.y1);
+        c.quadraticCurveTo((b.x1 + b.x2) / 2 + nx * k, (b.y1 + b.y2) / 2 + ny * k, b.x2, b.y2);
+      };
+      glowStroke(ctx, bow(0), b.col, 2, GLOW_PASSES_CHEAP, fade);
+      glowStroke(ctx, bow(1), b.col, 1.4, GLOW_PASSES_CHEAP, fade * 0.6);
+      // a chill ring that closes in, the visual half of the slow it applies
+      glowStroke(ctx, c => c.arc(b.x2, b.y2, 4 + fade * 7, 0, TAU), b.col, 1.4,
+        GLOW_PASSES_CHEAP, fade * 0.7);
+    } else {
+      // Node: the quick one. A thin bolt with a white core and a small flare.
+      const line = (c) => { c.moveTo(b.x1, b.y1); c.lineTo(b.x2, b.y2); };
+      glowStroke(ctx, line, b.col, 2.2, undefined, fade);
+      glowStroke(ctx, line, '#ffffff', 0.9, [[1, .85]], fade);
+      glowDot(ctx, b.x2, b.y2, 3, b.col, fade);
+    }
   }
 }
 
