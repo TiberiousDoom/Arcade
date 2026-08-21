@@ -396,6 +396,100 @@ test('the win is reachable with waves overlapping, which is how Auto plays', () 
   assert.equal(w.justWon, true);
 });
 
+test('every tenth wave is a surge, and surges are the same wave arriving harder', () => {
+  for (const w of [10, 20, 50]) assert.equal(E.isSurgeWave(w), true, `wave ${w} is a surge`);
+  for (const w of [1, 9, 11, 19]) assert.equal(E.isSurgeWave(w), false, `wave ${w} is not`);
+
+  /* A surge must not be a *different* wave: every enemy type wave 10 would
+     normally send still has to be in it, or a player's read of what is coming
+     stops applying exactly when it matters most. */
+  const plain = E.wavePlan(9), surge = E.wavePlan(10);
+  const kinds = (p) => [...new Set(p.map(g => g.type))].sort();
+  for (const k of kinds(plain)) assert.ok(kinds(surge).includes(k), `a surge still sends ${k}`);
+
+  const count = (p) => p.reduce((n, g) => n + g.count, 0);
+  assert.ok(count(surge) > count(E.wavePlan(11)),
+    'a surge sends more than the wave after it, not merely more than the one before');
+  assert.ok(E.hpScale(10) > E.hpScale(11), 'and hits harder than the wave after it too');
+});
+
+test('the win fires when the win wave is beaten, not when the board happens to be clear', () => {
+  /* The reported bug: waves overlap and the shell auto-starts, so a board clear
+     of *everything* may never happen, and the win waited for it. */
+  const w = E.createWorld({ difficulty: 'easy' });
+  const target = E.winWave('easy');
+  w.wave = target;
+  w.waveActive = true;
+  w.spawnQueue = [];
+  w.enemies = [];
+  E.step(w, 1 / 60);
+  assert.equal(w.won, true, 'wave 50 beaten with nothing of it left');
+
+  // and again with a later wave already on the board
+  const v = E.createWorld({ difficulty: 'easy' });
+  v.wave = target + 1;
+  v.waveActive = true;
+  v.spawnQueue = [{ type: 'surge', at: 99, wave: target + 1 }];
+  v.enemies = [{ type: 'surge', dist: 0, hp: 20, maxhp: 20, speed: 0, r: 12, slow: 0, wave: target + 1 }];
+  E.step(v, 1 / 60);
+  assert.equal(v.won, true, 'wave 51 on the board must not hold back the wave-50 win');
+});
+
+test('a straggler from the win wave still holds the win back', () => {
+  const w = E.createWorld({ difficulty: 'easy' });
+  const target = E.winWave('easy');
+  w.wave = target + 3;
+  w.waveActive = true;
+  w.spawnQueue = [];
+  w.enemies = [{ type: 'load', dist: 0, hp: 500, maxhp: 500, speed: 0, r: 19, slow: 0, wave: target }];
+  E.step(w, 1 / 60);
+  assert.equal(w.won, false, 'one of the win wave is still alive');
+});
+
+test('difficulty unlocks are per circuit', () => {
+  /* It used to be one win anywhere: beating Easy on circuit 1 opened Medium on
+     a circuit you had never played. */
+  const p = E.newProgress();
+  assert.equal(E.difficultyUnlocked(p, 'easy', 0), true, 'easy is always open');
+  assert.equal(E.difficultyUnlocked(p, 'medium', 0), false);
+
+  E.recordWin(p, 'easy', 0);
+  assert.equal(E.difficultyUnlocked(p, 'medium', 0), true, 'won easy here, so medium here');
+  assert.equal(E.difficultyUnlocked(p, 'medium', 1), false, 'but not on a circuit never beaten');
+
+  // the circuit-less question still has an answer, for a menu listing difficulties
+  assert.equal(E.difficultyUnlocked(p, 'medium'), true, 'medium is open somewhere');
+});
+
+test('the armory is a running choice, not a checklist that completes', () => {
+  /* It cost under two Easy runs of kill income, so two runs bought everything
+     and every later circuit started solved. Pinned as a ratio rather than a
+     total, so retuning the curve has to stay honest about what it costs. */
+  let full = 0;
+  for (const t of E.TOWER_KEYS) for (const tr of E.CLASS_TRACKS) {
+    for (let l = 0; l < E.CLASS_MAX; l++) full += E.classCost(t, tr, l);
+  }
+  let income = 0;
+  for (let wv = 1; wv <= E.winWave('easy'); wv++) {
+    for (const g of E.wavePlan(wv)) income += g.count * (E.ENEMY_TYPES[g.type]?.bounty || 1);
+  }
+  const runs = full / income;
+  assert.ok(runs > 3.5, `a full armory costs ${runs.toFixed(1)} Easy runs, still too few`);
+
+  // and the top of a track has to be a real decision, not a rounding error
+  const first = E.classCost('node', 'dmg', 0), last = E.classCost('node', 'dmg', E.CLASS_MAX - 1);
+  assert.ok(last > first * 20, `the last level costs ${(last / first).toFixed(0)}x the first`);
+});
+
+test('no tower shares a colour with another tower or with an enemy', () => {
+  // Coil was the exact value the Patch enemy uses, so the healer you most want
+  // to pick out of a crowd looked like one of your own towers
+  const towerCols = E.TOWER_KEYS.map(k => E.TOWER_TYPES[k].col);
+  assert.equal(new Set(towerCols).size, towerCols.length, 'towers differ from each other');
+  const enemyCols = new Set(Object.values(E.ENEMY_TYPES).map(e => e.col));
+  for (const c of towerCols) assert.ok(!enemyCols.has(c), `a tower and an enemy share ${c}`);
+});
+
 test('the win cannot be had by starting waves you never clear', () => {
   const w = E.createWorld({ difficulty: 'easy' });
   w.wave = E.winWave('easy') + 20;          // spammed Start Wave

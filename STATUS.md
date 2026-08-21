@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-19 (v40 — board art follows the portraits)
+Last updated: 2026-08-19 (v41 — Choke Point round 12)
 
 ## Read this first
 
@@ -21,6 +21,49 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **525 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **52 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 12 feedback — Choke Point (v41, 2026-08-19)
+
+Nine items, all in. Several were one design wearing three hats: circuit
+select, difficulty select and per-circuit difficulty gating are a single
+picker, because a difficulty means nothing until you say which board it is for.
+
+- **The win fires when the win wave is beaten**, not when the board happens to
+  be clear. Every spawn and enemy carries the `wave` it belongs to, and
+  `waveBeaten(w, n)` asks about that wave alone — waves overlap and the shell
+  auto-starts, so a fully clear board may never happen, which is why "Circuit
+  held" could go a whole run without appearing.
+- **Every tenth wave is a surge**: the same wave arriving harder (`SURGE_COUNT`
+  more of everything, tighter gaps, `SURGE_HP` tougher), not a different wave —
+  so nothing a player has learned stops applying.
+- **Difficulty is earned per circuit.** It was one win anywhere, so beating Easy
+  on circuit 1 opened Hard's entry on boards never played.
+- **A circuit picker**, shown once a second circuit exists: circuits down, the
+  three difficulties across, locked cells disabled and held ones ticked.
+  Choosing a cell starts that run.
+- **A `+5` button** on the wave row, earned alongside Medium. Five calls to
+  `startWave` — waves already overlap, so the engine needed nothing new.
+- **The armory was 1.9x an Easy run's bounty**, so two runs bought everything
+  and every later circuit started solved. Now ~5.7x, with a steeper per-level
+  step (a track runs 171 → 6680 rather than 95 → 1900).
+- **Coil was `#5fc9a4`** — a near neighbour of Node's blue *and the exact value
+  the Patch enemy uses*, so the healer you most want to find looked like your
+  own tower. It is electric lime now, and a test forbids any tower sharing a
+  colour with another tower or an enemy.
+- **Each class discharges differently**: Node a thin bolt with a white core,
+  Breaker a heavy shaft with a shockwave ring, Coil a bowed arc with a chill
+  ring. A hitscan zap gives no travel time to read, so the shape of the flash
+  is the only chance to say which tower fired.
+
+### Still open after this round
+
+- **Every balance number here is measured, not played.** The surge multipliers,
+  the armory curve and the `+5` gate are all first drafts.
+- The armory ratio (5.7x an Easy run) counts *raw kill bounty* and ignores what
+  is spent on towers, so the real time-to-fill is longer — possibly too long.
+  That is the number to check first if the economy feels grindy.
+- Choke Point still has the opening-complexity problem Flak Battery had, and
+  round 11's ramp work has not been applied to it.
 
 ## Round 11 feedback — v34 to v38, and the art round that is still open (2026-08-19)
 
