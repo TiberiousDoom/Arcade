@@ -124,7 +124,7 @@ h1 span{color:var(--accent)}
   /* a comfortable touch target without disturbing the baseline row */
   padding:6px 4px;margin:-6px -4px;
 }
-.back:hover{color:var(--bone)}
+@media (hover: hover) { .back:hover{color:var(--bone)} }
 .back:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 
 #stage{
@@ -148,7 +148,18 @@ button{
   font:600 12px/1 'Chivo Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
   background:var(--accent);color:var(--accent-ink);border:0;padding:12px 24px;cursor:pointer;
 }
-button:hover{background:var(--accent-hot)}
+/* Hover is for pointers only.
+   
+   On a touch screen there is no such thing as "not hovering": the browser
+   leaves the last-tapped element in :hover until something else is tapped, so
+   every button a player pressed stayed lit afterwards. That is the reported
+   "buttons stay highlighted after being pressed" — the press feedback was
+   working, it just never ended. Gating hover on a device that actually has a
+   pointer leaves :active as the only press state on a phone, which is what it
+   should have been. */
+@media (hover: hover) {
+  button:hover{background:var(--accent-hot)}
+}
 button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
 
 /* Press feedback, for every button in every game.
@@ -196,7 +207,7 @@ button:disabled{transform:none}
   font:700 16px/1 'Chivo Mono',monospace;letter-spacing:0;
   display:flex;align-items:center;justify-content:center;
 }
-#menuBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)}
+@media (hover: hover) { #menuBtn:hover{background:transparent;color:var(--bone);border-color:var(--dim)} }
 #menuBtn.on{color:var(--accent);border-color:var(--accent)}
 
 #menuPanel{
@@ -230,7 +241,7 @@ button:disabled{transform:none}
   text-transform:uppercase;background:#2a1a17;color:#e0a89c;
   border:1px solid var(--line);border-radius:3px;cursor:pointer;
 }
-.menuSettings button:hover{background:#3a241f}
+@media (hover: hover) { .menuSettings button:hover{background:#3a241f} }
 .menuActions button{min-height:48px;padding:10px 18px}
 /* The effects block makeMenu builds for every game. Rows are label-wrapped, so
    the whole row is the hit target rather than just the box — a 13px checkbox

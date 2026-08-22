@@ -49,7 +49,7 @@
   #levelGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px}
   .levelTile{min-height:52px;font:700 15px/1 'Chivo Mono',monospace;border:1px solid var(--line);
     background:#0f2027;color:var(--bone);cursor:pointer;border-radius:3px}
-  .levelTile:hover{border-color:var(--brass)}
+  @media (hover: hover) { .levelTile:hover{border-color:var(--brass)} }
   #levelSelectClose{align-self:center;margin-top:2px;background:#1b3038;color:var(--bone)}
 </style>
 

@@ -151,7 +151,7 @@
   .tab.add{flex:0 1 54px;min-width:44px;border-style:dashed;color:var(--dim)}
   .tab.add b{color:var(--brass);font-size:17px;line-height:1}
   .tab.add:disabled{opacity:.4;cursor:default}
-  .tab.add:not(:disabled):hover{border-color:var(--brass);background:#13272f}
+  @media (hover: hover) { .tab.add:not(:disabled):hover{border-color:var(--brass);background:#13272f} }
 
   /* The portrait spans the whole grid: it is the identity of the tab, not one
      card among four. */
@@ -222,7 +222,7 @@
     border:1px solid var(--line);border-left:3px solid var(--tab,var(--line));
     background:#0b1a20;border-radius:3px;padding:6px;cursor:pointer;text-align:left;
   }
-  .empCard:hover{background:#10242c;border-color:var(--tab,var(--brass))}
+  @media (hover: hover) { .empCard:hover{background:#10242c;border-color:var(--tab,var(--brass))} }
   .empCard canvas{width:100%;height:auto;display:block}
   .empMeta{display:flex;flex-direction:column;gap:2px;padding:0 2px 2px}
   .empMeta b{font-size:11px;letter-spacing:.1em;text-transform:uppercase}
@@ -2828,9 +2828,32 @@ function draw() {
     ctx.fillStyle = '#0f2027'; ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = P.col; ctx.stroke();
 
+    /* How far open it is. A crate takes several rounds now, and without a
+       reading of that the first two hits look like misses — a player would
+       reasonably conclude shooting them does nothing. Drawn as ticks around the
+       rim rather than a bar, because a bar on a falling disc reads as a health
+       bar on an enemy, which is the one thing it must not be mistaken for. */
+    const left = pu.hits ?? 1;
+    if (left > 1 || (pu.hits ?? 0) > 0) {
+      for (let i = 0; i < E.PICKUP_HITS; i++) {
+        const a = -Math.PI / 2 + (i - (E.PICKUP_HITS - 1) / 2) * 0.5;
+        ctx.beginPath();
+        ctx.arc(pu.x, pu.y, pu.r - 3.5, a - 0.16, a + 0.16);
+        ctx.lineWidth = 2.4;
+        ctx.strokeStyle = i < left ? P.col : 'rgba(230,233,226,.22)';
+        ctx.stroke();
+      }
+    }
+    // a hit flashes the rim, so a round that landed is unmistakable
+    if (pu.flash > 0) {
+      ctx.beginPath(); ctx.arc(pu.x, pu.y, pu.r + 2, 0, TAU);
+      ctx.lineWidth = 2; ctx.strokeStyle = `rgba(255,255,255,${Math.min(1, pu.flash * 7)})`;
+      ctx.stroke();
+    }
+
     ctx.fillStyle = P.col;
-    ctx.font = '700 9px "Chivo Mono",monospace'; ctx.textAlign = 'center';
-    ctx.fillText(P.name[0], pu.x, pu.y + 3.2);
+    ctx.font = '700 11px "Chivo Mono",monospace'; ctx.textAlign = 'center';
+    ctx.fillText(P.name[0], pu.x, pu.y + 4);
     ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
   }

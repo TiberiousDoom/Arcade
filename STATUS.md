@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-19 (v41 — Choke Point round 12)
+Last updated: 2026-08-19 (v42 — round 13, both games)
 
 ## Read this first
 
@@ -21,6 +21,54 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **525 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **52 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 13 feedback — v42 (2026-08-19)
+
+Twelve items in, one question answered. Two turned out to be different problems
+than reported, both recorded in DECISIONS.
+
+**Flak Battery**
+- Power-ups are drawn larger, and take `PICKUP_HITS` rounds to prise open in
+  the air. Size and catch radius are now separate constants: drawing one bigger
+  must not also make it easier to earn. Carrier HP was the obvious dial for
+  "more hits" and is the wrong one — it is multiplied by `hpScale`, so 3hp is
+  already 10 rounds at wave 8.
+- A third, steeper hp term from wave 20 (`HP_PER_WAVE_LATER`). Everything
+  before 20 is untouched, same as the wave-7 term.
+
+**Choke Point**
+- **Performance: it was towers, not waves.** The board with 24 towers and no
+  enemies already cost 16.3ms. Tower rings are cached sprites now (71x), crowds
+  of enemies draw flat past `CROWD_LIMIT`, `dim` is cached, and enemy positions
+  resolve once per frame instead of once per tower. 55.25ms → 24.5ms measured
+  in the harness with sprites off; a browser is faster again.
+- Breaker throws a slug with a shockwave where it lands, rather than a thicker
+  beam — the only shot whose damage plainly happens away from the muzzle.
+- Armory raised again (~11x an Easy run, was 5.7x) and levelling slowed: a Node
+  now maxes around wave 27-30 rather than in the first quarter of a run.
+- Circuit picker gained route previews drawn from the engine's own waypoints,
+  bigger ticks, and locked difficulties that read as locked.
+- Bigger glyphs on the continuous/armory/fast-forward/+5 buttons.
+
+**All games:** hover styles are gated behind `@media (hover: hover)`. A touch
+screen leaves the last-tapped element in `:hover` forever, which is why buttons
+stayed lit after being pressed.
+
+**Answered:** there is no 75 anywhere in the code, and never has been — Easy is
+50, Medium 100, Hard 150, read from one place (`DIFFICULTIES[d].winWave`) by
+both the menu and the banner. If a 75 was on screen it was not this build; the
+service worker serves cache-first, so a stale install is the likeliest
+explanation.
+
+### Still open after this round
+
+- Every balance number this round is measured, not played: the wave-20 hp term,
+  `PICKUP_HITS`, the armory curve and the XP curve.
+- The tower-sprite path is **not covered by tests** — the harness cannot blit,
+  so the tests exercise the live fallback. The 71x figure is a standalone
+  measurement, not an in-game one.
+- `CROWD_LIMIT` is a threshold, so there is a visible moment where the board
+  switches to flat enemies. Whether that reads as a glitch is a device question.
 
 ## Round 12 feedback — Choke Point (v41, 2026-08-19)
 
