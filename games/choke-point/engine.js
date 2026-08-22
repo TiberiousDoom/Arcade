@@ -216,7 +216,7 @@ export const MAX_LEVEL = 10;
    unchanged, and there is exactly one number to turn if this wants tuning again. */
 
 /** XP credited per point of damage that actually lands. */
-export const XP_PER_DAMAGE = 0.1;
+export const XP_PER_DAMAGE = 0.062;
 /** Per-class XP multiplier. XP is credited per point of damage *dealt*, and a
  *  Breaker deals several times what a Node does per shot — so on a flat rate the
  *  class that hits hardest also levels fastest, compounding an advantage it
@@ -228,10 +228,17 @@ export const XP_RATE = { node: 1, breaker: 0.45, coil: 1.15 };
  *  whoever happens to land the last hit on a Load. */
 export const XP_KILL_BONUS = 0.3;
 
-/** XP to get from `level` to the next one. */
+/** XP to get from `level` to the next one.
+ *
+ *  Steepened in v42 alongside a lower `XP_PER_DAMAGE`. Two dials rather than
+ *  one because they do different jobs: the rate sets how fast a tower starts
+ *  earning, and the curve sets how much the *top* of the ladder costs. Levelling
+ *  was landing well before a run was over — a tower that maxes at wave 25 spends
+ *  the rest of the run with nothing left to earn, which flattens exactly the
+ *  stretch the surge waves were added to sharpen. */
 export function xpForNext(level) {
   if (level >= MAX_LEVEL) return Infinity;
-  return Math.round(18 * Math.pow(1.42, level - 1));
+  return Math.round(18 * Math.pow(1.52, level - 1));
 }
 
 /** How much a stat grows across the whole 1→10 climb, interpolated linearly.
@@ -272,14 +279,14 @@ export const CLASS_GAIN = { dmg: 0.12, rate: 0.1, range: 1 / 15, splash: 0.15 };
    every later circuit and difficulty started already solved. That is the
    reported "I have them all by wave 60 and then it is too easy".
    
-   At 1.8x the base and a 2.5x per-level step it costs **5.7x** an Easy run,
-   before anything is spent on towers — so the armory is a running choice about
-   which class to invest in rather than a checklist that completes. The steeper
-   step is what does the work at the top: a track now runs 171 -> 6680 rather
-   than 95 -> 1900, so the last level of anything is a real decision.
+   v41 took it to 5.7x an Easy run and that was still not enough — reported
+   again after play. At 2.5x the original base and a 2.75x per-level step it is
+   now **~11x**, and the top of a track is where most of that sits: a track runs
+   240 -> 13,700 rather than the original 95 -> 1,900. Filling one class's
+   speciality is a campaign's work; filling everything is not meant to happen.
    
    Balance numbers, so: measured, not played. */
-const CLASS_BASE_COST = { dmg: 171, rate: 158, range: 144, splash: 158 };
+const CLASS_BASE_COST = { dmg: 240, rate: 222, range: 202, splash: 222 };
 /** A class buys its speciality at a discount and its opposite at a surcharge. */
 export const SPEC_DISCOUNT = 0.6;
 export const WEAK_PENALTY = 1.8;
@@ -292,7 +299,7 @@ export const WEAK_PENALTY = 1.8;
  *  curve in the repo (Flak Battery's branches run about 1.75x a tier, its
  *  mounts about 1.6x a step): the last level costs twelve times the first, and
  *  a full track runs roughly double what it did. */
-export const CLASS_COST_STEP = 2.5;
+export const CLASS_COST_STEP = 2.75;
 
 export function newClassUpgrades() {
   const out = {};

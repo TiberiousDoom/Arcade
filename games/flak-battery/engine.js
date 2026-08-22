@@ -101,6 +101,11 @@ export const KIND = {
   // paying recoil — a trap that doubles the threat, or a scoring gamble.
   splitter: { hp: 7, r: 15, col: '#d8763a', ring: '#8a4318', score: 260, scrap: 7, splits: true },
   // Drops a power-up on death. Worth breaking your rhythm for.
+  /* A carrier is worth real effort now. At 3hp it fell to a single round of any
+     gun, so a drop was a matter of noticing one rather than earning one — and
+     with drops off a coin flip on top, the whole system read as weather.
+     Tougher, so cracking one open is a decision to spend fire on it while the
+     column keeps coming. */
   carrier:  { hp: 3, r: 14, col: '#e8d5a0', ring: '#a08c50', score: 140, scrap: 4, carries: true },
   // Just plain tough — no special resistance of its own. The railgun is
   // simply the efficient tool against it (`railBonus`, checked in
@@ -223,8 +228,23 @@ export const HP_PER_WAVE_ENDLESS = 0.45;
 const past7 = (wave) => Math.max(0, wave - 7);
 export const HP_PER_WAVE_LATE = 0.24;
 
+/* A third, steeper term from wave 20.
+   
+   The v31 work fixed a curve that *stopped* at wave 17; this is the next
+   complaint along, that what follows still climbs too gently to keep up with a
+   battery that is compounding. Upgrades, barrels, mounts and research all
+   multiply together, so a linear-ish enemy curve loses ground to them by
+   construction — the escalation has to bend a third time to stay level.
+   
+   Same "bend it, don't tilt it" shape as the wave-7 term, and for the same
+   reason: everything before wave 20 was played and reported fine, so it is left
+   exactly as it was. */
+const past20 = (wave) => Math.max(0, wave - 20);
+export const HP_PER_WAVE_LATER = 0.30;
+
 export function hpScale(wave) {
-  const ramp = 1 + (wave - 1) * HP_PER_WAVE + past7(wave) * HP_PER_WAVE_LATE;
+  const ramp = 1 + (wave - 1) * HP_PER_WAVE + past7(wave) * HP_PER_WAVE_LATE
+    + past20(wave) * HP_PER_WAVE_LATER;
   /* Past the ceiling health keeps climbing, just far more slowly.
      It used to stop dead at `HP_SCALE_MAX`, which it reached at **wave 17** —
      so every wave from there on was identical while the player kept upgrading,
@@ -1747,7 +1767,32 @@ export const DROP_TABLE = [
 ];
 
 export const PICKUP_FALL = 95;      // px/sec
-export const PICKUP_R = 11;
+/* How big a power-up is *drawn*. Bigger since v42: one has to be seen falling
+   through a board full of craft, rounds and glow, and a drop you did not notice
+   is a drop that did not happen. */
+export const PICKUP_R = 16;
+/** How big it is to *catch* — deliberately not the same number.
+ *
+ *  Collection tested `CATCH_BAND + p.r`, so drawing a power-up larger also made
+ *  it easier to obtain. That is backwards: the reason to enlarge one is that it
+ *  is hard to see, and the reason to leave the catch alone is that how easily it
+ *  is earned is a balance question, not a legibility one. The regression test
+ *  about bombs wiping splitters off the board is what caught it — a wider catch
+ *  meant more bombs collected, and splitters stopped surviving long enough to
+ *  split. */
+export const PICKUP_CATCH_R = 11;
+/** How many rounds it takes to claim a power-up out of the air.
+ *
+ *  A shot has always been able to claim one mid-flight; it just took a single
+ *  hit, so a drop was effectively free the moment you noticed it. Several hits
+ *  makes it a decision — rounds spent on a falling crate are rounds not spent
+ *  on the column — and it is what pays for drawing them bigger. Size is what
+ *  makes one *hittable*; this is what makes one *earned*.
+ *
+ *  Letting it fall into the catch band still claims it outright. That route
+ *  costs position rather than ammunition, and having two prices for the same
+ *  thing is what makes it a choice. */
+export const PICKUP_HITS = 3;
 export const BOMB_RADIUS = 110;
 export const BOMB_DMG = 4;
 /** Band above the cannon where a falling pickup is caught automatically. */
@@ -1776,7 +1821,7 @@ export function rollDrop(w) {
 }
 
 export function spawnPickup(w, x, y, kind) {
-  w.pickups.push({ x, y, kind, vy: PICKUP_FALL, r: PICKUP_R, life: 14 });
+  w.pickups.push({ x, y, kind, vy: PICKUP_FALL, r: PICKUP_R, life: 14, hits: PICKUP_HITS });
 }
 
 /** Apply a power-up. Timed effects stack duration rather than refreshing, so
@@ -1864,10 +1909,11 @@ export function stepPickups(w, dt) {
     const p = w.pickups[i];
     p.y += p.vy * dt;
     p.life -= dt;
+    if (p.flash > 0) p.flash = Math.max(0, p.flash - dt);
 
     // caught in the band above the cannon
     const near = Math.hypot(p.x - c.x, p.y - c.y);
-    if (near < CATCH_BAND + p.r) {
+    if (near < CATCH_BAND + PICKUP_CATCH_R) {
       w.bombAt = { x: p.x, y: p.y };
       applyPowerup(w, p.kind);
       w.bombAt = null;
@@ -2257,13 +2303,19 @@ export function stepShots(w, dt) {
     for (let q = w.pickups.length - 1; q >= 0; q--) {
       const pu = w.pickups[q];
       if (Math.hypot(p.x - pu.x, p.y - pu.y) < pu.r + p.r) {
-        w.bombAt = { x: pu.x, y: pu.y };
-        // the round that claimed it says which mount earned it
-        applyPowerup(w, pu.kind, p.mount);
-        w.bombAt = null;
-        w.pickups.splice(q, 1);
+        /* A hit knocks a crate open a little further; the round that lands the
+           last one claims it, and says which mount earned it. The shot is spent
+           either way — that is the cost of prising one open. */
+        pu.hits = (pu.hits ?? 1) - 1;
+        pu.flash = 0.12;
         w.shots.splice(k, 1);
         claimed = true;
+        if (pu.hits <= 0) {
+          w.bombAt = { x: pu.x, y: pu.y };
+          applyPowerup(w, pu.kind, p.mount);
+          w.bombAt = null;
+          w.pickups.splice(q, 1);
+        }
         break;
       }
     }

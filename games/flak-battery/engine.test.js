@@ -2437,14 +2437,35 @@ test('a missed pickup expires instead of lingering', () => {
   assert.equal(E.hasEffect(w, 'rapid'), false, 'no effect from a missed pickup');
 });
 
-test('a shot can claim a pickup mid-air', () => {
+test('a pickup takes several hits to claim, and each one costs a round', () => {
+  /* A single hit used to claim one, so a drop was free the moment you noticed
+     it. Rounds spent prising a crate open are rounds not spent on the column,
+     which is what makes catching one a decision. */
   const w = E.createWorld();
   E.spawnPickup(w, 400, 300, 'pierce');
-  w.shots = [{ x: 400, y: 300, vx: 0, vy: -520, dmg: 1, pierce: 0, r: 3.2, bounces: 2 }];
-  E.stepShots(w, 1 / 60);
-  assert.equal(w.pickups.length, 0, 'pickup claimed');
+  const hit = () => {
+    w.shots = [{ x: 400, y: 300, vx: 0, vy: -520, dmg: 1, pierce: 0, r: 3.2, bounces: 2 }];
+    E.stepShots(w, 1 / 60);
+  };
+  for (let i = 1; i < E.PICKUP_HITS; i++) {
+    hit();
+    assert.equal(w.pickups.length, 1, `still there after ${i} hit(s)`);
+    assert.equal(w.shots.length, 0, 'but the round was spent');
+    assert.equal(E.hasEffect(w, 'pierce'), false, 'and nothing granted yet');
+  }
+  hit();
+  assert.equal(w.pickups.length, 0, 'the last hit claims it');
   assert.equal(w.shots.length, 0, 'shot consumed');
   assert.ok(E.hasEffect(w, 'pierce'));
+});
+
+test('letting a pickup fall into the catch band still claims it outright', () => {
+  // two prices for the same thing: rounds, or position
+  const w = E.createWorld();
+  E.spawnPickup(w, w.cannon.x, w.cannon.y - E.CATCH_BAND, 'rapid');
+  E.stepPickups(w, 1 / 60);
+  assert.equal(w.pickups.length, 0, 'caught without firing a shot');
+  assert.ok(E.hasEffect(w, 'rapid'));
 });
 
 test('timed effects tick down and expire', () => {
@@ -2509,6 +2530,12 @@ test('a round that claims a pickup hands it to the mount that fired it', () => {
   w.shots = [{ x: gun.x, y: 300, vx: 0, vy: -400, dmg: 1, pierce: 0, r: 4,
                bounces: 2, bounced: 0, mount: 2, travelled: 0 }];
   E.spawnPickup(w, gun.x, 300, 'spread');
+  // the round that lands the *last* hit is the one that earns it
+  for (let i = 1; i < E.PICKUP_HITS; i++) {
+    E.stepShots(w, 1 / 60);
+    w.shots = [{ x: gun.x, y: 300, vx: 0, vy: -400, dmg: 1, pierce: 0, r: 4,
+                 bounces: 2, bounced: 0, mount: 2, travelled: 0 }];
+  }
   E.stepShots(w, 1 / 60);
   assert.equal(E.gunHasEffect(w.battery.guns[2], 'spread'), true, 'the firing mount got it');
   assert.equal(E.gunHasEffect(w.battery.guns[0], 'spread'), false);
@@ -2842,7 +2869,17 @@ test('splits still happen once power-ups are in play', () => {
     if (best) w.cannon.ang = E.clampAim(Math.atan2(best.y - w.cannon.y, best.x - w.cannon.x));
   };
 
+  /* A battery a player would plausibly have by this wave, not a bare opening
+     gun. Since v42 a power-up takes several rounds to prise open and absorbs
+     every one of them, so a single unupgraded mount spends its whole output on
+     falling crates and never gets through a splitter — which says more about
+     the scripted battery than about splitting. */
   const w = E.createWorld();
+  w.scrap = 1e6;
+  E.buyMount(w); E.buyMount(w);
+  for (let m = 0; m < w.battery.guns.length; m++) {
+    for (let i = 0; i < 3; i++) E.buyUpgrade(w, m, 'damage');
+  }
   w.wave = ALL_KINDS;
   E.spawnWave(w);
   w.shieldCharges = 1e6;   // survive breaches: shields are the only thing that does now

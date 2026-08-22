@@ -6,9 +6,13 @@ const L = E.LAYOUT;
 const TALL = E.LAYOUT_TALL;
 
 /** A world with plenty of components, so building isn't the thing under test. */
+/* "Rich" has to mean rich relative to current prices. The purse was 9,999,
+   which stopped covering a single full armory track once the armory was
+   repriced — so a test about *buying* things started failing for want of
+   money rather than for anything it was checking. */
 function richWorld(opts = {}) {
   const w = E.createWorld(opts);
-  w.components = 9999;
+  w.components = 1e7;
   return w;
 }
 
@@ -266,14 +270,33 @@ test('XP is credited for damage that lands, not damage attempted', () => {
   assert.ok(t.xp > 0, 'but the kill did pay something');
 });
 
-test('levelling is paced in thousands of damage, not tens', () => {
-  /* The v28 cut, pinned as a claim about the game rather than about a
-     constant: a tower should not reach the cap on a couple of Loads. */
+test('a tower maxes late in a run, not in its first quarter', () => {
+  /* Pinned against the damage a run actually contains rather than against a
+     bare number, so repricing the XP curve has to stay honest about *when* a
+     tower tops out. Reported at v41: towers were maxing early and then had
+     nothing left to earn for the rest of the run, which flattens exactly the
+     stretch the surge waves exist to sharpen. */
   const total = Array.from({ length: E.MAX_LEVEL - 1 }, (_, i) => E.xpForNext(i + 1))
     .reduce((a, b) => a + b, 0);
   const damageToMax = total / E.XP_PER_DAMAGE;
-  assert.ok(damageToMax > 4000, `1-10 should cost real work, got ${Math.round(damageToMax)} damage`);
-  assert.ok(damageToMax < 12000, `but must stay reachable in a run, got ${Math.round(damageToMax)}`);
+
+  // total enemy health a run offers, up to a given wave
+  const hpThrough = (n) => {
+    let hp = 0;
+    for (let wv = 1; wv <= n; wv++) {
+      const sc = E.hpScale(wv, 'easy');
+      for (const g of E.wavePlan(wv)) hp += g.count * (E.ENEMY_TYPES[g.type]?.hp || 0) * sc;
+    }
+    return hp;
+  };
+  const SHARE = 16;                              // a plausible board of towers
+  const quarter = hpThrough(Math.round(E.winWave('easy') / 4)) / SHARE;
+  const whole = hpThrough(E.winWave('easy')) / SHARE;
+
+  assert.ok(damageToMax > quarter,
+    `maxes inside the first quarter of a run (${Math.round(damageToMax)} vs ${Math.round(quarter)})`);
+  assert.ok(damageToMax < whole * 0.5,
+    `unreachable in a run (${Math.round(damageToMax)} vs ${Math.round(whole)} available)`);
 });
 
 /* ---------- the armory ---------- */
@@ -474,7 +497,7 @@ test('the armory is a running choice, not a checklist that completes', () => {
     for (const g of E.wavePlan(wv)) income += g.count * (E.ENEMY_TYPES[g.type]?.bounty || 1);
   }
   const runs = full / income;
-  assert.ok(runs > 3.5, `a full armory costs ${runs.toFixed(1)} Easy runs, still too few`);
+  assert.ok(runs > 8, `a full armory costs ${runs.toFixed(1)} Easy runs, still too few`);
 
   // and the top of a track has to be a real decision, not a rounding error
   const first = E.classCost('node', 'dmg', 0), last = E.classCost('node', 'dmg', E.CLASS_MAX - 1);

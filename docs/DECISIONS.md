@@ -1588,3 +1588,64 @@ stops applying at the moment it matters most. And **`+5` is five calls to
 `startWave`**, not a new engine verb: waves already overlap by design, so "five
 at once" is something the engine can already express and did not need to be
 taught.
+
+## 2026-08-19 — Choke Point's frame cost was towers, not waves
+
+Reported as "I released waves 25 through 50 at once and rushed them, and
+performance suffers drastically". Reproduced: 2,452 enemies on the board, and a
+frame at **55ms** against a 16.7ms budget. But measuring where it went found
+something else.
+
+**The board with 24 towers and zero enemies already cost 16.3ms.** Each tower
+was ~0.62ms per frame — linear in tower count, nothing to do with waves. The
+wave dump made a pre-existing cost visible rather than causing it: by wave 50
+you have a full board of towers whatever you do with the wave button.
+
+A tower's ring never changes — same type, same size, same extrusion, every
+frame — and it was six glow passes each. Cached to an offscreen canvas and
+blitted it is one `drawImage`: **10.19ms → 0.14ms for 24 rings, 71x**. Measured
+standalone, because the render harness hands every canvas element the *same*
+context, so offscreen sprites are unavailable there and would draw onto the
+board. The shell asks once whether sprites work and falls back to drawing live,
+which is also what keeps the render tests exercising a real drawing path.
+
+The enemies were the other half. A cube is eight glow passes and two fills, and
+`dim` re-parses its colour string on every call — three per enemy per frame.
+Past `CROWD_LIMIT` enemies now draw flat: a filled square, one outline, and the
+two things that carry meaning kept (the type's colour, and health as
+brightness). `dim` results are cached against a quantised brightness. And the
+frame resolves every enemy position once into a shared array — each tower's draw
+used to run its own scan over every enemy to find its bearing, so a frame cost
+O(towers x enemies) position solves on top of the engine's own targeting.
+
+Together: **55.25ms → 24.5ms** in the harness with sprites off, so a browser
+with them on is faster again.
+
+## 2026-08-19 — Power-ups: size is legibility, hits are price
+
+"Make the power-ups larger and require more hits to obtain them" turned out to
+be two requests that fight each other in the code, which is worth recording.
+
+**Size was the catch radius.** Collection tested `CATCH_BAND + p.r`, so drawing
+a crate bigger also made it easier to obtain — the exact opposite of the second
+half of the request. `PICKUP_R` is now what one is drawn at and
+`PICKUP_CATCH_R` what it is caught at.
+
+**Carrier HP is the wrong dial for "more hits".** The obvious reading was to
+toughen the carrier that drops them. Measured, that backfires: carrier hp is
+multiplied by `hpScale`, so 3hp is already 10 rounds from a bare gun at wave 8
+and 19 at wave 14. Doubling it would make drops unobtainable exactly when they
+matter. The claim in an earlier draft of this note — that 3hp "fell to a single
+round" — was simply wrong, and measuring is what caught it.
+
+The right dial was already there: **a shot has always been able to claim a
+pickup mid-air**, it just took one hit. It takes `PICKUP_HITS` now, and every
+one is consumed, so rounds spent prising a crate open are rounds not spent on
+the column. Letting one fall into the catch band still claims it outright —
+two prices for the same thing, one paid in ammunition and one in position.
+
+That change has a real cost, and a test found it: the regression test that
+splitters still split began failing, because a single unupgraded mount now
+spends its whole output on falling crates. The test now builds the battery a
+player would plausibly have by that wave, which is what it should always have
+been simulating.
