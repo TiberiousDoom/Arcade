@@ -1649,3 +1649,117 @@ splitters still split began failing, because a single unupgraded mount now
 spends its whole output on falling crates. The test now builds the battery a
 player would plausibly have by that wave, which is what it should always have
 been simulating.
+
+
+## 2026-08-23 — Rush is a state, not a tap
+
+Rush compressed the queued spawns by a factor on every press. That made
+"hurry this wave along" a thing you did by tapping a button repeatedly, and —
+more to the point — made it a thing the button could never *show*: the gamble
+was invisible while it was being taken, and pressing it four times and pressing
+it once looked identical.
+
+It latches now. `setRush(w, on)` sets a flag, and the spawn clock runs
+`RUSH_RATE` times faster while it is set. The bargain is unchanged and so is
+the distinction the v26 deletion got wrong — **fast-forward speeds up time,
+rush speeds up the enemy** — but it is now a state with a lit button, one you
+can take back mid-wave.
+
+It releases itself when the spawn queue empties. A latch sitting lit over a
+wave that has already finished arriving is a control that is lying about what
+it is doing, and starting the next wave is a decision worth taking again rather
+than one left switched on from last time.
+
+## 2026-08-23 — The Breaker's round is real
+
+Choke Point's towers were all hitscan, with the shell drawing a slug crossing
+the gap while the engine had already applied the damage at the trigger pull.
+Reported as "the target takes damage before the round arrives", which is
+exactly what was happening: the animation was racing a hit that had already
+been resolved.
+
+Breaker — and only Breaker — throws a real projectile now (`w.slugs`,
+`stepSlugs`, `SLUG_SPEED`). Node and Coil stay hitscan on purpose: they throw
+light down a line, and a bolt of light that arrives late reads as broken rather
+than as heavy.
+
+Three details worth keeping:
+
+- **The round homes.** The aim point is refreshed to the target's live position
+  every frame, so travel time costs the shot nothing in accuracy and the class
+  keeps the balance it was tuned at, with a delay in front of it.
+- **The stat line is captured at the muzzle.** A shot is worth what the tower
+  was when it fired, not what it is when the round lands.
+- **A target that dies mid-flight releases the round rather than deleting it.**
+  It flies on and bursts where it was aimed, so killing the aimed-at enemy is
+  not a way to cancel splash that has already been paid for.
+
+Rounds in flight are not saved and do not survive a rotation: they point at
+enemy objects that JSON cannot carry, and they are measured in pixels on a
+board that a transpose has just changed.
+
+## 2026-08-23 — Towers get dearer as the board fills
+
+A flat build price meant the only late-run question was how fast money arrived,
+because the board could simply be filled. Every tower placed now raises the
+price of the next, and raises it faster the more of them are standing:
+`1 + 0.06n + 0.006n²`, applied to every class through `buildCost(w, type)`.
+
+Quadratic rather than geometric, deliberately: geometric growth priced the far
+end of a 24-tower board out of reach entirely, where this reaches about 5.9x —
+dear enough that a further tower is a decision against deepening the armory,
+not so dear that the board has a hard cap nobody told the player about.
+
+**The premium is not refunded.** `sellValue` stays half the *list* price, which
+is what keeps `moveCost` cheap on a crowded board — so the answer to a badly
+sited veteran is still "move it", never "sell it and pay the premium again".
+
+## 2026-08-23 — Crowd mode fades instead of flipping
+
+Reported at v42: "mid wave the cubes render as simple squares without any glow,
+then it reverts". They did. `CROWD_LIMIT` was a single threshold on the enemy
+count, so a wave hovering around 90 flipped the entire board's art between two
+looks once per enemy killed — which STATUS had already flagged as an open
+question, and a phone answered it.
+
+Two thresholds now (90 up, 70 down) plus a ~0.3s `crowdMix` crossfade, and the
+cheap flat body is drawn *underneath* the cube rather than instead of it, so
+the expensive half fades out over it. The frame budget is unchanged: at rest
+the board is still either all cubes or all flat, and only the crossing pays for
+both.
+
+The general lesson, since this is the second performance switch to be reported
+as a bug: a quality drop that is invisible is a saving, and one that is visible
+is a defect, whatever it saves.
+
+## 2026-08-23 — The swarm escort, and why density comes before health
+
+Flak Battery's deep waves (50+) arrive inside a cloud of small squares flying
+figure-eights over the column. They are not part of the chain: they cannot
+breach, they hold no wave open, and they pay score but **no scrap** — an escort
+that funded the run would be answered by farming it rather than by getting
+through it.
+
+The two dials move one after the other, and that order is the design. Density
+climbs from wave 50 to wave 80, which is a problem of *volume of fire*.
+Only once density has topped out do motes start gaining health, which is a
+problem of *damage per round*. Escalating both at once would have made the two
+halves of the shop indistinguishable as answers to the same threat, and wave 50
+is far too late in a run to start blurring what an upgrade is for.
+
+The motion is a lemniscate — sin(t) across the lane against sin(2t) along it —
+anchored to a point trailing the leading column by a fixed arc length, with
+motes spread around the figure by the golden angle. Nothing random: wave N's
+escort flies the same pattern every run, so a gap through it is something to
+time rather than to wait for.
+
+## 2026-08-23 — Difficulty is asked once, on the picker
+
+Difficulty was selectable in two places: the circuit picker and the pause menu.
+Only one of them could ask the question properly. Difficulty is earned *per
+circuit*, so "Hard" means nothing until you say which board — and the pause
+menu could only ask the older, global version, which is how a Hard entry showed
+up for boards it was not unlocked on.
+
+The pause menu now states what the run is and what winning it takes, and points
+at the picker. It is the picker's question, and it is asked once.

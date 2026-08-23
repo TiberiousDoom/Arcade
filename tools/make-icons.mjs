@@ -13,7 +13,8 @@ const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'shared', 'icons
 mkdirSync(out, { recursive: true });
 
 const VOID = '#0b1418';
-const ROWS = ['#c9a227', '#3fae8f', '#5fc9a4'];
+const SCALE = '#3fae8f';
+const SCALE_LIT = '#5fc9a4';
 const BONE = '#e6e9e2';
 const BRASS = '#c9a227';
 
@@ -28,25 +29,53 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.fill();
 }
 
-/** The mark, drawn in a 100x100 space: a brick field, a ball, and a paddle.
- *  Reads as "arcade" at a glance and survives being shrunk to a favicon. */
+/** One invader: a square face with a lit top edge, so it reads as a cube at a
+ *  glance. The repo's one absolute art rule — invaders are cubes, defenders
+ *  are spheres — is what makes the mark legible once it is 32px wide. */
+function cube(ctx, x, y, s, face) {
+  ctx.fillStyle = face;
+  ctx.fillRect(x, y, s, s);
+  ctx.fillStyle = SCALE_LIT;
+  ctx.fillRect(x, y, s, s * 0.22);
+}
+
+/** The mark, drawn in a 100x100 space: a chain of cubes overhead, a round in
+ *  flight, and the gun below with its barrel up. Flak Battery is the flagship
+ *  of the invasion cabinet, so it is the mark the whole app installs under. */
 function drawMark(ctx) {
-  const cols = 4, bw = 20, bh = 6, gap = 2;
-  const total = cols * bw + (cols - 1) * gap;
-  const x0 = (100 - total) / 2;
-  for (let r = 0; r < ROWS.length; r++) {
-    ctx.fillStyle = ROWS[r];
-    for (let c = 0; c < cols; c++) {
-      roundRect(ctx, x0 + c * (bw + gap), 18 + r * (bh + gap), bw, bh, 1.5);
-    }
+  const s = 19, gap = 6, cols = 3;
+  const x0 = (100 - (cols * s + (cols - 1) * gap)) / 2;
+  for (let c = 0; c < cols; c++) {
+    // the middle of a chain carries the armoured head — brass, so the row is
+    // never three identical blocks
+    cube(ctx, x0 + c * (s + gap), 12, s, c === 1 ? BRASS : SCALE);
   }
+
+  // the gun: a barrel elevated at the chain on a low mount. Drawn tilted and
+  // long — upright and stubby it read as a chess pawn rather than a cannon.
+  const ang = -0.42;
+  ctx.save();
+  ctx.translate(46, 82);
+  ctx.rotate(ang);
   ctx.fillStyle = BONE;
-  ctx.beginPath();
-  ctx.arc(50, 60, 6, 0, Math.PI * 2);
-  ctx.fill();
+  roundRect(ctx, -6, -36, 12, 38, 5);
+  ctx.fillStyle = BRASS;
+  roundRect(ctx, -7.5, -37, 15, 7, 3);   // muzzle brake, so the end reads
+  ctx.restore();
 
   ctx.fillStyle = BRASS;
-  roundRect(ctx, 30, 76, 40, 8, 4);
+  roundRect(ctx, 25, 80, 46, 12, 6);     // the mount it stands on
+  ctx.fillStyle = BONE;
+  ctx.beginPath();
+  ctx.arc(46, 82, 6, 0, Math.PI * 2);    // trunnion
+  ctx.fill();
+
+  // the round, already away and climbing along the barrel's line
+  const mx = 46 + Math.sin(-ang) * 50, my = 82 - Math.cos(ang) * 50;
+  ctx.fillStyle = BONE;
+  ctx.beginPath();
+  ctx.arc(mx, my, 5, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 /** @param scale fraction of the canvas the mark occupies. Maskable icons need

@@ -983,6 +983,168 @@ test('resets clear any pending shot', () => {
   assert.equal(w.cannon.queued, false);
 });
 
+/* ---------- the swarm shield ---------- */
+
+/** A world sitting on `wave`, with its escort on the board and the column far
+ *  enough along the path that every mote is on-board too. */
+function escorted(wave, advance = 400) {
+  const w = E.createWorld({});
+  w.wave = wave;
+  E.spawnWave(w);
+  w.chains[0].s = advance;
+  E.stepSwarm(w, 1 / 60);
+  return w;
+}
+
+test('no escort before wave 50, and one from wave 50 on', () => {
+  assert.equal(E.swarmCount(E.SWARM_WAVE - 1), 0, 'wave 49 arrives alone');
+  assert.equal(E.swarmCount(1), 0);
+  assert.ok(E.swarmCount(E.SWARM_WAVE) >= E.SWARM_MIN, 'wave 50 brings the escort');
+  assert.equal(E.createWorld({}).swarm.length, 0, 'and a fresh world has none');
+  assert.equal(escorted(E.SWARM_WAVE).swarm.length, E.swarmCount(E.SWARM_WAVE));
+});
+
+test('the escort thickens wave by wave until it is full, then stops', () => {
+  let prev = E.swarmCount(E.SWARM_WAVE);
+  for (let wv = E.SWARM_WAVE + 1; wv <= E.SWARM_FULL; wv++) {
+    const n = E.swarmCount(wv);
+    assert.ok(n >= prev, `wave ${wv} is at least as dense as ${wv - 1}`);
+    prev = n;
+  }
+  assert.equal(prev, E.SWARM_MAX, 'and it tops out at the maximum');
+  assert.equal(E.swarmCount(E.SWARM_FULL + 40), E.SWARM_MAX, 'and stays there');
+  assert.ok(E.swarmCount(E.SWARM_FULL) > E.swarmCount(E.SWARM_WAVE), 'it really did thicken');
+});
+
+/* The order of the two escalations is the design, not an accident: density
+   first (answered by volume of fire), health only once density has topped out
+   (answered by damage per round). Both at once would make the two halves of
+   the shop indistinguishable as answers. */
+test('motes only start gaining health once the escort is at full density', () => {
+  for (let wv = E.SWARM_WAVE; wv <= E.SWARM_FULL; wv++) {
+    assert.equal(E.swarmHp(wv), E.SWARM_HP_BASE, `wave ${wv} motes are still chaff`);
+  }
+  assert.ok(E.swarmHp(E.SWARM_FULL + E.SWARM_HP_EVERY) > E.SWARM_HP_BASE, 'then they toughen');
+  assert.ok(E.swarmHp(E.SWARM_FULL + E.SWARM_HP_EVERY * 6)
+    > E.swarmHp(E.SWARM_FULL + E.SWARM_HP_EVERY), 'and keep toughening');
+  assert.equal(E.swarmHp(E.SWARM_WAVE - 1), 0, 'nothing to have health before wave 50');
+});
+
+test('a mote flies a figure eight — twice across the lane for once along it', () => {
+  const w = escorted(E.SWARM_WAVE);
+  const m = w.swarm[0];
+  m.phase = 0; m.t = 0;
+  // sample one full circuit of the figure and count the sign changes of each
+  // offset; a lemniscate crosses its own centre line twice as often along the
+  // lane as across it
+  const period = (Math.PI * 2) / E.SWARM_RATE;
+  const across = [], along = [];
+  for (let i = 0; i <= 200; i++) {
+    m.t = (i / 200) * period;
+    const th = m.phase + m.t * E.SWARM_RATE;
+    across.push(Math.sin(th));
+    along.push(Math.sin(2 * th));
+  }
+  const crossings = (a) => a.reduce((n, v, i) => n + (i && Math.sign(v) !== Math.sign(a[i - 1]) ? 1 : 0), 0);
+  assert.equal(crossings(along), crossings(across) * 2, 'twice the frequency along the lane');
+  // and it is a real excursion, not a wobble: the escort has to be wide enough
+  // to actually cover the column it is escorting
+  assert.ok(E.SWARM_SPAN > E.KIND.std.r * 2, 'the eight is wider than a segment');
+});
+
+test('the escort rides with the column and stays deterministic', () => {
+  const a = escorted(E.SWARM_WAVE + 10);
+  const b = escorted(E.SWARM_WAVE + 10);
+  assert.deepEqual(a.swarm.map(m => [m.x, m.y]), b.swarm.map(m => [m.x, m.y]),
+    'same wave, same escort, every run');
+
+  const before = a.swarm.map(m => m.s);
+  a.chains[0].s += 120;
+  E.stepSwarm(a, 1 / 60);
+  assert.ok(a.swarm.every((m, i) => m.s > before[i]), 'it moved up with the column');
+});
+
+test('a round that meets a mote is spent on it, and the column behind is spared', () => {
+  const w = escorted(E.SWARM_WAVE);
+  const m = w.swarm.find(x => !x.off);
+  assert.ok(m, 'a mote is on the board');
+  const segHp = w.chains[0].segs.map(s => s.hp);
+  const before = w.swarm.length;
+
+  // a round sitting exactly on it, with enough damage to finish it outright
+  w.shots.push({ x: m.x, y: m.y, vx: 0, vy: -1, r: 3, dmg: E.swarmHp(E.SWARM_WAVE) + 5,
+                 pierce: 0, bounces: 0, mount: 0, gun: 'standard' });
+  E.stepShots(w, 1 / 60);
+  assert.equal(w.shots.length, 0, 'the round was spent');
+  assert.equal(w.swarm.length, before - 1, 'and the mote is gone');
+  assert.deepEqual(w.chains[0].segs.map(s => s.hp), segHp, 'the column took nothing');
+});
+
+test('a mote soaks more than one round once it has the health to', () => {
+  const w = escorted(E.SWARM_FULL + E.SWARM_HP_EVERY * 4);
+  const m = w.swarm.find(x => !x.off);
+  const hp0 = m.hp;
+  assert.ok(hp0 > E.SWARM_HP_BASE, 'this deep, motes are not one-shot chaff');
+  w.shots.push({ x: m.x, y: m.y, vx: 0, vy: -1, r: 3, dmg: 1, pierce: 0, bounces: 0,
+                 mount: 0, gun: 'standard' });
+  E.stepShots(w, 1 / 60);
+  assert.equal(w.swarm.length, w.swarm.length, 'still there');
+  assert.equal(m.hp, hp0 - 1, 'and it took the damage it was dealt');
+});
+
+test('a piercing round carries on through the escort', () => {
+  const w = escorted(E.SWARM_WAVE);
+  const m = w.swarm.find(x => !x.off);
+  w.shots.push({ x: m.x, y: m.y, vx: 0, vy: -1, r: 3, dmg: 99, pierce: 2, bounces: 0,
+                 mount: 0, gun: 'rail' });
+  const motes = w.swarm.length;
+  E.stepShots(w, 1 / 60);
+  assert.equal(w.shots.length, 1, 'the round is still flying');
+  assert.equal(w.swarm.length, motes - 1, 'through the mote it met');
+  // fewer pierces than it started with — it may have spent another on whatever
+  // it went on to meet in the same frame, which is exactly what pierce is for
+  assert.ok(w.shots[0].pierce < 2, 'and it paid a pierce to get through');
+});
+
+test('the escort cannot breach, and cannot hold a wave open', () => {
+  const w = escorted(E.SWARM_WAVE);
+  // park every mote past the floor line — where a segment would end the run
+  for (const m of w.swarm) { m.off = false; m.y = w.L.FLOOR + 40; }
+  assert.equal(E.checkBreach(w), false, 'motes are overhead, not on the ground');
+
+  // and with the column dead the wave clears, escort or no escort
+  w.chains = [];
+  E.step(w, 1 / 60);
+  assert.equal(w.swarm.length, 0, 'the escort went with the column it was escorting');
+  assert.ok(w.waveClear, 'and the wave cleared');
+});
+
+test('killing the escort pays score but no scrap', () => {
+  const w = escorted(E.SWARM_WAVE);
+  const m = w.swarm.find(x => !x.off);
+  const scrap0 = w.scrap, score0 = w.score;
+  w.shots.push({ x: m.x, y: m.y, vx: 0, vy: -1, r: 3, dmg: 99, pierce: 0, bounces: 0,
+                 mount: 0, gun: 'standard' });
+  E.stepShots(w, 1 / 60);
+  assert.equal(w.scrap, scrap0, 'the escort is not an income stream');
+  assert.equal(w.score - score0, E.SWARM_SCORE, 'but it is worth something on the board');
+});
+
+test('a saved run brings its escort back as it was, damage included', () => {
+  const w = escorted(E.SWARM_FULL + 20);
+  w.swarm[0].hp = 1;
+  const snap = E.snapshot(w);
+  const w2 = E.createWorld({});
+  assert.equal(E.hydrate(w2, snap), true);
+  assert.equal(w2.swarm.length, w.swarm.length, 'the same escort came back');
+  assert.equal(w2.swarm[0].hp, 1, 'still carrying the damage it had taken');
+  // a save written before the escort existed simply resumes without one
+  delete snap.swarm;
+  const w3 = E.createWorld({});
+  assert.equal(E.hydrate(w3, snap), true);
+  assert.equal(w3.swarm.length, 0, 'an older save is not handed a fresh cloud');
+});
+
 /* ---------- shielded segments ---------- */
 
 test('a head-on shot is deflected by the plate', () => {

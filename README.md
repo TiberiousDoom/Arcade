@@ -9,6 +9,7 @@ are no accounts, ads, tracking, or network calls of any kind.
 | Game | What it is |
 |---|---|
 | **Flak Battery** | A chain of segments crawls a serpentine path toward your guns. Cut it mid-chain to force recoil, bank hits into Overdrive, spend scrap on the battery between waves. |
+| **Choke Point** | A grid tower defense. Build auto-firing towers along a fixed route, let them level themselves by fighting, and spend the run's scrap on a permanent armory. |
 | **Hull Breach** | A brick-breaker where the paddle is your aim: where the ball lands across it decides the angle it leaves. Back rows take three hits. |
 | **Feedline** | A lengthening wire on a grid. Longer and faster with every meal; you may cross where your tail is leaving, and the gold bonus won't wait. |
 

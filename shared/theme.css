@@ -44,6 +44,12 @@
   --accent-hot:#e3b929;       /* that button, hovered */
   --accent-ink:#1a1405;       /* text on that button */
   --board-max:880px;          /* the shell's max width, matched to the board */
+  /* How round every button in a shell is. Square by default, which is what the
+     cabinet has always looked like; Choke Point rounds them because a board
+     under a thumb reads better with softened targets. One hook rather than a
+     local rule per button: a shell that redeclares the shared button styling
+     drifts from it the next time this file changes. */
+  --btn-radius:0px;
 }
 
 *{
@@ -147,6 +153,7 @@ canvas{display:block;width:100%;height:auto;touch-action:none;margin:0 auto}
 button{
   font:600 12px/1 'Chivo Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
   background:var(--accent);color:var(--accent-ink);border:0;padding:12px 24px;cursor:pointer;
+  border-radius:var(--btn-radius);
 }
 /* Hover is for pointers only.
    
@@ -239,7 +246,7 @@ button:disabled{transform:none}
 .menuSettings button{
   min-height:48px;padding:10px 14px;font-size:11px;letter-spacing:.08em;
   text-transform:uppercase;background:#2a1a17;color:#e0a89c;
-  border:1px solid var(--line);border-radius:3px;cursor:pointer;
+  border:1px solid var(--line);border-radius:var(--btn-radius);cursor:pointer;
 }
 @media (hover: hover) { .menuSettings button:hover{background:#3a241f} }
 .menuActions button{min-height:48px;padding:10px 18px}
@@ -248,7 +255,7 @@ button:disabled{transform:none}
    is nobody's thumb target. */
 .menuSettings select{
   min-height:48px;padding:0 8px;background:#12222a;color:var(--bone);
-  border:1px solid var(--line);border-radius:3px;
+  border:1px solid var(--line);border-radius:var(--btn-radius);
   font:600 11px/1 'Chivo Mono',monospace;letter-spacing:.08em;cursor:pointer;
 }
 .menuSettings label:has(input[type=checkbox]){min-height:48px;cursor:pointer}

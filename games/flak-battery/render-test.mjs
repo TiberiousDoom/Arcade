@@ -54,6 +54,33 @@ test('every segment type renders on a real canvas without throwing', async () =>
   assert.deepEqual(g.errors, [], 'render threw');
 });
 
+test('the swarm escort draws, at both densities and with damage on it', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E } = g;
+
+  // a late wave, so the escort is at full density and its motes have health
+  world.wave = E.SWARM_FULL + E.SWARM_HP_EVERY * 6;
+  E.spawnWave(world);
+  world.chains[0].s = 500;
+  E.stepSwarm(world, 1 / 60);
+  assert.equal(world.swarm.length, E.SWARM_MAX, 'a full escort is on the board');
+  assert.ok(world.swarm.some(m => !m.off), 'and some of it has reached the board');
+  // half of it damaged and one just hit, so the brightness ramp and the hit
+  // flash both draw
+  world.swarm.forEach((m, i) => { if (i % 2) m.hp = 1; });
+  world.swarm[0].flash = 0.1;
+  g.frame(1000);
+  assert.deepEqual(g.errors, [], 'drawing a full escort threw');
+
+  // and the thin opening escort, which is a different count and 1hp motes
+  world.wave = E.SWARM_WAVE;
+  E.spawnWave(world);
+  world.chains[0].s = 500;
+  E.stepSwarm(world, 1 / 60);
+  g.frame(1050);
+  assert.deepEqual(g.errors, [], 'drawing the opening escort threw');
+});
+
 test('the full battery with gun types renders without throwing', async () => {
   const g = await bootAndStart(SHELL);
   const { world, E } = g;

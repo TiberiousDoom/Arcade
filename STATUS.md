@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-19 (v42 — round 13, both games)
+Last updated: 2026-08-23 (v43 — round 14, both games)
 
 ## Read this first
 
@@ -20,7 +20,54 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**525 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **52 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**550 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **63 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 14 feedback — v43 (2026-08-23)
+
+Ten items: one app-wide, one Flak Battery, eight Choke Point. Two of them were
+bugs wearing a feature request's clothes — the crowd-mode flip and the
+Breaker's early damage — and both are in DECISIONS.
+
+**All games**
+- **The app icon is Flak Battery now**, not Hull Breach: a cannon on a mount
+  with its barrel up, under a row of cubes. `tools/make-icons.mjs` redraws the
+  whole set; it is the flagship of the invasion cabinet, so it is the mark the
+  app installs under.
+- Buttons gained a `--btn-radius` hook in the theme (default 0, so nothing else
+  changed) — Choke Point rounds its own.
+
+**Flak Battery**
+- **A swarm escort from wave 50** (`SWARM_*`, `stepSwarm`, `swarmPos`): small
+  cubes flying figure-eights over the leading column, intercepting rounds. It
+  thickens to wave 80, and only *then* do the motes start gaining health — see
+  DECISIONS for why that order is the whole design. No scrap, no breach, and it
+  goes with the column it escorts.
+
+**Choke Point**
+- **The Breaker throws a real round.** It was hitscan with an animation racing
+  it, which is what "the target takes damage before the round arrives" was.
+- **Tower prices climb as the board fills** (`buildCost`, ~5.9x at 24 towers).
+  The refund stays half the list price, so moving beats selling and rebuilding.
+- **Rush latches.** It stays down while it is hurrying the wave, can be let go
+  early, and releases itself once everything queued is out.
+- **Crowd mode fades** across two thresholds instead of flipping at one — the
+  reported "cubes turn into plain squares mid-wave and back". This was the open
+  question left at the end of round 13, and a phone answered it.
+- **The circuit picker is two columns**: the board preview on the left, the
+  three difficulties stacked down the right.
+- **Difficulty left the pause menu.** It is the picker's question — a
+  difficulty means nothing until you say which circuit.
+- The gameplay strip fades while the armory or the picker covers the board.
+
+### Still open after this round
+
+- Every number in the swarm escort is measured, not played: `SWARM_MAX`,
+  `SWARM_HP_EVERY`, and whether wave 50 is where it should start at all. Nobody
+  has reached wave 50 on glass in a session yet.
+- The crowding curve on tower prices is likewise untested by a run: 5.9x at a
+  full board is a judgement, not a measurement.
+- `SLUG_SPEED` is a desktop judgement about how a round *looks* crossing a gap.
+  That is exactly the kind of thing the phone overrules.
 
 ## Round 13 feedback — v42 (2026-08-19)
 
@@ -67,8 +114,9 @@ explanation.
 - The tower-sprite path is **not covered by tests** — the harness cannot blit,
   so the tests exercise the live fallback. The 71x figure is a standalone
   measurement, not an in-game one.
-- `CROWD_LIMIT` is a threshold, so there is a visible moment where the board
-  switches to flat enemies. Whether that reads as a glitch is a device question.
+- ~~`CROWD_LIMIT` is a threshold, so there is a visible moment where the board
+  switches to flat enemies.~~ **Answered in round 14: it read as a glitch, and
+  was reported as one.** Two thresholds and a crossfade now.
 
 ## Round 12 feedback — Choke Point (v41, 2026-08-19)
 

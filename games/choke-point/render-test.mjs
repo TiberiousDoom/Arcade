@@ -199,6 +199,130 @@ test('a palette selection survives going broke', async () => {
   assert.deepEqual(g.errors, [], 'the palette threw');
 });
 
+test('the palette quotes the price the board is actually charging', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.components = 99999;
+  g.frame(1000);
+  const nodePick = [...doc.querySelectorAll('.pick')].find(b => /node/i.test(b.textContent));
+  const price = () => Number(nodePick.querySelector('.cost').textContent);
+  assert.equal(price(), E.TOWER_TYPES.node.cost, 'the first one is the list price');
+
+  let placed = 0;
+  outer:
+  for (let r = 0; r < world.L.ROWS; r++)
+    for (let c = 0; c < world.L.COLS; c++) {
+      if (E.buildTower(world, c, r, 'node') && ++placed >= 8) break outer;
+    }
+  assert.equal(placed, 8);
+  g.frame(1050);
+  assert.equal(price(), E.buildCost(world, 'node'), 'and it tracks the crowding premium');
+  assert.ok(price() > E.TOWER_TYPES.node.cost, 'which is dearer than the list price');
+  assert.deepEqual(g.errors, [], 'the palette threw');
+});
+
+test('rush latches down, and lets go when the wave has finished arriving', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, window: w } = g;
+  const doc = w.document;
+  const rush = doc.getElementById('rushWave');
+  g.frame(1000);
+  assert.ok(rush.disabled, 'nothing to rush before a wave starts');
+
+  doc.getElementById('startWave').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  g.frame(1050);
+  assert.ok(!rush.disabled, 'a wave is arriving, so it can be hurried');
+  rush.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  g.frame(1100);
+  assert.ok(world.rushing, 'the engine latched');
+  assert.ok(rush.classList.contains('on'), 'and the button is visibly down');
+  assert.equal(rush.getAttribute('aria-pressed'), 'true');
+
+  // pressed again, it lets go early
+  rush.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  g.frame(1150);
+  assert.equal(world.rushing, false, 'turned off early');
+  assert.ok(!rush.classList.contains('on'));
+
+  // left on, it releases itself once the queue is empty
+  rush.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.ok(world.rushing);
+  let t = 1200;
+  for (let i = 0; i < 4000 && world.spawnQueue.length; i++) g.frame(t += 16);
+  g.frame(t += 16);
+  assert.equal(world.spawnQueue.length, 0, 'the wave finished arriving');
+  assert.ok(!rush.classList.contains('on'), 'and the latch came back up');
+  assert.deepEqual(g.errors, [], 'the wave row threw');
+});
+
+test("a breaker's round is drawn while it flies, and only then does it land", async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E } = g;
+  world.components = 99999;
+  // put a breaker where it overlooks the route, and something slow on the path
+  let built = false;
+  outer:
+  for (let r = 0; r < world.L.ROWS; r++)
+    for (let c = 0; c < world.L.COLS; c++) {
+      if (!E.buildTower(world, c, r, 'breaker')) continue;
+      const t = world.towers[world.towers.length - 1];
+      const tc = E.cellCenter(world.L, c, r);
+      const reach = E.stats(world, t).range;
+      for (let d = 0; d < world.pathLen; d += 8) {
+        const p = E.atS(world.path, world.pathLen, d);
+        if (Math.hypot(p.x - tc.x, p.y - tc.y) < reach * 0.8) {
+          world.enemies = [{ type: 'load', dist: d, hp: 4000, maxhp: 4000, speed: 0, r: 15, slow: 0 }];
+          built = true; break outer;
+        }
+      }
+      E.sellTower(world, world.towers.length - 1);
+    }
+  assert.ok(built, 'a breaker is covering the route');
+
+  let t = 1000;
+  for (let i = 0; i < 400 && !world.slugs.length; i++) g.frame(t += 16);
+  assert.equal(world.slugs.length, 1, 'a round is in the air');
+  const hp = world.enemies[0].hp;
+  g.frame(t += 16);                       // drawn mid-flight
+  assert.deepEqual(g.errors, [], 'drawing a round in flight threw');
+  assert.equal(world.enemies[0].hp, hp, 'and nothing has happened to the target yet');
+
+  for (let i = 0; i < 400 && world.slugs.length; i++) g.frame(t += 16);
+  assert.ok(world.enemies[0].hp < hp, 'it landed');
+  g.frame(t += 16);                       // the shockwave
+  assert.deepEqual(g.errors, [], 'the impact threw');
+});
+
+test('the gameplay strip fades out under a full-board panel', async () => {
+  const g = await bootAndStart(SHELL);
+  const { window: w } = g;
+  const doc = w.document;
+  assert.ok(!doc.body.classList.contains('panelOpen'), 'clear while playing');
+  doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.ok(doc.body.classList.contains('panelOpen'), 'the armory dims the strip');
+  doc.getElementById('shopClose').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.ok(!doc.body.classList.contains('panelOpen'), 'and closing it brings the strip back');
+  assert.deepEqual(g.errors, [], 'the panel wiring threw');
+});
+
+test('the circuit picker puts the board on the left and the difficulties down the right', async () => {
+  const g = await bootAndStart(SHELL);
+  const { window: w, E } = g;
+  const doc = w.document;
+  // the picker is earned; render it directly rather than winning three circuits
+  w.eval('renderPicker && renderPicker()');
+  const rows = [...doc.querySelectorAll('#pickGrid .pickRow')];
+  assert.equal(rows.length, E.ROUTE_COUNT, 'one row per circuit');
+  const open = rows[0];
+  assert.ok(open.querySelector('.pickTop canvas.pickMap'), 'the left column is the board preview');
+  const diffs = open.querySelector('.pickDiffs');
+  assert.ok(diffs, 'and the right column is the difficulty list');
+  assert.equal(diffs.querySelectorAll('button').length, E.DIFFICULTY_KEYS.length,
+    'every difficulty is offered, locked ones included');
+  assert.deepEqual(g.errors, [], 'the picker threw');
+});
+
 test('the tower popup opens and renders on a real DOM', async () => {
   const g = await bootAndStart(SHELL);
   const { world, E, window: w } = g;
