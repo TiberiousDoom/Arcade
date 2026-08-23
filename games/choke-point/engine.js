@@ -174,6 +174,13 @@ export const TOWER_TYPES = {
     name: 'Breaker', cost: 48, col: '#e0503c', blurb: 'Heavy splash, long reach',
     base: { range: 120, rate: 1.4, dmg: 24, splash: 44, slow: 0, slowDur: 0 },
     spec: 'range', weak: 'rate',
+    /* The one tower that is *not* hitscan. Its damage plainly happens away
+       from the muzzle, so it was the one shot where instant resolution read as
+       wrong: the shell drew a slug crossing the gap while the enemy had
+       already taken the hit and played its flinch. The round is real now — see
+       `stepSlugs`. Node and Coil stay hitscan; a bolt of light arriving late
+       would look broken rather than heavy. */
+    projectile: true,
   },
   /* Coil chills a small cluster rather than a single enemy, and buys splash
      cheap. Its splash used to be 0 with `spec: 'range'` — and because `stats`
@@ -191,6 +198,14 @@ export const TOWER_TYPES = {
   },
 };
 export const TOWER_KEYS = Object.keys(TOWER_TYPES);
+
+/** How fast a Breaker's slug flies, in px/s. Slow enough to be a thing you can
+ *  watch leave the barrel and land — at 260 a shot at the class's own base
+ *  range (120px) takes just under half a second — and slow enough that a fast
+ *  enemy visibly outruns the point it was aimed at, which is what makes the
+ *  round home rather than lead. Faster than about 400 and the travel time is
+ *  back below one frame's worth of enemy movement, i.e. invisible. */
+export const SLUG_SPEED = 260;
 
 /* ---------- levelling ---------- */
 
@@ -332,8 +347,38 @@ export function buyClassUpgrade(w, type, track) {
   return true;
 }
 
-/** Components returned when a tower is sold: half its build cost. Levelling is
+/* Every tower placed makes the next one dearer, and dearer faster the more of
+   them are standing: 1 + 0.06n + 0.006n^2, where n is how many towers are on
+   the board. A flat price meant the only question late in a run was how fast
+   money arrived, since the board could simply be filled; a curve makes each
+   further tower a decision against deepening the armory instead. Quadratic
+   rather than geometric on purpose — geometric growth priced the far end of a
+   24-tower board out of reach entirely, where this reaches about 5.9x. */
+export const BUILD_RAMP = 0.06;
+export const BUILD_RAMP2 = 0.006;
+
+/** The multiplier on every tower's price at a given board population. */
+export function crowdingMult(n) {
+  return 1 + BUILD_RAMP * n + BUILD_RAMP2 * n * n;
+}
+
+/** What a tower of `type` costs *right now* — the one place a build price
+ *  comes from. Never read `TOWER_TYPES[type].cost` for a purchase; that is the
+ *  base price the curve is applied to. Selling drops the population, so it
+ *  also drops the price of the next build back down. */
+export function buildCost(w, type) {
+  const T = TOWER_TYPES[type];
+  if (!T) return Infinity;
+  return Math.round(T.cost * crowdingMult(w.towers.length));
+}
+
+/** Components returned when a tower is sold: half its *base* build cost. Levelling is
  *  earned rather than bought, so there is nothing else sunk in to refund. */
+/*  Deliberately not half of what was actually paid: the crowding premium above
+    is a congestion charge on the board, not value sunk into the tower, so it is
+    not refunded. That also keeps `moveCost` — which is exactly this — cheap on
+    a crowded board, so the answer to a badly sited veteran stays "move it",
+    never "sell it and pay the premium again". */
 export function sellValue(tower) {
   return Math.floor(TOWER_TYPES[tower.type].cost * 0.5);
 }
@@ -670,6 +715,8 @@ export function createWorld(opts = {}) {
     blocked: pathCells(L, routeIndex),          // cells the route occupies
     towers: [],
     enemies: [],
+    slugs: [],                      // rounds in flight (Breaker only, for now)
+    rushing: false,                 // the rush latch — see setRush
     spawnQueue: [],                 // pending {type, at} for the active wave
     clock: 0,                       // seconds since the wave started spawning
     wave: 0,                        // 0 until the first wave starts
@@ -690,7 +737,11 @@ export function createWorld(opts = {}) {
        the win reads. */
     wavesCleared: 0,
     seed,
-    fx: opts.fx || { kill() {}, leak() {}, shot() {}, build() {}, level() {} },
+    fx: {
+      kill() {}, leak() {}, shot() {}, build() {}, level() {},
+      launch() {}, impact() {},
+      ...(opts.fx || {}),
+    },
   };
   return w;
 }
@@ -707,8 +758,9 @@ export function resetGame(w, opts = {}) {
   const { path, pathLen } = buildPath(w.L, w.routeIndex);
   w.path = path; w.pathLen = pathLen;
   w.blocked = pathCells(w.L, w.routeIndex);
-  w.towers = []; w.enemies = []; w.spawnQueue = [];
+  w.towers = []; w.enemies = []; w.slugs = []; w.spawnQueue = [];
   w.clock = 0; w.wave = 0; w.waveActive = false; w.betweenWaves = true;
+  w.rushing = false;
   if (DIFFICULTIES[opts.difficulty]) w.difficulty = opts.difficulty;
   const D = diffOf(w.difficulty);
   w.components = D.components; w.integrity = D.integrity;
@@ -733,12 +785,12 @@ export function canBuild(w, c, r, type) {
   if (w.blocked.has(cellKey(c, r))) return false;
   if (towerAt(w, c, r)) return false;
   const T = TOWER_TYPES[type];
-  return !!T && w.components >= T.cost;
+  return !!T && w.components >= buildCost(w, type);
 }
 
 export function buildTower(w, c, r, type) {
   if (!canBuild(w, c, r, type)) return false;
-  w.components -= TOWER_TYPES[type].cost;
+  w.components -= buildCost(w, type);
   w.towers.push({ c, r, type, level: 1, xp: 0, priority: 'first', cool: 0, aim: null });
   w.fx.build(c, r);
   return true;
@@ -856,14 +908,25 @@ export function startWave(w) {
  *  Rushing leaves your towers at normal speed and sends the wave at you sooner,
  *  which is a real gamble taken for the bounty. They are different controls
  *  answering different wants, and both belong. */
-export const RUSH_COMPRESSION = 0.55;
+export const RUSH_RATE = 3;
 
-export function rushWave(w) {
-  if (w.over || !w.waveActive || w.spawnQueue.length === 0) return false;
-  for (const s of w.spawnQueue) {
-    // compress toward *now*, never into the past
-    s.at = w.clock + Math.max(0, s.at - w.clock) * RUSH_COMPRESSION;
-  }
+/** Hold the wave forward, or let it go again.
+ *
+ *  Rush was a one-shot squeeze until v43: each tap compressed the gaps between
+ *  the spawns still queued, so hurrying a wave meant tapping a button over and
+ *  over and the button itself could never show whether you were rushing. It
+ *  latches now — the spawn clock simply runs `RUSH_RATE` times faster while it
+ *  is on — which is the same bargain expressed as a state you can see and can
+ *  take back. Only the *spawn* clock: enemies still walk and towers still
+ *  reload at their own pace, which is the whole distinction from fast-forward.
+ *
+ *  Refuses to latch on when there is nothing queued to pull forward, so the
+ *  button can never sit lit over a wave that has already finished arriving. */
+export function setRush(w, on) {
+  if (w.over) return false;
+  const want = !!on;
+  if (want && (!w.waveActive || w.spawnQueue.length === 0)) return false;
+  w.rushing = want;
   return true;
 }
 
@@ -952,17 +1015,68 @@ export function towerReady(w, tower, margin = READY_MARGIN) {
 function fireTower(w, tower, target) {
   if (!target) return;
   const s = stats(w, tower);
-
   const tc = cellCenter(w.L, tower.c, tower.r);
-  w.fx.shot(tc.x, tc.y, target, tower.type);
-  damageEnemy(w, target, s.dmg, s, false, tower);
 
+  /* A projectile tower resolves nothing here. The stat line is captured at the
+     muzzle — the shot is worth what the tower was when it fired, not what it
+     is when the round lands — and everything else waits for `stepSlugs`. */
+  if (TOWER_TYPES[tower.type].projectile) {
+    const p = enemyPos(w, target);
+    w.slugs.push({ x: tc.x, y: tc.y, tx: p.x, ty: p.y, target, s, src: tower, type: tower.type });
+    w.fx.launch(tc.x, tc.y, tower.type);
+    return;
+  }
+
+  w.fx.shot(tc.x, tc.y, target, tower.type);
+  detonate(w, tower, target, s, enemyPos(w, target));
+}
+
+/** Land a shot at a point: full damage to the target if it is still alive, half
+ *  to everything else inside the splash radius *of the impact point* — which is
+ *  where the round actually went off, not where the target has since walked. */
+function detonate(w, tower, target, s, at) {
+  if (target && target.hp > 0) damageEnemy(w, target, s.dmg, s, false, tower);
   if (s.splash > 0) {
-    const tp = enemyPos(w, target);
     for (const e of w.enemies) {
       if (e === target || e.hp <= 0) continue;
       const p = enemyPos(w, e);
-      if (Math.hypot(p.x - tp.x, p.y - tp.y) <= s.splash) damageEnemy(w, e, s.dmg * 0.5, s, true, tower);
+      if (Math.hypot(p.x - at.x, p.y - at.y) <= s.splash) damageEnemy(w, e, s.dmg * 0.5, s, true, tower);
+    }
+  }
+}
+
+/** Advance every round in flight, and burst the ones that arrive.
+ *
+ *  Rounds *home*: the aim point is refreshed to the target's current position
+ *  every frame, so travel time costs the shot nothing in accuracy and the
+ *  class's balance is the hitscan one with a delay in front of it. What travel
+ *  time buys is honesty — the flinch, the damage and the shockwave all happen
+ *  when the slug arrives, so nothing on screen resolves before its cause.
+ *
+ *  A target that dies mid-flight releases the round rather than deleting it:
+ *  it flies on to where the target last was and bursts there, which can still
+ *  catch whatever was walking behind it. Deleting it would make killing the
+ *  aimed-at enemy a way to cancel splash that was already paid for. */
+function stepSlugs(w, dt) {
+  for (let i = w.slugs.length - 1; i >= 0; i--) {
+    const g = w.slugs[i];
+    if (g.target && g.target.hp > 0) {
+      const p = enemyPos(w, g.target);
+      g.tx = p.x; g.ty = p.y;
+    } else {
+      g.target = null;
+    }
+    const dx = g.tx - g.x, dy = g.ty - g.y;
+    const d = Math.hypot(dx, dy);
+    const reach = SLUG_SPEED * dt;
+    if (d <= reach) {
+      g.x = g.tx; g.y = g.ty;
+      detonate(w, g.src, g.target, g.s, g);
+      w.fx.impact(g.x, g.y, g.type);
+      w.slugs.splice(i, 1);
+    } else {
+      g.x += (dx / d) * reach;
+      g.y += (dy / d) * reach;
     }
   }
 }
@@ -1024,13 +1138,19 @@ function stepHealers(w, dt) {
 export function step(w, dt) {
   if (w.over) return;
 
-  // release queued spawns whose time has come
+  // release queued spawns whose time has come — faster while rushing, which is
+  // the *only* thing rush touches
   if (w.waveActive) {
-    w.clock += dt;
+    w.clock += dt * (w.rushing ? RUSH_RATE : 1);
     while (w.spawnQueue.length && w.spawnQueue[0].at <= w.clock) {
       const q = w.spawnQueue.shift();
       spawnEnemy(w, q.type, 0, q.wave ?? w.wave);
     }
+    /* Everything queued is out, so there is nothing left to hurry: the latch
+       releases itself rather than staying lit over a spent wave. Starting
+       another wave is what turns it back on, and that is a decision to take
+       again rather than one left switched on from last time. */
+    if (w.rushing && w.spawnQueue.length === 0) w.rushing = false;
   }
 
   /* Move enemies; a slowed enemy crawls, and a deployer periodically stops
@@ -1066,6 +1186,10 @@ export function step(w, dt) {
   // repairs land before the towers fire, so a patch cannot undo damage dealt
   // this same frame — the player sees their shot land, then sees it mended
   stepHealers(w, dt);
+
+  /* Rounds already in the air land before this frame's volley leaves, so a
+     slug fired last frame is resolved against the board as it is now. */
+  stepSlugs(w, dt);
 
   // towers fire on cooldown. Targets are acquired every frame, not just at the
   // instant a shot is allowed: `aim` is what the shell draws the barrel from,
@@ -1242,6 +1366,13 @@ export function hydrate(w, snap) {
     cool: t.cool || 0, aim: null,
   }));
   w.enemies = snap.enemies.map(e => ({ ...e, healed: 0 }));
+  /* Rounds in flight are deliberately not saved: they point at enemy objects,
+     which JSON cannot carry, and half a second of ballistics is not worth
+     rebuilding. Clearing here matters — a resumed world must not keep slugs
+     aimed at enemies that no longer exist. */
+  w.slugs = [];
+  // a mode, not run state: a resumed wave arrives at its own pace until asked
+  w.rushing = false;
   w.spawnQueue = snap.spawnQueue ? snap.spawnQueue.map(s => ({ type: s.type, at: s.at })) : [];
   return true;
 }
@@ -1263,5 +1394,8 @@ export function relayout(w, L2) {
   w.path = path; w.pathLen = pathLen;
   w.blocked = pathCells(L2, w.routeIndex);
   for (const t of w.towers) { const c = t.c, r = t.r; t.c = r; t.r = c; }
+  // pixel coordinates, and the board they were measured on has just been
+  // transposed — a round mid-flight is the one thing rotation cannot carry
+  w.slugs = [];
   return w;
 }

@@ -331,7 +331,7 @@
 <script type="module">
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
-import { glowStroke, glowDot, glowDots, dim, inkDot, extrudeRect, extrudeDisc, GLOW_PASSES_CHEAP, DOT_PASSES_CHEAP } from '../../shared/glow.js';
+import { glowStroke, glowDot, glowDots, dim, inkDot, extrudeRect, extrudeDisc, cube, GLOW_PASSES_CHEAP, DOT_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
 import { recordProgress } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
@@ -634,6 +634,7 @@ const pause = makeMenu({
     'Cutting mid-column shoves the formation back.',
     'Plated craft glance shots off the front — hit the flank, or fire ion.',
     'The command ship is shielded by its escort. Drop it and the column goes.',
+    'Deep runs arrive with a swarm escort flying over the column. Rounds that meet it are spent on it.',
     'Scrap is spent this run. Research points are kept, and buy guns and deep tiers.',
     'Keyboard: arrows and Space.',
   ],
@@ -2366,6 +2367,56 @@ function perspScale(y) {
   return 1 - PERSPECTIVE * (1 - depthAt(y));
 }
 
+/* ---------- the swarm shield ----------
+
+   From wave 50 the column arrives inside a cloud of small squares flying
+   figure-eights over it (see `stepSwarm` in the engine). They are drawn last,
+   over the column, because that is where they are — the whole point of the
+   escort is that it is between your rounds and the chain.
+
+   Cubes, small ones. The board's one absolute is that invaders are cubes and
+   defenders are spheres, and shape is what keeps a busy board readable — a
+   cloud of two dozen motes over a column of forty craft is exactly the moment
+   that rule is earning its keep. They are drawn at a fraction of a segment's
+   size and in one pale colour of their own, so "escort" and "column" never
+   have to be told apart by counting. */
+function drawSwarm() {
+  const swarm = world.swarm;
+  if (!swarm || !swarm.length) return;
+  const now = performance.now();
+  for (const m of swarm) {
+    if (m.off) continue;
+    const persp = perspScale(m.y);
+    const size = E.SWARM_R * 2.1 * persp;
+    /* Health as brightness, same language the rest of the board speaks: a mote
+       that has taken a round goes dark rather than growing a bar over it. */
+    const lit = m.maxhp > 1 ? 0.45 + 0.55 * Math.max(0, m.hp / m.maxhp) : 1;
+    const col = m.flash > 0 ? '#ffffff' : dim(E.SWARM_COL, lit);
+    cube(ctx, m.x, m.y, size, col, {
+      width: 1.2,
+      depth: size * 0.3,
+      body: 'rgba(22,26,44,.95)',
+      back: 'rgba(14,17,30,.9)',
+    });
+    /* A faint mark under each one, so a mote reads as flying *over* the column
+       rather than as sitting in it. Painted with the normal composite: additive
+       glow cannot darken, and this has to read as shadow. */
+    if (!reduce) {
+      inkDot(ctx, m.x + 2, m.y + 5 * persp, size * 0.32, 'rgba(6,10,14,.5)');
+    }
+  }
+  // a single sweep of light across the cloud, so it reads as one formation
+  // moving rather than as scattered debris
+  if (!reduce) {
+    const t = (now / 900) % 1;
+    for (const m of swarm) {
+      if (m.off) continue;
+      const d = Math.abs(((m.lag / E.SWARM_LAG) / Math.max(1, swarm.length)) - t);
+      if (d < 0.12) glowDot(ctx, m.x, m.y, 3.2, E.SWARM_COL, (0.12 - d) * 4);
+    }
+  }
+}
+
 /* ---------- segment rendering ---------- */
 
 // a rounded rect path, centerd on origin
@@ -2787,6 +2838,8 @@ function draw() {
       }
     }
   }
+
+  drawSwarm();
 
   // thumb rest: the band below the cannon. Marked out so it reads as a place
   // to hold rather than dead space, and kept dim so it never pulls the eye.

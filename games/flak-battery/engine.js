@@ -754,6 +754,7 @@ export function createWorld(opts = {}) {
   const w = {
     L, path, pathLen,
     chains: [], shots: [], bits: [], floaters: [],
+    swarm: [],                      // the escort, from SWARM_WAVE on
     wave: 1, score: 0, scrap: 0,
     /* What this run may fit. Derived from `research.guns` below rather than
        owned: research is permanent, this is the run's view of it. */
@@ -833,6 +834,144 @@ export function relayout(w, L2) {
   return w;
 }
 
+/* ---------- the swarm shield ----------
+
+   From wave 50 the column arrives with an escort: a cloud of small squares
+   flying figure-eights over the top of it. They are not part of the chain and
+   they cannot breach — a mote never touches the floor line and killing every
+   one of them does not clear a wave. What they do is *be in the way*: a round
+   that meets one is spent on it, so the column behind is shielded by however
+   much traffic the escort can put between you and it.
+
+   Two dials, and they move one after the other rather than together. Density
+   climbs from `SWARM_WAVE` to `SWARM_FULL` — the escort thickens, which is a
+   problem of *volume of fire* and is answered by barrels, rate and splash.
+   Only once it is at full density do the motes start gaining health, which is
+   a problem of *damage per round* and is answered by a different half of the
+   shop. Escalating both at once would have made the two upgrades' answers
+   indistinguishable, and wave 50 is far too late in a run to start blurring
+   what an upgrade is for.
+
+   The motion is a lemniscate — sin(t) across the lane against sin(2t) along
+   it — anchored to a point that trails the leading column by a fixed arc
+   length. So a mote weaves across the lane while riding forward with the wave,
+   which is what makes the escort readable as *escort* rather than as loose
+   debris, and what makes a gap through it a thing you can time rather than
+   only hope for. */
+
+/** The first wave with an escort. */
+export const SWARM_WAVE = 50;
+/** The wave at which the escort is as dense as it will get — from here on it
+ *  is the motes' health that grows instead. */
+export const SWARM_FULL = 80;
+export const SWARM_MIN = 6;
+export const SWARM_MAX = 26;
+/** Health, in the same damage units a segment's is. Two rounds at the opening
+ *  gun, which is chaff — the threat is the count, until the count stops. */
+export const SWARM_HP_BASE = 2;
+/** Waves per extra point of mote health, once density has topped out. */
+export const SWARM_HP_EVERY = 5;
+export const SWARM_R = 5;             // much smaller than any segment (13-15)
+export const SWARM_SPAN = 52;         // half-width of the eight, across the lane
+export const SWARM_LEN = 34;          // half-length of it, along the lane
+export const SWARM_RATE = 1.6;        // radians per second around the figure
+export const SWARM_LAG = 24;          // arc length between one mote's anchor and the next
+export const SWARM_SCORE = 15;
+
+/** How many motes escort wave `n`. Zero before `SWARM_WAVE`. */
+export function swarmCount(wave) {
+  if (wave < SWARM_WAVE) return 0;
+  const t = Math.min(1, (wave - SWARM_WAVE) / (SWARM_FULL - SWARM_WAVE));
+  return Math.round(SWARM_MIN + (SWARM_MAX - SWARM_MIN) * t);
+}
+
+/** What one mote is worth in health on wave `n` — flat until the escort is at
+ *  full density, climbing after. */
+export function swarmHp(wave) {
+  if (wave < SWARM_WAVE) return 0;
+  if (wave <= SWARM_FULL) return SWARM_HP_BASE;
+  return SWARM_HP_BASE + Math.floor((wave - SWARM_FULL) / SWARM_HP_EVERY);
+}
+
+/* The golden angle, so successive motes are spread around the figure instead
+   of marching in step. Nothing random is involved — wave N's escort flies the
+   same pattern every run, which is what makes it something to learn. */
+const SWARM_PHASE_STEP = Math.PI * (3 - Math.sqrt(5));
+
+export function makeSwarm(wave) {
+  const n = swarmCount(wave);
+  const hp = swarmHp(wave);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push({
+      lag: i * SWARM_LAG, phase: (i * SWARM_PHASE_STEP) % (Math.PI * 2),
+      t: 0, hp, maxhp: hp, s: 0, x: 0, y: 0, off: true, flash: 0,
+    });
+  }
+  return out;
+}
+
+/** Where a mote is right now: its anchor on the path, plus the figure-eight
+ *  offset resolved in the lane's own frame (across it, then along it). */
+export function swarmPos(w, m) {
+  const s = m.s;
+  if (s <= 0 || s >= w.pathLen) {
+    const e = atS(w.path, w.pathLen, s);
+    return { x: e.x, y: e.y, off: true };
+  }
+  const base = atS(w.path, w.pathLen, s);
+  const a = atS(w.path, w.pathLen, Math.max(0.01, s - 4));
+  const b = atS(w.path, w.pathLen, Math.min(w.pathLen - 0.01, s + 4));
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const hx = dx / len, hy = dy / len;         // along the lane
+  const nx = -hy, ny = hx;                    // across it
+  const th = m.phase + m.t * SWARM_RATE;
+  const across = Math.sin(th) * SWARM_SPAN;
+  const along = Math.sin(2 * th) * SWARM_LEN; // twice the frequency: a figure eight
+  return { x: base.x + nx * across + hx * along, y: base.y + ny * across + hy * along, off: false };
+}
+
+/** Advance the escort. Anchored to the *leading* column, so it stays over the
+ *  head of the wave however the chain behind it is cut about — and so it can
+ *  never be left hovering over an empty board: with no column left there is
+ *  nothing to shield, and the escort goes with it. */
+export function stepSwarm(w, dt) {
+  if (!w.swarm.length) return;
+  if (!w.chains.length) { w.swarm.length = 0; return; }
+  let lead = -Infinity;
+  for (const ch of w.chains) if (ch.s > lead) lead = ch.s;
+  for (const m of w.swarm) {
+    m.t += dt;
+    if (m.flash > 0) m.flash = Math.max(0, m.flash - dt);
+    m.s = lead - m.lag;
+    const p = swarmPos(w, m);
+    m.x = p.x; m.y = p.y; m.off = p.off;
+  }
+}
+
+/** Take `dmg` off a mote, and clear it if that finishes it. Scored, and it
+ *  keeps the streak alive (see `registerHit` at the call site) — shooting the
+ *  escort is doing the work, not missing. Deliberately worth **no scrap**: the
+ *  escort must not become a late-wave income stream, or the answer to it would
+ *  be to farm it rather than to get through it. */
+function damageSwarm(w, idx, dmg) {
+  const m = w.swarm[idx];
+  m.hp -= dmg;
+  m.flash = 0.12;
+  if (m.hp <= 0) {
+    w.score += SWARM_SCORE;
+    w.fx.burst(m.x, m.y, SWARM_COL, 5);
+    w.swarm.splice(idx, 1);
+    return true;
+  }
+  return false;
+}
+
+/** One colour for the whole escort, and not one a segment kind uses: on a board
+ *  this busy the escort has to be tellable from the column at a glance. */
+export const SWARM_COL = '#d8d0ff';
+
 export function spawnWave(w) {
   // One column. Splitters still make more of them mid-wave; see the note above
   // hpScale for why the *spawn* does not.
@@ -840,6 +979,7 @@ export function spawnWave(w) {
                         SEGMENT_SPACING, w.wave)];
   w.shots = []; w.bits = []; w.floaters = [];
   w.pickups = [];
+  w.swarm = makeSwarm(w.wave);
   w.waveClear = false;
 }
 
@@ -871,6 +1011,10 @@ export function snapshot(w) {
     effects: { ...w.effects },
     shieldCharges: w.shieldCharges,
     dropSeed: w.dropSeed,
+    /* The escort is stored: it is a live part of the wave, and coming back to
+       a wave 90 board with a fresh full-health cloud in front of it would be a
+       gift rather than a resume. */
+    swarm: w.swarm.map(m => ({ lag: m.lag, phase: m.phase, t: m.t, hp: m.hp, maxhp: m.maxhp })),
     chains: w.chains.map(ch => ({
       s: ch.s, speed: ch.speed, spacing: ch.spacing, recoil: ch.recoil, split: ch.split,
       segs: ch.segs.map(s => ({ id: s.id, kind: s.kind, hp: s.hp, maxhp: s.maxhp, r: s.r })),
@@ -922,6 +1066,14 @@ export function hydrate(w, snap) {
   // ids came from a previous session where the counter has since restarted
   for (const ch of w.chains) for (const s of ch.segs) reserveSegIds(s.id);
 
+  /* A save from before the escort existed simply has none — and rebuilding it
+     from the wave number would drop a full-strength cloud onto a wave already
+     half fought. An older save resumes without one; the next wave brings it. */
+  w.swarm = (snap.swarm || []).map(m => ({
+    lag: m.lag ?? 0, phase: m.phase ?? 0, t: m.t ?? 0,
+    hp: m.hp ?? SWARM_HP_BASE, maxhp: m.maxhp ?? m.hp ?? SWARM_HP_BASE,
+    s: 0, x: 0, y: 0, off: true, flash: 0,
+  }));
   w.pickups = (snap.pickups || []).map(p => ({ ...p }));
   // in-flight shots and decorative particles do not survive; they mean nothing
   // once the run has been away, and shots would resume mid-trajectory
@@ -2333,6 +2485,25 @@ export function stepShots(w, dt) {
        actually gives you. The shell draws the height that isn't in the model. */
     if (p.arc && p.travelled < MORTAR_ARM) continue;
 
+    /* The escort intercepts before the column does — that is the whole of what
+       it is for. A mote is small, so getting a round past one is a matter of
+       aim and of timing the figure-eight rather than of luck, but a round that
+       does meet one is spent on it exactly as if it had met a segment: pierce
+       carries through, everything else stops here. */
+    let ate = false;
+    for (let q = w.swarm.length - 1; q >= 0; q--) {
+      const m = w.swarm[q];
+      if (m.off) continue;
+      if (Math.hypot(p.x - m.x, p.y - m.y) < SWARM_R + p.r + w.assistR) {
+        registerHit(w);
+        damageSwarm(w, q, p.dmg);
+        if (p.pierce > 0) p.pierce--;
+        else { w.shots.splice(k, 1); ate = true; }
+        break;
+      }
+    }
+    if (ate) continue;
+
     let hit = false;
     outer:
     for (let ci = w.chains.length - 1; ci >= 0; ci--) {
@@ -2451,6 +2622,7 @@ export function step(w, dt, firing = false) {
   stepCannon(w, dt, firing);
   stepPickups(w, dt);
   stepChains(w, dt);
+  stepSwarm(w, dt);
   stepShots(w, dt);
 
   for (let i = w.bits.length - 1; i >= 0; i--) {

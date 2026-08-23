@@ -18,7 +18,19 @@
     --accent-hot:#6fb7e8;
     --accent-ink:#06121f;
     --board-max:780px;
+    /* Every button on this board is a thumb target sitting under a hand, and
+       square corners on a strip of six of them read as one slab. Set once here
+       rather than per rule — the theme's own button styling picks it up. */
+    --btn-radius:10px;
   }
+
+  /* While a full-board panel is up — the armory or the circuit picker — the
+     gameplay strip below the board is not usable and should not look it. It is
+     faded rather than hidden: hiding it would reflow the strip and hand
+     makeFit a different height to fit, which resizes the board behind the
+     panel you are reading. */
+  #controls{transition:opacity .18s ease-out}
+  body.panelOpen #controls{opacity:.22;pointer-events:none}
 
   /* the controls strip below the board: tower palette + start-wave. Lives in
      #shell (not footer, which is hidden on phones); its height is reserved by
@@ -30,7 +42,7 @@
   .pick{
     flex:1 1 0;min-width:92px;min-height:72px;
     border:1px solid var(--line);background:#0f2027;color:var(--bone);
-    border-radius:5px;padding:10px 11px;cursor:pointer;text-align:left;
+    border-radius:var(--btn-radius);padding:10px 11px;cursor:pointer;text-align:left;
     display:flex;flex-direction:column;gap:3px;
   }
   .pick.on{border-color:var(--accent-hot);background:#13293a}
@@ -62,9 +74,17 @@
     background:var(--accent-hot);color:var(--accent-ink);
     border-color:var(--accent-hot);box-shadow:0 0 8px rgba(111,183,232,.55);font-weight:700;
   }
-  /* Rush is a verb, not a toggle — what matters there is whether it can be
-     pressed at all, so an unavailable one is plainly dead rather than dimly
-     similar to a live one. */
+  /* Rush is a latch: it stays down while the wave is being hurried. Alarm red
+     rather than the accent the two mode toggles use, and physically pressed —
+     inset shadow, no lift — because it is the one control that is costing you
+     something for as long as it is on. */
+  #rushWave.on{
+    background:var(--alarm);color:#1a0705;border-color:var(--alarm);
+    box-shadow:inset 0 2px 6px rgba(0,0,0,.45);font-weight:700;
+    transform:translateY(1px);
+  }
+  /* An unavailable one is plainly dead rather than dimly similar to a live
+     one. */
   #waveRow button:disabled{opacity:.35;box-shadow:none}
   /* Start and Rush are the decisions; FF and Auto are modes you set once and
      forget. So the two verbs keep full-size targets and the two toggles share
@@ -130,20 +150,31 @@
     text-transform:uppercase;letter-spacing:-.02em}
   #pick .note{font-size:10px;color:var(--dim);line-height:1.5}
   #pickGrid{display:flex;flex-direction:column;gap:10px}
+  /* Two columns: the board on the left, the three difficulties stacked down the
+     right. The circuit is a shape you recognise and the difficulty is a list
+     you read down, so putting them side by side lets one glance answer "which
+     board" and the next answer "how hard" — where the old stacked row asked
+     both questions in the same vertical scan. */
   .pickRow{border:1px solid var(--line);border-radius:5px;padding:9px 10px;
-    display:flex;flex-direction:column;gap:7px;background:#0f2027}
+    display:flex;flex-direction:row;align-items:stretch;gap:12px;background:#0f2027}
   .pickRow.locked{opacity:.45}
   .pickRow h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--bone)}
-  .pickTop{display:flex;align-items:center;justify-content:space-between;gap:10px}
-  /* The map is the row's real label, so it gets room rather than being tucked
-     in as an ornament. Pixelated: it is a tiny diagram, not a photograph. */
+  .pickTop{display:flex;flex-direction:column;align-items:center;gap:6px;flex:none;
+    justify-content:center}
+  /* The map is the row's real label, so it gets the left column outright.
+     Pixelated: it is a tiny diagram, not a photograph. */
   .pickMap{border:1px solid var(--line);border-radius:3px;image-rendering:pixelated;
-    height:58px;width:auto;flex:none}
-  .pickRow .lock{font-size:10px;color:var(--dim)}
-  .pickDiffs{display:flex;gap:6px}
-  /* Fixed widths, so a row does not reflow as difficulties unlock. */
-  .pickDiffs button{flex:1 1 0;min-height:46px;font-size:10px;letter-spacing:.1em;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+    height:104px;width:auto;flex:none}
+  .pickRow .lock{font-size:10px;color:var(--dim);align-self:center;flex:1 1 auto}
+  .pickDiffs{display:flex;flex-direction:column;gap:6px;flex:1 1 auto;justify-content:center}
+  /* One row per difficulty, all the same size, so the column does not reflow
+     as difficulties unlock. */
+  .pickDiffs button{flex:1 1 0;min-height:46px;font-size:11px;letter-spacing:.1em;
+    display:flex;flex-direction:row;align-items:center;justify-content:center;gap:8px}
+  @media (max-width:360px){
+    .pickMap{height:84px}
+    .pickRow{gap:8px;padding:8px}
+  }
   .pickDiffs button.held{border:1px solid var(--accent)}
   /* The tick is the one thing on this screen a player scans for, so it is sized
      to be seen rather than to fit the label. */
@@ -174,7 +205,7 @@
   }
   .armTable .cell{
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
-    min-height:52px;padding:7px 4px;border:1px solid var(--line);border-radius:4px;
+    min-height:52px;padding:7px 4px;border:1px solid var(--line);border-radius:var(--btn-radius);
     background:#16303a;color:var(--bone);cursor:pointer;
   }
   @media (hover: hover) { .armTable .cell:hover:not(:disabled){background:#1d3d49;border-color:var(--accent-hot)} }
@@ -378,6 +409,7 @@ function renderPicker() {
     const row = document.createElement('div');
     row.className = 'pickRow' + (open ? '' : ' locked');
 
+    // left column: the board itself, under its number
     const head = document.createElement('div');
     head.className = 'pickTop';
     const h = document.createElement('h3');
@@ -465,17 +497,39 @@ function routePreview(routeIndex, open) {
   return cv;
 }
 
-function openPicker() { renderPicker(); $('pick').classList.add('on'); pause.pause(); }
-function closePicker() { $('pick').classList.remove('on'); pause.resume(); }
+function openPicker() { renderPicker(); $('pick').classList.add('on'); panelOpen(true); pause.pause(); }
+function closePicker() { $('pick').classList.remove('on'); panelOpen(false); pause.resume(); }
+
+/** Fade the gameplay strip while a full-board panel covers the game. Asked for
+ *  at v43: with the armory open the palette and wave row are still lit and
+ *  still look pressable, which is a lie — the panel is over the board they act
+ *  on. Driven off both panels rather than off either one, so opening the
+ *  armory from the picker and closing it again cannot leave the strip dimmed. */
+function panelOpen(on) {
+  document.body.classList.toggle('panelOpen',
+    on || $('shop').classList.contains('on') || $('pick').classList.contains('on'));
+}
 
 /* Enemy screen positions for the current frame, and whether the board is busy
    enough to need the cheap draw. Both are frame state, rebuilt in `draw`. */
 const epos = [];
 /** Past this many enemies the board draws flat. Chosen from measurement: a full
  *  cube costs eight glow passes, and a few hundred of them put a frame far past
- *  its budget on their own. */
-const CROWD_LIMIT = 90;
+ *  its budget on their own.
+ *
+ *  Two thresholds, not one, and a fade between them — reported at v42 as "the
+ *  cubes turn into plain squares mid-wave and then turn back". They did: this
+ *  was a hard switch on a single count, so a wave hovering around the limit
+ *  flipped the entire board's art between two looks, once per enemy killed.
+ *  Hysteresis kills the oscillation and `crowdMix` makes the remaining change
+ *  a dim rather than a snap, which is the difference between a cheap draw and
+ *  a bug. The budget is unchanged: at rest the board is still either all cubes
+ *  or all flat, and only the ~0.3s crossing pays for both. */
+const CROWD_ON = 90;
+const CROWD_OFF = 70;
+const CROWD_FADE = 3.2;                    // mix units per second, so ~0.31s
 let crowded = false;
+let crowdMix = 0;                          // 0 = full cubes, 1 = flat
 
 /* A `dim` cache. `dim` parses its colour string every call and the enemy draw
    asks for three per enemy per frame; the inputs are a handful of type colours
@@ -495,6 +549,8 @@ const beams = [];
 const fx = {
   kill(x, y, type) { gfx.burst(x, y, E.ENEMY_TYPES[type].col, 12); audio.hit(); },
   leak(x, y) { gfx.hit(.6); audio.breach(); },
+  /* Hitscan classes only — Breaker throws a real round now and comes through
+     `launch`/`impact` instead. */
   shot(x, y, target, type) {
     if (!reduce) {
       const p = E.enemyPos(world, target);
@@ -502,10 +558,22 @@ const fx = {
          hitscan zap gives no travel time to read, so the *shape* of the flash
          is the only chance to say which tower fired — and with three classes on
          one board, that is worth spending a few strokes on. */
-      const life = type === 'breaker' ? .13 : type === 'coil' ? .11 : .08;
+      const life = type === 'coil' ? .11 : .08;
       beams.push({ x1: x, y1: y, x2: p.x, y2: p.y, col: E.TOWER_TYPES[type].col, type, life, max: life });
     }
     audio.fire();
+  },
+  /* A round leaving the barrel. The slug itself is engine state from here on
+     (`world.slugs`), drawn where the simulation actually has it — so what the
+     player watches crossing the gap *is* the thing that will do the damage,
+     rather than an animation racing a hit that already happened. */
+  launch(x, y, type) {
+    if (!reduce) beams.push({ x1: x, y1: y, type: 'muzzle', col: E.TOWER_TYPES[type].col, life: .12, max: .12 });
+    audio.fire();
+  },
+  // and the round arriving: the shockwave, on the frame the damage lands
+  impact(x, y, type) {
+    if (!reduce) beams.push({ x2: x, y2: y, type: 'blast', col: E.TOWER_TYPES[type].col, life: .26, max: .26 });
   },
   build() { audio.eat(); },
   // a tower levelled: a small burst in its own color, so the moment is
@@ -558,7 +626,10 @@ for (const key of E.TOWER_KEYS) {
   const b = document.createElement('button');
   b.className = 'pick';
   b.type = 'button';
+  // the price is live — it climbs as the board fills — so the span is filled by
+  // `syncPalette` rather than baked in here
   b.innerHTML = `<b style="color:${T.col}">${T.name}</b><span class="cost">${T.cost}</span><span class="blurb">${T.blurb}</span>`;
+  b.querySelector('.cost').id = `cost_${key}`;
   b.addEventListener('click', () => { selected = key; syncPalette(); });
   controls.append(b);
   pickBtns[key] = b;
@@ -612,12 +683,20 @@ syncFiveButton();
    Fast-forward speeds up time, so your towers fire proportionally faster and
    the wave is exactly as hard, just shorter. Rush speeds up the enemy alone:
    the same wave arrives sooner, against towers reloading at their normal rate.
-   One is a convenience, the other is a gamble taken for the bounty. */
+   One is a convenience, the other is a gamble taken for the bounty.
+
+   A latch since v43, not a tap. Tapping repeatedly to squeeze the queue meant
+   the button could never show whether you were rushing — the gamble was
+   invisible while it was being taken. It stays down until you let it go, or
+   until the wave has finished arriving and there is nothing left to hurry. */
 const rushBtn = document.createElement('button');
 rushBtn.id = 'rushWave';
 rushBtn.type = 'button';
 rushBtn.textContent = 'Rush';
-rushBtn.addEventListener('click', () => { if (world.running) E.rushWave(world); syncPalette(); });
+rushBtn.addEventListener('click', () => {
+  if (world.running) E.setRush(world, !world.rushing);
+  syncPalette();
+});
 waveRow.append(rushBtn);
 
 /* Fast-forward: a speed multiplier over the *whole* simulation, cycled by
@@ -671,7 +750,13 @@ function syncPalette() {
   for (const key of E.TOWER_KEYS) {
     const b = pickBtns[key];
     b.classList.toggle('on', key === selected);
-    b.classList.toggle('broke', world.components < E.TOWER_TYPES[key].cost);
+    /* The price shown is what this build would actually cost on the board as
+       it stands, premium included — a palette quoting the list price while the
+       purse is checked against something dearer is a palette that lies. */
+    const price = E.buildCost(world, key);
+    const span = $(`cost_${key}`);
+    if (span.textContent !== String(price)) span.textContent = price;
+    b.classList.toggle('broke', world.components < price);
     b.disabled = false;
   }
 
@@ -683,8 +768,11 @@ function syncPalette() {
   startBtn.disabled = !live;
   ffBtn.disabled = !live;
   contBtn.disabled = !live;
-  // rush only means something while spawns are still queued
-  rushBtn.disabled = !live || !world.waveActive || world.spawnQueue.length === 0;
+  // rush only means something while spawns are still queued — but a latch that
+  // is *on* stays pressable, so it can always be let go
+  rushBtn.disabled = !live || (!world.rushing && (!world.waveActive || world.spawnQueue.length === 0));
+  rushBtn.classList.toggle('on', world.rushing);
+  rushBtn.setAttribute('aria-pressed', world.rushing ? 'true' : 'false');
   shopBtn.disabled = world.over;
   // Symbols, not words: these two are modes rather than verbs, and the glyphs
   // are what let them share the space one worded button used to need.
@@ -765,8 +853,8 @@ function renderShop() {
    penalty for looking. It also removes the stale-affordability problem at the
    root: components cannot arrive while you are in here. */
 let shopOpen = false;
-function openShop() { shopOpen = true; $('shop').classList.add('on'); renderShop(); }
-function closeShop() { shopOpen = false; $('shop').classList.remove('on'); }
+function openShop() { shopOpen = true; $('shop').classList.add('on'); renderShop(); panelOpen(true); }
+function closeShop() { shopOpen = false; $('shop').classList.remove('on'); panelOpen(false); }
 $('shopClose').addEventListener('click', closeShop);
 
 /* ---------- tower popup (targeting / sell) ---------- */
@@ -916,7 +1004,7 @@ for (const key of E.TOWER_KEYS) {
     // you pick what to save for. Only the *drag* is gated on affording it,
     // since a drag that cannot end in a build is a dead gesture.
     selected = key; syncPalette();
-    if (world.components < E.TOWER_TYPES[key].cost) return;
+    if (world.components < E.buildCost(world, key)) return;
     dragType = key;
     hoverCell = null;
     e.preventDefault();
@@ -1011,19 +1099,21 @@ function applyLayout() {
 addEventListener('resize', applyLayout);
 addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
-/* Game-specific settings for the menu panel: the difficulty a new run will use,
-   and the one control that can undo the armory. Both go through makeMenu's
-   `extra` slot, the same hook Feedline uses for its input settings. */
+/* Game-specific settings for the menu panel. One control now: the thing that
+   can undo the armory. Goes through makeMenu's `extra` slot, the same hook
+   Feedline uses for its input settings.
+
+   Difficulty used to live here as well, and was removed at v43. It was asked
+   in two places — here and on the circuit picker — for a choice that only has
+   one honest answer: difficulty is earned *per circuit*, so "Hard" means
+   nothing until you say which board. The pause menu could only ask the older,
+   global question, which is how a Hard entry appeared for boards it was not
+   unlocked on. The picker asks both halves together, and is now the only place
+   that asks at all. */
 const settingsEl = document.createElement('div');
 settingsEl.className = 'menuSettings';
 settingsEl.innerHTML =
-  `<label>Difficulty</label>` +
-  `<div class="choice" id="diffChoice">` +
-  E.DIFFICULTY_KEYS.map(k =>
-    `<label><input type="radio" name="difficulty" value="${k}"> ${E.DIFFICULTIES[k].name} <em>${E.DIFFICULTIES[k].winWave}</em></label>`
-  ).join('') +
-  `</div>` +
-  `<p class="hintline" id="diffNote"></p>` +
+  `<p class="settingNote" id="diffNote"></p>` +
   `<button type="button" id="wipeArmory">Reset armory</button>`;
 
 /* Everything here queries through `settingsEl`, not `document`. This element is
@@ -1032,36 +1122,15 @@ settingsEl.innerHTML =
 const diffNote = settingsEl.querySelector('#diffNote');
 const wipeBtn = settingsEl.querySelector('#wipeArmory');
 
+/** The line under the menu that says what this run is and what winning it
+ *  takes. Read-only now that the choice itself is made on the picker. */
 function syncDifficultyUI() {
-  for (const r of settingsEl.querySelectorAll('input[name=difficulty]')) {
-    r.checked = r.value === world.difficulty;
-    // a difficulty you have not earned is disabled rather than hidden: knowing
-    // what is up there is half the reason to go and win the one below
-    const open = E.difficultyUnlocked(progress, r.value);
-    r.disabled = !open;
-    r.closest('label').classList.toggle('locked', !open);
-  }
-  diffNote.textContent = world.wave > 0
-    ? 'Applies to your next run.'
-    : `Win wave ${E.winWave(world.difficulty)} to take the circuit.`;
+  const D = E.DIFFICULTIES[world.difficulty];
+  diffNote.textContent =
+    `Circuit ${world.routeIndex + 1} on ${D.name}. Win wave ${E.winWave(world.difficulty)} to take it.`
+    + (pickerEarned() ? ' Change either from Select circuit.' : '');
 }
-for (const r of settingsEl.querySelectorAll('input[name=difficulty]')) {
-  r.addEventListener('change', () => {
-    if (!E.difficultyUnlocked(progress, r.value)) { syncDifficultyUI(); return; }
-    writeDifficulty(r.value);
-    // safe to apply immediately only before the first wave has started
-    if (world.wave === 0 && !world.waveActive) {
-      world.difficulty = r.value;
-      const D = E.DIFFICULTIES[r.value];
-      world.components = D.components; world.integrity = D.integrity;
-      // the circuit follows the difficulty: each is unlocked separately, so
-      // switching to Medium must drop you back to the routes earned there
-      E.resetGame(world, { difficulty: r.value, routeIndex: nextRoute(r.value) });
-      sync();
-    }
-    syncDifficultyUI();
-  });
-}
+
 wipeBtn.addEventListener('click', () => {
   // Two taps, because it throws away every run's worth of purchases and there
   // is no getting it back.
@@ -1306,6 +1375,11 @@ function frame(now) {
      state, so calling it while paused is idempotent. */
   sync();
 
+  // the crowd-mode crossfade eases here rather than in `draw`, so it advances
+  // on real time and not on how often the board happens to be repainted
+  crowdMix = crowded ? Math.min(1, crowdMix + CROWD_FADE * dt)
+                     : Math.max(0, crowdMix - CROWD_FADE * dt);
+
   gfx.step(dt, 1.5);
   // barrels keep easing in and out even while paused or between waves, so the
   // board settles to a correct resting state rather than freezing mid-slide
@@ -1426,9 +1500,10 @@ function draw() {
      enemies drop to a flat body and a single outline, which keeps the two
      things that carry meaning — the type's colour, and health as brightness —
      and drops the depth that only reads when there is room to see it. */
-  crowded = world.enemies.length > CROWD_LIMIT;
+  crowded = world.enemies.length > (crowded ? CROWD_OFF : CROWD_ON);
   for (let i = 0; i < world.towers.length; i++) drawTower(world.towers[i]);
   for (let i = 0; i < world.enemies.length; i++) drawEnemy(world.enemies[i], epos[i]);
+  drawSlugs();
   drawBeams();
   gfx.draw(ctx);
   if (gfx.flash > 0) { ctx.fillStyle = `rgba(224,80,60,${gfx.flash * .3})`; ctx.fillRect(0, 0, W, H); }
@@ -1746,8 +1821,8 @@ function drawEnemy(e, p) {
   // A patch's reach, so "why is that one healing?" is answerable by looking.
   // Skipped when crowded: a dashed ring per healer is a lot of path work, and
   // on a board this full it is lost among the bodies anyway.
-  if (T.heals && !crowded) {
-    ctx.strokeStyle = 'rgba(95,201,164,.16)'; ctx.lineWidth = 1;
+  if (T.heals && crowdMix < 1) {
+    ctx.strokeStyle = `rgba(95,201,164,${(.16 * (1 - crowdMix)).toFixed(3)})`; ctx.lineWidth = 1;
     ctx.setLineDash([4, 6]);
     ctx.beginPath(); ctx.arc(p.x, p.y, E.HEAL_RADIUS, 0, TAU); ctx.stroke();
     ctx.setLineDash([]);
@@ -1785,21 +1860,26 @@ function drawEnemy(e, p) {
      goes dark, which is legible at a glance on a board with thirty of them and
      costs no pixels above each one. */
   const lit = 0.3 + 0.7 * Math.max(0, e.hp / e.maxhp);
-  if (crowded) {
-    /* The cheap body: a filled square and one outline. Still a square, still
-       the type's colour, still darkening as it takes damage — the three things
-       that make a board readable. What goes is the extrusion and the glow. */
-    ctx.fillStyle = dimq('rgba(24,44,56,.98)', lit);
-    ctx.beginPath(); face(ctx); ctx.fill();
-    ctx.strokeStyle = dimq(col, lit);
-    ctx.lineWidth = 1.6;
-    ctx.beginPath(); face(ctx); ctx.stroke();
-  } else {
+  /* The cheap body underneath, always: a filled square and one outline. Still a
+     square, still the type's colour, still darkening as it takes damage — the
+     three things that make a board readable. It costs almost nothing, and
+     having it under the cube is what lets the extrusion and glow fade out over
+     it instead of being switched off from one frame to the next. */
+  ctx.fillStyle = dimq('rgba(24,44,56,.98)', lit);
+  ctx.beginPath(); face(ctx); ctx.fill();
+  ctx.strokeStyle = dimq(col, lit);
+  ctx.lineWidth = 1.6;
+  ctx.beginPath(); face(ctx); ctx.stroke();
+
+  if (crowdMix < 1) {
+    // the expensive half, faded by however far into crowd mode the board is
+    if (crowdMix > 0) ctx.globalAlpha = 1 - crowdMix;
     cube(ctx, p.x, p.y, s, dimq(col, lit), {
       width: 1.8,
       body: dimq('rgba(24,44,56,.98)', lit),
       back: dimq('rgba(13,26,34,.98)', lit),
     });
+    ctx.globalAlpha = 1;
   }
   if (e.slow > 0) {
     ctx.fillStyle = 'rgba(150,220,255,.5)';
@@ -1814,10 +1894,33 @@ function drawEnemy(e, p) {
   }
 
   // being mended, so damage visibly coming back is explained
-  if (e.healed > 0 && !crowded) {
-    ctx.strokeStyle = `rgba(95,201,164,${Math.min(1, e.healed * 5)})`;
+  if (e.healed > 0 && crowdMix < 1) {
+    ctx.strokeStyle = `rgba(95,201,164,${Math.min(1, e.healed * 5) * (1 - crowdMix)})`;
     ctx.lineWidth = 2;
     ctx.strokeRect(p.x - half - 5, p.y - half - 5, s + 10, s + 10);
+  }
+}
+
+/** Rounds in flight, drawn straight from engine state.
+ *
+ *  A Breaker's shot is the only one on the board whose damage happens somewhere
+ *  other than at the muzzle, and since v43 it is the only one that takes time
+ *  to get there. Drawing it from `world.slugs` rather than from an animation is
+ *  the point: the dash on screen is the object that will land, so a slug still
+ *  in the air is a hit that has not been dealt yet. Heading comes from where it
+ *  is going, so a round that is chasing a moving target visibly leads it. */
+function drawSlugs() {
+  for (const g of world.slugs) {
+    const dx = g.tx - g.x, dy = g.ty - g.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d, uy = dy / d;
+    const col = E.TOWER_TYPES[g.type].col;
+    const tail = Math.min(11, d);          // never overshoot what is left to fly
+    glowStroke(ctx, c => {
+      c.moveTo(g.x - ux * tail, g.y - uy * tail);
+      c.lineTo(g.x, g.y);
+    }, col, 4.6, GLOW_PASSES_CHEAP, 1);
+    glowDot(ctx, g.x, g.y, 2.6, '#ffffff', .8);
   }
 }
 
@@ -1827,34 +1930,27 @@ function drawEnemy(e, p) {
 function drawBeams() {
   for (const b of beams) {
     const fade = Math.min(1, b.life / (b.max || .08));
-    const dx = b.x2 - b.x1, dy = b.y2 - b.y1;
+    // a muzzle kick and a shockwave each have one end, not two
+    const dx = (b.x2 ?? b.x1) - (b.x1 ?? b.x2), dy = (b.y2 ?? b.y1) - (b.y1 ?? b.y2);
     const len = Math.hypot(dx, dy) || 1;
     const nx = -dy / len, ny = dx / len;          // unit normal, for the arc
 
-    if (b.type === 'breaker') {
-      /* Not a beam at all. Node and Coil both throw light down a line, so a
-         thicker line is a difference of degree and reads as "the same shot,
-         louder". A Breaker lobs a slug: a short bolt that stops well short of
-         the target, and a shockwave that does the work where it lands. The gap
-         between the two is the point — it is the only shot on the board whose
-         damage plainly happens somewhere other than at the muzzle. */
-      const t = 1 - fade;                     // 0 at the muzzle, 1 at the target
-      const bx = b.x1 + dx * (0.25 + t * 0.62), by = b.y1 + dy * (0.25 + t * 0.62);
-      // the slug in flight, a short heavy dash rather than a full-length line
-      glowStroke(ctx, c => {
-        c.moveTo(bx - dx * 0.1, by - dy * 0.1); c.lineTo(bx, by);
-      }, b.col, 4.6, GLOW_PASSES_CHEAP, Math.min(1, fade * 1.4));
-      // muzzle kick, brief and at the tower rather than along the path
-      glowDot(ctx, b.x1 + dx * 0.08, b.y1 + dy * 0.08, 4 * fade, b.col, fade * 0.8);
-      /* The burst: two rings expanding out of the impact, plus a hot core. Two
-         rather than one because a single ring reads as a bubble; two reads as a
-         wave leaving. */
+    if (b.type === 'muzzle') {
+      // a kick at the barrel, and nothing else: the round is drawn from engine
+      // state in `drawSlugs`, because that is where it really is
+      glowDot(ctx, b.x1, b.y1, 5 * fade, b.col, fade * 0.9);
+      continue;
+    } else if (b.type === 'blast') {
+      /* The burst, fired the instant the slug lands. Two rings expanding out of
+         the impact plus a hot core — two rather than one because a single ring
+         reads as a bubble, and two read as a wave leaving. */
       const k = 1 - fade;
       for (const [mul, w2] of [[1, 2.4], [0.62, 1.4]]) {
         glowStroke(ctx, c => c.arc(b.x2, b.y2, 3 + k * 22 * mul, 0, TAU),
           b.col, w2, GLOW_PASSES_CHEAP, fade * 0.9);
       }
       glowDot(ctx, b.x2, b.y2, 5 * fade, '#ffffff', fade * 0.7);
+      continue;
     } else if (b.type === 'coil') {
       /* An arc, not a line. Coil chills a cluster, and a bolt that bends reads
          as a field rather than as a shot — which is also what stops it being

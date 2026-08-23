@@ -16,6 +16,22 @@ function richWorld(opts = {}) {
   return w;
 }
 
+/** Step once, then keep stepping until every round in flight has landed.
+ *
+ *  Breaker is a projectile tower — its damage happens when the slug arrives,
+ *  not when the trigger is pulled — so a test that fires one and asserts on
+ *  health in the same frame is asserting against the wrong instant. Flight is
+ *  well under a Breaker's cooldown at any range it can shoot, so this never
+ *  quietly folds a second volley into the result. */
+function volley(w, dt = 1 / 60) {
+  E.step(w, dt);
+  // always finish the flight in frame-sized steps, never in `dt` again: a
+  // caller passing a whole cooldown would otherwise reload and fire on every
+  // pass and the loop would run until something died
+  for (let i = 0; i < 600 && w.slugs.length; i++) E.step(w, 1 / 60);
+  assert.equal(w.slugs.length, 0, 'rounds in flight all landed');
+}
+
 /** The first buildable (non-path) cell found, for tests that just need one. */
 function firstBuildable(w) {
   for (let r = 0; r < w.L.ROWS; r++)
@@ -180,6 +196,69 @@ test('cellAt maps pixels back to cells and rejects off-grid points', () => {
 
 /* ---------- building ---------- */
 
+test('each tower placed makes the next one dearer, and faster the more there are', () => {
+  const w = richWorld();
+  const base = E.TOWER_TYPES.node.cost;
+  assert.equal(E.buildCost(w, 'node'), base, 'the first one is the list price');
+
+  const steps = [];
+  let prev = E.buildCost(w, 'node');
+  for (let i = 0; i < 12; i++) {
+    const cell = nthBuildable(w, i);
+    assert.equal(E.buildTower(w, cell.c, cell.r, 'node'), true);
+    const now = E.buildCost(w, 'node');
+    assert.ok(now > prev, `price rose after ${i + 1} towers`);
+    steps.push(now - prev);
+    prev = now;
+  }
+  // non-linear: the last increment must be bigger than the first
+  assert.ok(steps[steps.length - 1] > steps[0],
+    `increments must grow (${steps[0]} then ${steps[steps.length - 1]})`);
+});
+
+test('the premium is charged, and is what the purse is checked against', () => {
+  const w = richWorld();
+  for (let i = 0; i < 6; i++) {
+    const cell = nthBuildable(w, i);
+    E.buildTower(w, cell.c, cell.r, 'node');
+  }
+  const price = E.buildCost(w, 'node');
+  assert.ok(price > E.TOWER_TYPES.node.cost);
+
+  w.components = price - 1;
+  assert.equal(E.canBuild(w, nthBuildable(w, 6).c, nthBuildable(w, 6).r, 'node'), false,
+    'a purse that covers the list price but not the premium cannot build');
+  w.components = price;
+  const cell = nthBuildable(w, 6);
+  assert.equal(E.buildTower(w, cell.c, cell.r, 'node'), true);
+  assert.equal(w.components, 0, 'and the premium is what came out of the purse');
+});
+
+test('selling gives back the base half, and drops the next price again', () => {
+  const w = richWorld();
+  for (let i = 0; i < 8; i++) {
+    const cell = nthBuildable(w, i);
+    E.buildTower(w, cell.c, cell.r, 'node');
+  }
+  const dear = E.buildCost(w, 'node');
+  const purse = w.components;
+  E.sellTower(w, 0);
+  assert.equal(w.components - purse, Math.floor(E.TOWER_TYPES.node.cost * 0.5),
+    'the refund is half the list price, not half the premium');
+  assert.ok(E.buildCost(w, 'node') < dear, 'and the board is less crowded, so the next is cheaper');
+});
+
+/** The nth buildable cell, for tests that need several distinct ones. */
+function nthBuildable(w, n) {
+  let seen = 0;
+  for (let r = 0; r < w.L.ROWS; r++)
+    for (let c = 0; c < w.L.COLS; c++) {
+      if (w.blocked.has(E.cellKey(c, r)) || E.towerAt(w, c, r)) continue;
+      if (seen++ === n) return { c, r };
+    }
+  throw new Error('ran out of buildable cells');
+}
+
 test('a tower can only go on an empty, on-grid, non-path cell you can afford', () => {
   const w = E.createWorld();
   const cell = firstBuildable(w);
@@ -261,7 +340,7 @@ test('XP is credited for damage that lands, not damage attempted', () => {
   const t = w.towers[0];
   w.enemies[0].hp = 1;
   w.enemies[0].maxhp = 500;
-  E.step(w, 1 / 60);
+  volley(w);
   assert.equal(w.enemies.length, 0, 'the hit killed it');
   // written against the rate rather than a literal, so cutting XP again cannot
   // quietly turn this into an assertion that passes for the wrong reason
@@ -911,13 +990,13 @@ test('a moved tower fights from where it landed', () => {
   const { c, r, d } = overlook(w, 'breaker');
   w.enemies.push({ type: 'load', dist: d, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
 
-  E.step(w, 1 / 60);
+  volley(w);
   const untouched = w.enemies[0].hp;
 
   assert.equal(E.moveTower(w, 0, c, r), true);
   // it arrives reloading, so give it its cooldown before expecting a shot
   const reload = E.stats(w, w.towers[0]).rate;
-  E.step(w, reload + 1 / 60);
+  volley(w, reload + 1 / 60);
   assert.ok(w.enemies[0].hp < untouched, 'it shoots from its new cell');
 });
 
@@ -985,6 +1064,47 @@ test('a tower damages an enemy in range on its cooldown', () => {
   assert.equal(w.enemies[0].hp, afterShot, 'held fire during cooldown');
 });
 
+test("a breaker's round travels — nothing resolves until it lands", () => {
+  const w = towerVsEnemy('breaker');
+  const hp0 = w.enemies[0].hp;
+  E.step(w, 1 / 60);
+  assert.equal(w.slugs.length, 1, 'a round is in the air');
+  assert.equal(w.enemies[0].hp, hp0, 'and the target is untouched while it flies');
+
+  const flight = Math.hypot(w.slugs[0].tx - w.slugs[0].x, w.slugs[0].ty - w.slugs[0].y) / E.SLUG_SPEED;
+  assert.ok(flight > 2 / 60, `flight must be visible, not sub-frame (${flight.toFixed(3)}s)`);
+
+  for (let i = 0; i < 600 && w.slugs.length; i++) E.step(w, 1 / 60);
+  assert.ok(w.enemies[0].hp < hp0, 'it landed, and then it hurt');
+});
+
+test('node and coil stay hitscan — a bolt of light must not arrive late', () => {
+  for (const type of ['node', 'coil']) {
+    const w = towerVsEnemy(type);
+    const hp0 = w.enemies[0].hp;
+    E.step(w, 1 / 60);
+    assert.equal(w.slugs.length, 0, `${type} throws no projectile`);
+    assert.ok(w.enemies[0].hp < hp0, `${type} damages on the frame it fires`);
+  }
+});
+
+test('a round whose target dies mid-flight still bursts where it was aimed', () => {
+  const w = richWorld();
+  const { c, r, d } = overlook(w, 'breaker', 24);
+  E.buildTower(w, c, r, 'breaker');
+  const lead = { type: 'load', dist: d + 20, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 };
+  const behind = { type: 'load', dist: d + 24, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 };
+  w.enemies.push(lead, behind);
+
+  E.step(w, 1 / 60);
+  assert.equal(w.slugs.length, 1);
+  // the aimed-at enemy is removed by something else while the round is in the air
+  lead.hp = 0;
+  const hpBehind = behind.hp;
+  for (let i = 0; i < 600 && w.slugs.length; i++) E.step(w, 1 / 60);
+  assert.ok(behind.hp < hpBehind, 'the splash it had already paid for still landed');
+});
+
 test('a tower ignores enemies out of range', () => {
   const w = richWorld();
   const cell = firstBuildable(w);
@@ -1015,7 +1135,7 @@ test('a breaker splashes nearby enemies', () => {
   w.enemies.push({ type: 'load', dist: d0 + 20, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
   w.enemies.push({ type: 'load', dist: d0 + 24, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
   const hpA = w.enemies[0].hp, hpB = w.enemies[1].hp;
-  E.step(w, 1 / 60);
+  volley(w);
   assert.ok(w.enemies[0].hp < hpA && w.enemies[1].hp < hpB, 'both took damage from one shot');
 });
 
@@ -1096,7 +1216,7 @@ test('armor blunts small hits far more than heavy ones', () => {
   const nodeDealt = nodeHp - node.e.hp;
 
   const breaker = towerVsType('breaker', 'shell');
-  const bHp = breaker.e.hp; E.step(breaker.w, 1 / 60);
+  const bHp = breaker.e.hp; volley(breaker.w);
   const breakerDealt = bHp - breaker.e.hp;
 
   const armor = E.ENEMY_TYPES.shell.armor;
@@ -1133,8 +1253,8 @@ test('splash resistance makes area damage the wrong tool', () => {
     w.enemies.push(follower);
     return { w, follower };
   };
-  const plain = build('surge'); E.step(plain.w, 1 / 60);
-  const tough = build('phase'); E.step(tough.w, 1 / 60);
+  const plain = build('surge'); volley(plain.w);
+  const tough = build('phase'); volley(tough.w);
   const plainTook = 900 - plain.follower.hp;
   const toughTook = 900 - tough.follower.hp;
   assert.ok(plainTook > 0, 'the plain follower was splashed');
@@ -1439,33 +1559,56 @@ test('setPriority only accepts priorities it knows', () => {
 
 /* ---------- waves ---------- */
 
-test('rush pulls the queued spawns forward without dropping any', () => {
-  const w = richWorld();
-  E.startWave(w);
-  const before = w.spawnQueue.map(s => s.at);
-  const total = w.spawnQueue.length;
-  assert.equal(E.rushWave(w), true);
-  assert.equal(w.spawnQueue.length, total, 'nothing was lost');
-  const after = w.spawnQueue.map(s => s.at);
-  assert.ok(after[after.length - 1] < before[before.length - 1], 'the tail arrives sooner');
-  for (const t of after) assert.ok(t >= w.clock, 'and nothing was pushed into the past');
+test('rush latches on, and pulls the wave in faster while it is held', () => {
+  const plain = richWorld(); E.startWave(plain);
+  const rushed = richWorld(); E.startWave(rushed);
+  assert.equal(E.setRush(rushed, true), true);
+  assert.equal(rushed.rushing, true, 'the latch is visibly on');
+
+  for (let i = 0; i < 120; i++) { E.step(plain, 1 / 60); E.step(rushed, 1 / 60); }
+  assert.ok(rushed.spawnQueue.length < plain.spawnQueue.length,
+    `rushing released more of the wave (${rushed.spawnQueue.length} left vs ${plain.spawnQueue.length})`);
+  // nothing is lost, only hurried: everything released is on the board
+  assert.ok(rushed.enemies.length > plain.enemies.length);
 });
 
-test('rushing again compresses again, so it can be leaned on', () => {
+test('rush speeds the wave up, not the run — enemies still walk at their own pace', () => {
   const w = richWorld();
   E.startWave(w);
-  const last = () => w.spawnQueue[w.spawnQueue.length - 1].at;
-  const a = last(); E.rushWave(w);
-  const b = last(); E.rushWave(w);
-  assert.ok(b < a && last() < b);
+  E.step(w, 1 / 60);
+  const e = w.enemies[0];
+  const d0 = e.dist;
+  E.setRush(w, true);
+  E.step(w, 1 / 60);
+  const rushedStep = e.dist - d0;
+  E.setRush(w, false);
+  const d1 = e.dist;
+  E.step(w, 1 / 60);
+  assert.equal(rushedStep, e.dist - d1, 'the same enemy covers the same ground either way');
+});
+
+test('the rush latch can be let go, and lets go of itself when the wave is all out', () => {
+  const w = richWorld();
+  E.startWave(w);
+  E.setRush(w, true);
+  E.setRush(w, false);
+  assert.equal(w.rushing, false, 'it can be turned off early');
+
+  E.setRush(w, true);
+  for (let i = 0; i < 6000 && w.spawnQueue.length; i++) E.step(w, 1 / 60);
+  assert.equal(w.spawnQueue.length, 0, 'the wave finished arriving');
+  assert.equal(w.rushing, false, 'and the latch released itself');
 });
 
 test('there is nothing to rush between waves', () => {
   const w = richWorld();
-  assert.equal(E.rushWave(w), false, 'no wave running');
+  assert.equal(E.setRush(w, false), true, 'turning it off is always allowed');
+  assert.equal(E.setRush(w, true), false, 'no wave running');
+  assert.equal(w.rushing, false);
   E.startWave(w);
   w.spawnQueue = [];
-  assert.equal(E.rushWave(w), false, 'everything already out');
+  assert.equal(E.setRush(w, true), false, 'everything already out');
+  assert.equal(w.rushing, false);
 });
 
 test('wave groups overlap instead of queueing end to end', () => {
