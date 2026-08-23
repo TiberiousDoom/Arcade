@@ -23,6 +23,19 @@ This is a solo, part-time project with potentially long gaps (weeks or months) b
 
 At the end of a session: update STATUS.md (what changed, what's next, any newly open questions), add an entry to docs/DECISIONS.md for any real decision made, and write commit messages that explain intent — with month-long gaps, `git log` is effectively documentation too.
 
+**Before you commit — the whole gate, in one place. Nothing here is automated: there is no CI, no workflow in `.github/`, and no pre-commit hook, so a check you don't run is a check that never runs.**
+
+```
+Run     node --test games/*/engine.test.js shared/*.test.js       # always
+        node --test games/*/render-test.mjs games/*/resume-test.mjs  # if a shell or shared/ changed
+Bump    CACHE_VERSION in sw.js  +  BUILD in shared/version.js     # if any file the app loads changed
+        …and add any new file to sw.js's PRECACHE list
+Update  STATUS.md (what changed, what's next, newly open questions)
+        docs/DECISIONS.md, if a real decision was made
+```
+
+Each line is expanded where it belongs — the version bump under Commands (with why a stale one strands returning players), the render/resume tests in the command block, STATUS/DECISIONS just above.
+
 ## Commands
 
 No `package.json` exists — install test dependencies ad hoc if needed.
@@ -33,7 +46,7 @@ node --test games/flak-battery/engine.test.js
 node --test games/hull-breach/engine.test.js
 node --test games/choke-point/engine.test.js
 
-# Run every engine suite at once, plus the shared-module suites
+# Run every engine suite at once, plus shared/ (one suite: version.test.js)
 node --test games/*/engine.test.js shared/*.test.js
 
 # Run a single test by name
@@ -66,6 +79,11 @@ node --test games/*/engine.test.js shared/*.test.js games/*/render-test.mjs game
 # Rebuild the gun-art review bench after changing any portrait art. Writes
 # docs/art/gun-bench.html from the current sources; open it directly, no server.
 node tools/gun-bench.mjs
+
+# Look at a game from here — boots the real shell against node-canvas and drives
+# frames by hand, so it returns an honest picture where a headless browser
+# returns a blank one. Same jsdom/canvas install as the render tests.
+node tools/screenshot.mjs games/choke-point/choke-point.html out.png
 ```
 
 Both `render-test.mjs` and `resume-test.mjs` boot the real shell through
@@ -75,7 +93,7 @@ anything in `shared/` is exercised by them without any checked-in build artifact
 
 There is no lint config in the repo.
 
-**⚠ Adding or changing a file the app loads? Bump `CACHE_VERSION` in [sw.js](sw.js) *and* `BUILD` in [shared/version.js](shared/version.js).** `shared/version.test.js` fails if the two disagree, so the test suite will catch a half-bump — but nothing catches forgetting both. The service worker precaches the whole app and serves cache-first without revalidating, so a stale version string means returning players keep the old build indefinitely. Nothing automates this. If you add a new file, add it to the `PRECACHE` list too — otherwise it only reaches the cache on second visit, and the app is broken on a first-run offline launch.
+**⚠ Adding or changing a file the app loads? Bump `CACHE_VERSION` in [sw.js](sw.js) *and* `BUILD` in [shared/version.js](shared/version.js).** `shared/version.test.js` fails if the two disagree, so the test suite will catch a half-bump — but nothing catches forgetting both. The service worker precaches the whole app and serves cache-first without revalidating, so a stale version string means returning players keep the old build indefinitely. Nothing automates this, and no CI will catch it after the fact. If you add a new file, add it to the `PRECACHE` list too — otherwise it only reaches the cache on second visit, and the app is broken on a first-run offline launch.
 
 **Verifying a shell in a headless/background browser:** `requestAnimationFrame` gets throttled hard there (measured at ~0.1fps), so the game simulates in slow motion and any judgement about pacing — or even "is it moving at all" — will be wrong. Don't fight it: temporarily expose the world at the bottom of the shell's module (`window.__world = world; window.__frame = frame;`), then either drive `__frame(t)` with your own advancing timestamps or call engine functions directly, assert on state, and remove the hook afterward. Note that death/level-clear banners fire on a false→true *edge* inside the frame loop, so killing the world with direct `tick()`/`step()` calls skips them — drive it through `__frame` when that's what you're checking.
 
