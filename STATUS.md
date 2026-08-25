@@ -59,10 +59,13 @@ Eleven items and three questions. Two of the questions turned into a page.
 
 ### Still open after this round
 
-- **Incentives to replay a circuit on Medium and Hard** — asked this round, not
-  yet designed. Ideas are in the reply; nothing is built. Today the only reward
-  for a harder win is the next circuit unlocking, which a player has usually
-  already unlocked on Easy.
+- **Incentives to replay a circuit on Medium and Hard** — asked at round 15,
+  designed and agreed since, **not built**. The plan is
+  [docs/choke-point-replay-plan.md](docs/choke-point-replay-plan.md): a Sever
+  tower class earned on Medium, a Chain armory track on Hard, a Veterancy track
+  and new circuits on a clean sweep of all three difficulties. Pick it up with
+  the next round of feedback; the file says what order to build in and what it
+  costs.
 - The research ladder is a large balance change made without a run behind it:
   Ion at wave 70 is a long way out, and whether the rungs land in the right
   order is a phone question.

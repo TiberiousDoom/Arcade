@@ -17,6 +17,8 @@ An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invad
 
 ## Session workflow
 
+Planned-but-unbuilt work lives in its own `docs/*-plan.md` file (there is one open: **[docs/choke-point-replay-plan.md](docs/choke-point-replay-plan.md)**, the Medium/Hard replay rewards). A plan file is deleted once the work ships and its reasoning moves to DECISIONS.md — if one exists, it is live.
+
 This is a solo, part-time project with potentially long gaps (weeks or months) between sessions. Read **[STATUS.md](STATUS.md)** first — it's the current "what's playable / what's next" snapshot, kept fresh each session rather than left to go stale. **[docs/DECISIONS.md](docs/DECISIONS.md)** has the reasoning behind past architectural choices, append-only — check it before re-deciding something that looks unusual.
 
 **The playtesting comes from a real phone.** Every "V*n* Feedback" round in STATUS.md is someone playing on glass, so touch, portrait and the safe-area fit work are the primary path rather than an untested one — and a frame time measured in a desktop browser is a direction, not a verdict. [docs/TESTING.md](docs/TESTING.md) is the live device checklist for the current build; when a section is settled the outcome moves to STATUS.md and the section is deleted rather than left to rot.
