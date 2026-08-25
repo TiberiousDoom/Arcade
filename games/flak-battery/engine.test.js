@@ -27,6 +27,9 @@ const gun0 = (w) => w.battery.guns[0];
 /** Research a gun type outright, for tests that only want it *fitted*. Gun
  *  types cost research points rather than scrap since v28. */
 function learn(w, type) {
+  // research is gated on the best wave reached since v44, and a test about a
+  // gun's *behaviour* is not a test about that ladder — see `veteran`
+  w.research.best = Math.max(w.research.best ?? 1, E.RESEARCH_UNLOCK[type] ?? 1);
   w.research.points += E.GUN_RP[type];
   E.researchGun(w, type);
 }
@@ -34,6 +37,7 @@ function learn(w, type) {
 /** Open every branch to its last tier, for tests about the tiers themselves
  *  rather than about the research gate. Tiers 4 and 5 need research now. */
 function openTree(w) {
+  veteran(w);
   w.research.points += 1e6;
   for (const b of E.BRANCHES) while (E.researchDepth(w, b)) { /* to the cap */ }
   return veteran(w);
@@ -46,8 +50,11 @@ function openTree(w) {
    not tests about that ramp, so they say so here rather than each quietly
    depending on the opening being wide. The ramp itself is covered in the
    upgrades section. */
+/* Also past the *research* ramp (`RESEARCH_UNLOCK`), which is measured in the
+   same currency. A test about what a mark or a depth tier does is not a test
+   about when it becomes buyable; the ramp itself has its own tests below. */
 function veteran(w) {
-  w.research.best = 99;
+  w.research.best = Math.max(99, ...Object.values(E.RESEARCH_UNLOCK));
   return w;
 }
 
@@ -1227,6 +1234,7 @@ test('damage with no shot at all (a bomb) gets no railgun bonus', () => {
 
 test('the ion cannon unlocks through the same economy as the other gun types', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.research.points = E.GUN_RP.ion;
   assert.equal(w.gunUnlocks.ion, false);
   assert.equal(E.researchGun(w, 'ion'), true);
@@ -1502,6 +1510,7 @@ test('a branch cannot be pushed past its last tier', () => {
 
 test('the last two tiers of a branch are locked until researched', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.scrap = 1e6;
   for (let i = 0; i < E.FREE_TIER; i++) {
     assert.equal(E.buyUpgrade(w, 0, 'damage'), true, `tier ${i + 1} is free to all`);
@@ -1520,6 +1529,7 @@ test('the last two tiers of a branch are locked until researched', () => {
 
 test('research is bought per branch, not for the whole tree', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.scrap = 1e6;
   w.research.points = 1e6;
   E.researchDepth(w, 'optics');
@@ -1529,6 +1539,7 @@ test('research is bought per branch, not for the whole tree', () => {
 
 test('depth research costs more the second time, and runs out', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.research.points = 1e6;
   const first = E.depthCost(w, 'cooling');
   E.researchDepth(w, 'cooling');
@@ -1600,6 +1611,7 @@ test('one deep run beats several shallow ones', () => {
 
 test('research survives a reset, and its guns come straight back', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.research.points = 1e6;
   E.researchGun(w, 'mortar');
   E.researchDepth(w, 'optics');
@@ -1616,13 +1628,14 @@ test('research survives a reset, and its guns come straight back', () => {
 
 test('research is not run state, so a snapshot leaves it alone', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.research.points = 1e6;
   E.researchGun(w, 'rail');
   const snap = JSON.parse(JSON.stringify(E.snapshot(w)));
   assert.equal(snap.research, undefined, 'not stored — the shell owns it');
 
   // and a run restored into a world with *different* research picks that up
-  const fresh = E.createWorld();
+  const fresh = veteran(E.createWorld());
   fresh.research.points = 1e6;
   E.researchGun(fresh, 'ion');
   assert.equal(E.hydrate(fresh, snap), true);
@@ -1645,10 +1658,88 @@ test('a stored research object is clamped rather than trusted', () => {
   assert.equal(E.sanitizeResearch(null).points, 0, 'and nothing at all is fine');
 });
 
+/* ---------- the research ramp ---------- */
+
+test('nothing is researchable before the first rung', () => {
+  const w = E.createWorld();
+  w.research.points = 1e6;
+  assert.equal(E.researchOpen(w), false, 'the screen has nothing on it yet');
+  assert.equal(E.researchMark(w, 'standard'), false, 'not even the gun you already own');
+  assert.equal(E.researchDepth(w, 'damage'), false);
+  assert.equal(E.researchConverge(w), false);
+  for (const t of E.GUN_KEYS) if (t !== 'standard') assert.equal(E.researchGun(w, t), false, t);
+  assert.equal(w.research.points, 1e6, 'and none of it charged for the refusal');
+});
+
+test('the first rung is the gun you already have, at wave 10', () => {
+  assert.equal(E.RESEARCH_WAVE, 10);
+  assert.equal(E.RESEARCH_UNLOCK.standard, E.RESEARCH_WAVE,
+    'the standard cannon is what research opens with');
+  const w = E.createWorld();
+  w.research.best = 10;
+  w.research.points = 1e6;
+  assert.equal(E.researchOpen(w), true);
+  assert.equal(E.researchMark(w, 'standard'), true, 'its marks are buyable');
+  assert.equal(E.researchGun(w, 'auto'), false, 'and nothing above it is');
+});
+
+test('a category opens every ten waves, and none share a rung', () => {
+  const waves = Object.values(E.RESEARCH_UNLOCK).sort((a, b) => a - b);
+  assert.equal(new Set(waves).size, waves.length, 'one category per rung');
+  waves.forEach((wv, i) => {
+    assert.equal(wv, E.RESEARCH_WAVE + i * 10, `rung ${i} is ten waves past the one before`);
+  });
+});
+
+test('each category is refused until its own wave, then goes through', () => {
+  for (const [key, wave] of Object.entries(E.RESEARCH_UNLOCK)) {
+    const buy = (w) => key === 'depth' ? E.researchDepth(w, 'damage')
+      : key === 'converge' ? E.researchConverge(w)
+      : key === 'standard' ? E.researchMark(w, 'standard')
+      : E.researchGun(w, key);
+
+    const early = E.createWorld();
+    early.research.best = wave - 1;
+    early.research.points = 1e6;
+    assert.equal(buy(early), false, `${key} is not buyable at wave ${wave - 1}`);
+
+    const ready = E.createWorld();
+    ready.research.best = wave;
+    ready.research.points = 1e6;
+    assert.equal(buy(ready), true, `${key} is buyable at wave ${wave}`);
+  }
+});
+
+test('the gate is the best wave ever reached, not the run in progress', () => {
+  const w = E.createWorld();
+  w.research.best = 99;
+  w.wave = 1;
+  w.research.points = 1e6;
+  assert.equal(E.researchGun(w, 'ion'), true,
+    'a veteran starting again has what they earned, in the first shop');
+});
+
+test('the shop can say what the next rung is, and stops once there are none', () => {
+  const fresh = E.createWorld();
+  assert.deepEqual(E.nextResearchUnlock(fresh), { key: 'standard', wave: E.RESEARCH_WAVE });
+
+  const mid = E.createWorld();
+  mid.research.best = E.RESEARCH_UNLOCK.converge;
+  const next = E.nextResearchUnlock(mid);
+  assert.ok(next.wave > E.RESEARCH_UNLOCK.converge, 'it names something still ahead');
+  assert.equal(next.wave, Math.min(...Object.values(E.RESEARCH_UNLOCK)
+    .filter(v => v > E.RESEARCH_UNLOCK.converge)), 'and it is the nearest one');
+
+  const done = E.createWorld();
+  done.research.best = Math.max(...Object.values(E.RESEARCH_UNLOCK));
+  assert.equal(E.nextResearchUnlock(done), null, 'nothing left to promise');
+});
+
 /* ---------- gun marks ---------- */
 
 test('a mark raises a gun type permanently, on every mount carrying it', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   const before = E.gunStats(w, 'standard');
   assert.equal(before.dmg, E.GUN_TYPES.standard.dmg, 'unmarked is the table value');
 
@@ -1662,6 +1753,7 @@ test('a mark raises a gun type permanently, on every mount carrying it', () => {
 
 test('marks cap, and cost more each time', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.research.points = 1e6;
   let last = 0;
   for (let i = 0; i < E.MAX_MARK; i++) {
@@ -1687,6 +1779,7 @@ test('the starting cannon can be marked, unlike being learned', () => {
   // it is the gun every run begins with; being the one type that can never
   // improve would make it strictly a thing to replace
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.research.points = 1e6;
   assert.equal(E.gunResearchCost(w, 'standard'), null, 'never learned');
   assert.equal(E.researchMark(w, 'standard'), true, 'but always improvable');
@@ -1694,10 +1787,11 @@ test('the starting cannon can be marked, unlike being learned', () => {
 
 test('marks reach the shots a gun actually fires', () => {
   const plain = E.createWorld();
+  veteran(plain);   // past the research ramp; the ramp has its own tests
   E.fire(plain);
   const before = plain.shots[plain.shots.length - 1].dmg;
 
-  const marked = E.createWorld();
+  const marked = veteran(E.createWorld());
   marked.research.points = 1e6;
   for (let i = 0; i < E.MAX_MARK; i++) E.researchMark(marked, 'standard');
   E.fire(marked);
@@ -1707,6 +1801,7 @@ test('marks reach the shots a gun actually fires', () => {
 
 test('marks survive a reset and are clamped on the way in', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   w.research.points = 1e6;
   E.researchMark(w, 'standard');
   E.resetRun(w);
@@ -1856,6 +1951,7 @@ test('the default focal point is five rungs out, on either board', () => {
 
 test('convergence is researched with points, permanently, for the whole battery', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   assert.equal(E.convergeLevel(w), 0);
   assert.equal(E.researchConverge(w), false, 'not without points');
 
@@ -3232,6 +3328,7 @@ test('a shot keeps the color it was fired at, even if the streak changes after',
 
 test('gun types are learned once, with research points, and only when affordable', () => {
   const w = E.createWorld();
+  veteran(w);   // past the research ramp; the ramp has its own tests
   assert.equal(w.gunUnlocks.rail, false);
   w.scrap = 1e6;
   assert.equal(E.researchGun(w, 'rail'), false, 'scrap does not buy research');

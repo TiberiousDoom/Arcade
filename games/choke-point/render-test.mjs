@@ -294,6 +294,26 @@ test("a breaker's round is drawn while it flies, and only then does it land", as
   assert.deepEqual(g.errors, [], 'the impact threw');
 });
 
+test('the HUD names the circuit and the difficulty, in the words the rest uses', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  g.frame(1000);
+
+  const meta = doc.querySelector('header .meta').textContent;
+  assert.match(meta, /Circuit/, 'the HUD says circuit, like the picker and the banner');
+  assert.doesNotMatch(meta, /Route/, 'and never route, which was the same thing under another name');
+  assert.equal(doc.getElementById('uiRoute').textContent, `1/${E.ROUTE_COUNT}`);
+  assert.equal(doc.getElementById('uiDifficulty').textContent,
+    E.DIFFICULTIES[world.difficulty].name, 'and it states what this run is being played at');
+
+  E.resetGame(world, { difficulty: 'hard', routeIndex: 0 });
+  g.frame(1050);
+  assert.equal(doc.getElementById('uiDifficulty').textContent, E.DIFFICULTIES.hard.name,
+    'which follows the run rather than being written once');
+  assert.deepEqual(g.errors, [], 'the HUD threw');
+});
+
 test('the gameplay strip fades out under a full-board panel', async () => {
   const g = await bootAndStart(SHELL);
   const { window: w } = g;

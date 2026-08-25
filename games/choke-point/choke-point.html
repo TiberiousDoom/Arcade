@@ -247,7 +247,16 @@
       <div>Comps <b id="uiComponents">0</b></div>
       <div>Core <b id="uiIntegrity">20</b></div>
       <div>Best <b id="uiBest">—</b></div>
-      <div>Route <b id="uiRoute">1/3</b></div>
+      <!-- "Circuit", not "Route". The picker, the victory banner and the help
+           all said circuit while the HUD said route, for the same thing — the
+           engine's identifiers are still `routeIndex`/`ROUTES`, which is fine
+           because nobody plays the source. One word on screen. -->
+      <div>Circuit <b id="uiRoute">1/3</b></div>
+      <!-- The difficulty is half of what a score means here: an armory that
+           grows between runs makes "wave 14" a different achievement on Easy
+           than on Hard, and until now the only place it appeared was the
+           pause menu it was just removed from. -->
+      <div>Mode <b id="uiDifficulty">Easy</b></div>
     </div>
   </header>
 
@@ -1161,7 +1170,8 @@ const pause = makeMenu({
   notes: [
     'Anything a Coil slows takes more damage from everything else.',
     'Towers level by fighting. ⚒ upgrades a whole class, and keeps between runs.',
-    'Reach the wave in the menu to take the circuit and open the next.',
+    'Each tower built makes the next one dearer — a crowded board is a dear one.',
+    'Reach the win wave to take the circuit and open the next. Pick either from Select circuit.',
     'Keyboard: 1/2/3 pick, Enter starts.',
   ],
 });
@@ -1403,11 +1413,12 @@ function sync() {
   // how far this run got, for the cabinet's unlock gate — recorded live, so a
   // player who closes the tab mid-run still keeps the wave they reached
   recordProgress(GAME_ID, world.wave);
-  // naming the route matters on a replay: the board genuinely changed, and
+  // naming the circuit matters on a replay: the board genuinely changed, and
   // without a label that reads as a glitch rather than as a new map. Numbered
   // rather than lettered now that they run easiest to hardest — "3" says
   // where you are on that scale in a way "C" does not.
   $('uiRoute').textContent = (world.routeIndex + 1) + '/' + E.ROUTE_COUNT;
+  $('uiDifficulty').textContent = E.DIFFICULTIES[world.difficulty].name;
   syncPalette();
   syncPopup();
   syncArmory();

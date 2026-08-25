@@ -642,6 +642,61 @@ export function experience(w) {
   return Math.max(w.wave || 1, w.research?.best ?? 1);
 }
 
+/* ---------- the research ramp ----------
+
+   Research is the progression that outlives a run, and until v44 all of it was
+   open from the first shop: a player who banked points could research the ion
+   cannon before meeting anything that needed one, and a new player was shown a
+   screen of eight branch-depth cards and five guns before wave 2.
+
+   It is a ladder now, measured in the same currency as the branch ramp —
+   `experience(w)`, the best wave *ever* reached, carried in `research.best`.
+   Nothing at all until wave 10; a category every ten waves after that. The
+   first rung is the standard cannon, deliberately: it is the gun every run
+   starts with and therefore the one whose marks are worth the most, and
+   opening with a thing the player already owns explains what research *is*
+   before it starts offering things they have never seen.
+
+   The gate is on the best wave, not the current one, so a veteran starting a
+   new run has everything they have earned in the first shop and never re-earns
+   it. `RESEARCH_UNLOCK` keys are gun types plus the two other categories
+   (`converge`, `depth`). */
+export const RESEARCH_UNLOCK = {
+  standard: 10,
+  auto: 20,
+  converge: 30,
+  rail: 40,
+  depth: 50,
+  mortar: 60,
+  ion: 70,
+};
+
+/** The wave the whole research screen opens on — the earliest rung. */
+export const RESEARCH_WAVE = Math.min(...Object.values(RESEARCH_UNLOCK));
+
+/** Is any research available at all yet? */
+export function researchOpen(w) {
+  return experience(w) >= RESEARCH_WAVE;
+}
+
+/** Is this research category open? Unknown keys are open, so a category added
+ *  and not put in the table is visible rather than silently unreachable. */
+export function researchUnlocked(w, key) {
+  return experience(w) >= (RESEARCH_UNLOCK[key] ?? 0);
+}
+
+/** The next category to open and the wave it opens on, or null once every rung
+ *  has been climbed. What the shop tells a player they are working toward. */
+export function nextResearchUnlock(w) {
+  const at = experience(w);
+  let best = null;
+  for (const [key, wave] of Object.entries(RESEARCH_UNLOCK)) {
+    if (wave <= at) continue;
+    if (!best || wave < best.wave) best = { key, wave };
+  }
+  return best;
+}
+
 /** Is this branch open to be bought at all yet? */
 export function branchUnlocked(w, branch) {
   return experience(w) >= (BRANCH_UNLOCK[branch] ?? 1);
@@ -859,11 +914,15 @@ export function relayout(w, L2) {
    debris, and what makes a gap through it a thing you can time rather than
    only hope for. */
 
-/** The first wave with an escort. */
-export const SWARM_WAVE = 50;
+/** The first wave with an escort. Was 50 at v43 and moved to 30 at v44: at 50
+ *  most runs ended before ever meeting one, so the whole mechanic was
+ *  theoretical for all but the deepest players. */
+export const SWARM_WAVE = 30;
 /** The wave at which the escort is as dense as it will get — from here on it
- *  is the motes' health that grows instead. */
-export const SWARM_FULL = 80;
+ *  is the motes' health that grows instead. Thirty waves after the escort
+ *  first appears, which is the ramp length the pacing was written against;
+ *  moving the start moves this with it rather than compressing the ramp. */
+export const SWARM_FULL = SWARM_WAVE + 30;
 export const SWARM_MIN = 6;
 export const SWARM_MAX = 26;
 /** Health, in the same damage units a segment's is. Two rounds at the opening
@@ -1281,6 +1340,7 @@ export function markCost(w, type) {
 /** Buy one mark. `standard` is included on purpose — the cannon every run
  *  starts with should not be the one gun that can never improve. */
 export function researchMark(w, type) {
+  if (!researchUnlocked(w, type)) return false;
   const cost = markCost(w, type);
   if (cost === null || w.research.points < cost) return false;
   // a type has to be known before it can be improved; standard always is
@@ -1344,6 +1404,7 @@ export function depthCost(w, branch) {
 
 export function researchDepth(w, branch) {
   if (!BRANCHES.includes(branch)) return false;
+  if (!researchUnlocked(w, 'depth')) return false;
   const cost = depthCost(w, branch);
   if (cost === null || w.research.points < cost) return false;
   w.research.points -= cost;
@@ -1397,6 +1458,7 @@ export function convergeLevel(w) {
 }
 
 export function researchConverge(w) {
+  if (!researchUnlocked(w, 'converge')) return false;
   const cost = convergeCost(w);
   if (cost === null || w.research.points < cost) return false;
   w.research.points -= cost;
@@ -1413,6 +1475,7 @@ export function gunResearchCost(w, type) {
 /** Learn a gun type, permanently. Unlike the old scrap unlock, this survives
  *  the run — see the note above. */
 export function researchGun(w, type) {
+  if (!researchUnlocked(w, type)) return false;
   const cost = gunResearchCost(w, type);
   if (cost === null || w.research.points < cost) return false;
   w.research.points -= cost;
@@ -1815,15 +1878,27 @@ export function registerMiss(w) {
  *  "how serious a gun is this" number the refit fee reads. `standard` is the
  *  starting gun; the others trade fire rate for a special property, so the
  *  four upgrade branches map onto guns you can physically see. */
+/* `blurb` lives here rather than in the shell. It was a `switch` in
+   flak-battery.html, which was fine while the shop was the only thing that
+   said what a gun is for — with the briefing page (v44) there are two readers,
+   and two copies of a sentence about behaviour is how a gun ends up advertised
+   for something it has not done since v24. That has happened here once
+   already: ion and rail were both described by their v24 designs for two
+   builds after the behaviour moved. */
 export const GUN_TYPES = {
-  standard: { name: 'Cannon',     rate: 1.0,  dmg: 1.0, pierce: 0, spd: 1.0,  col: '#c9a227', refitBase: 0 },
-  auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', refitBase: 120 },
-  rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', refitBase: 160 },
-  mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', refitBase: 200, arc: true },
+  standard: { name: 'Cannon',     rate: 1.0,  dmg: 1.0, pierce: 0, spd: 1.0,  col: '#c9a227', refitBase: 0,
+              blurb: 'The all-rounder every run starts with.' },
+  auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', refitBase: 120,
+              blurb: 'Fast and light. For crowded rows.' },
+  rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', refitBase: 160,
+              blurb: 'Slow, pierces, best against hardened hulls.' },
+  mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', refitBase: 200, arc: true,
+              blurb: 'Arms late, so it reaches over the front rank.' },
   // The one gun `shielded` can't deflect — the collision loop checks the
   // shot's `gun` field for the literal string 'ion' before ever calling
   // isDeflected, not a stat on this table.
-  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', refitBase: 260 },
+  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', refitBase: 260,
+              blurb: 'Ignores shield plating.' },
 };
 export const GUN_KEYS = Object.keys(GUN_TYPES);
 
