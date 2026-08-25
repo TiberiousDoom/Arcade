@@ -1763,3 +1763,90 @@ up for boards it was not unlocked on.
 
 The pause menu now states what the run is and what winning it takes, and points
 at the picker. It is the picker's question, and it is asked once.
+
+
+## 2026-08-25 — One place a shop stat comes from
+
+"The upgrade preview doesn't match after researching cannon." It didn't. The
+Stats block resolved the gun — `stats × gunStats × marks` — while each branch
+row printed the raw numbers straight out of `UPGRADES[b].tiers`. On an unmarked
+standard cannon those agree exactly, which is why it survived so long; research
+a Railgun and the block says Damage 2.4 while the row under it offers 1.0 → 1.3.
+
+Both now go through one `statDisplay(gun, key, upgrades)`, and a preview is
+that function called twice: once with the tree as it is, once with the branch
+one tier deeper. The lesson is the general one — two renderings of the same
+number will diverge, and the only question is how long it takes.
+
+## 2026-08-25 — Research is a ladder, ten waves a rung
+
+All of research was open from the first shop: eight branch-depth cards, five
+guns and convergence, offered to a player at wave 2 who had never earned a
+point. It is a rung every ten waves now (`RESEARCH_UNLOCK`), gated on
+`experience(w)` — the best wave ever reached — exactly like the branch ramp.
+
+**The first rung is the standard cannon**, at wave 10, and that choice is the
+whole design of the opening: research opens with marks on the gun you already
+own and already understand, rather than with four guns you have never seen. The
+ladder is what the screen is ordered by, too — everything above where you are
+is spendable, everything below is a card naming the wave that opens it, because
+a locked rung is what tells a player what the next fifty waves are for.
+
+The gate is the best wave, never the current one, so a veteran starting again
+has everything they earned in the first shop.
+
+## 2026-08-25 — Research left the tab strip
+
+The shop's tabs pick which *gun* you are spending scrap on. Research was a tab
+beside them, buying different things with a different currency — and it took
+the header's whole second line while the header itself was restating the scrap
+the HUD already showed.
+
+Research is now a verb on the title line beside Next Wave, and it toggles: the
+button that took you in is the one that takes you back out. The scrap readout
+is gone. Between them the shop's header dropped from three bands to one.
+
+The upgrade side also stopped being a grid. It shared `repeat(auto-fit,
+minmax(148px,1fr))` with the research side, so the grouped sections spanned the
+full width while everything ungrouped — Optics, barrels, refit — dropped into
+half-width cells beside each other. Reported as "optics and barrel are side by
+side and squished". The upgrade screen is a column of sections; research keeps
+its grid, where cards genuinely do compare well side by side.
+
+## 2026-08-25 — A briefing page, generated from the engine
+
+"What are the different power-ups? How do the cannon types differ?" — both
+answerable from the tables in `engine.js`, and neither answered anywhere a
+player could look. There is a `briefing.html` beside the shell now, linked from
+the pause menu.
+
+Every number on it is read from the engine at load. That is the entire design
+of the page: a hand-maintained reference sheet is wrong by the third build, and
+this game has already shipped two guns *described by a design they had not had
+for two versions*. The gun one-liners moved from a `switch` in the shell onto
+`GUN_TYPES[t].blurb` for the same reason — with two readers, one sentence.
+
+What stays hand-written is the tactical prose (how to play each gun, what each
+power-up is actually for), because that is a claim about play that no table
+knows. The split is: the engine owns what a thing *is*, the page owns what to
+*do* with it.
+
+## 2026-08-25 — The escort moves to wave 30
+
+`SWARM_WAVE` 50 → 30. At 50 most runs ended before ever meeting the escort, so
+a whole mechanic was theoretical for all but the deepest players. `SWARM_FULL`
+follows it (`SWARM_WAVE + 30`) rather than staying pinned at 80: the thirty-wave
+ramp from first appearance to full density is the pacing the design was written
+against, and moving the start without moving the end would have compressed it.
+
+## 2026-08-25 — Circuit, not route
+
+The HUD said "Route 1/3" while the picker, the victory banner and the help all
+said circuit, for the same thing. One word on screen now: **circuit**. The
+engine keeps `routeIndex`, `ROUTES` and `routeAt` — nobody plays the source, and
+renaming them would be a large diff for no player-visible gain.
+
+The HUD also gained the difficulty. With an armory that grows between runs,
+"wave 14" means something different on Easy than on Hard, and after difficulty
+left the pause menu (v43) there was nowhere on screen that said which one you
+were playing.

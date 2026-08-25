@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Flak Battery — Briefing</title>
+<link rel="manifest" href="../../manifest.webmanifest">
+<meta name="theme-color" content="#0b1418">
+<link rel="icon" href="../../shared/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../../shared/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Arcade">
+<link rel="stylesheet" href="../../shared/theme.css">
+<script type="module" src="../../shared/pwa.js"></script>
+<style>
+  /* The briefing: what the guns and the power-ups actually do, in one place.
+
+     Every number on this page is read from `engine.js` at load rather than
+     typed here. That is the whole design of it — a reference sheet that has to
+     be hand-updated is a reference sheet that is wrong by the third build, and
+     this game has already shipped two guns described by a design they had not
+     had for two versions (see `gunBlurb`). If a stat moves in the engine, this
+     page moves with it or it does not say it at all. */
+  :root{ --board-max:820px; }
+
+  body{overflow-y:auto}
+  #page{
+    max-width:var(--board-max);margin:0 auto;padding:14px 14px 40px;
+    display:flex;flex-direction:column;gap:16px;
+  }
+  #page header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  #page h1{font-family:'Archivo Black',sans-serif;font-size:clamp(18px,5vw,26px);
+    text-transform:uppercase;letter-spacing:-.02em}
+  #page h1 span{color:var(--accent)}
+  .back{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);text-decoration:none}
+  @media (hover: hover) { .back:hover{color:var(--bone)} }
+  .backs{display:flex;gap:14px;flex-wrap:wrap}
+
+  h2{font-family:'Archivo Black',sans-serif;font-size:14px;text-transform:uppercase;
+    letter-spacing:.04em;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .lede{font-size:12px;line-height:1.6;color:var(--dim)}
+  .lede b{color:var(--bone);font-weight:700}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
+  .card{border:1px solid var(--line);border-radius:5px;background:#0b1a20;padding:10px 11px;
+    display:flex;flex-direction:column;gap:6px}
+  .card h3{font:700 13px/1 'Chivo Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+  .card .why{font-size:11px;line-height:1.5;color:var(--bone)}
+  .card .note{font-size:10px;line-height:1.5;color:var(--dim)}
+  /* The stat strip: a fixed grid so every card's numbers line up down the
+     column, which is what makes two guns comparable at a glance. */
+  .stats{display:grid;grid-template-columns:1fr auto;gap:2px 10px}
+  .stats dt{font-size:10px;letter-spacing:.06em;color:var(--dim)}
+  .stats dd{font:700 11px/1.4 'Chivo Mono',monospace;color:var(--bone);text-align:right}
+  .stats .good{color:var(--scale)}
+  .stats .bad{color:var(--alarm)}
+  .tag{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);
+    border:1px solid var(--line);border-radius:3px;padding:2px 5px;align-self:flex-start}
+  .swatch{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:baseline}
+  footer{font-size:10px;color:var(--dim);text-align:center;line-height:1.6}
+</style>
+
+<div id="page">
+  <header>
+    <h1>Flak <span>Battery</span> Briefing</h1>
+    <div class="backs">
+      <a class="back" href="./flak-battery.html">&larr; Back to the gun</a>
+      <a class="back" href="../../index.html">Arcade</a>
+    </div>
+  </header>
+
+  <section>
+    <h2>Guns</h2>
+    <p class="lede">
+      Every emplacement carries one gun type. <b>Damage</b>, <b>reload</b> and
+      <b>round speed</b> below are multipliers on the base line, so 2.4 damage
+      means a round hits 2.4× as hard as the starting cannon's, and a reload of
+      1.9 means it fires at a bit over half the rate. Upgrades bought with
+      scrap multiply through these, which is why the same branch is worth
+      different amounts on different guns.
+    </p>
+    <div class="cards" id="guns"></div>
+  </section>
+
+  <section>
+    <h2>Power-ups</h2>
+    <p class="lede" id="dropLede"></p>
+    <div class="cards" id="powerups"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script type="module">
+import * as E from './engine.js';
+import { BUILD_LABEL } from '../../shared/version.js';
+
+const $ = id => document.getElementById(id);
+const pct = (v) => `${Math.round(v * 100)}%`;
+
+/** A stat row, coloured by whether the number is a good thing to be high.
+ *  `dir` is +1 when more is better, -1 when less is (reload), 0 for neutral. */
+function row(label, value, dir = 0, base = 1) {
+  const cls = dir === 0 || value === base ? ''
+    : (value > base) === (dir > 0) ? ' class="good"' : ' class="bad"';
+  return `<dt>${label}</dt><dd${cls}>${typeof value === 'number' ? value : value}</dd>`;
+}
+
+/* ---------- guns ---------- */
+
+/* Editorial, and deliberately here rather than in the engine: `blurb` says what
+   a gun *is* in one line and belongs next to the stats it describes, wherever
+   they are shown. This says how to *play* it, which is a briefing's job and
+   nobody else's. */
+const HOW = {
+  standard: 'No weakness and no speciality. What everything else is measured against, and what a mount reverts to if you would rather spend the scrap on the tree than on a refit.',
+  auto: 'Twice the rate for a little over half the damage, so it wins where targets are many and thin and loses to anything armoured. Heat is the real limit: fire it in bursts.',
+  rail: 'Two pierces as standard, so it is the one gun that is <em>better</em> against a packed column than a loose one — a single round can cut two or three craft out of a rank. Hardened hulls take extra from it.',
+  mortar: 'A lobbed round cannot hit anything for the first stretch of its flight, which is exactly what lets it reach the back of a column while the front rank is still in the way. Useless point-blank.',
+  ion: 'Shield plating deflects rounds that arrive head-on; ion is the one type that ignores that outright, so it answers a shielded rank without having to flank it.',
+};
+
+const gunHost = $('guns');
+for (const type of E.GUN_KEYS) {
+  const G = E.GUN_TYPES[type];
+  const rp = E.GUN_RP[type];
+  const unlock = E.RESEARCH_UNLOCK[type];
+
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML =
+    `<h3 style="color:${G.col}"><i class="swatch" style="background:${G.col}"></i>${G.name}</h3>` +
+    `<div class="why">${G.blurb}</div>` +
+    `<dl class="stats">` +
+      row('Damage', G.dmg.toFixed(2), +1) +
+      row('Reload', G.rate.toFixed(2), -1) +
+      row('Round speed', G.spd.toFixed(2), +1) +
+      row('Pierce', G.pierce, +1, 0) +
+      (G.arc ? row('Arms after', `${E.MORTAR_ARM}px`) : '') +
+      row('Refit cost', type === 'standard' ? 'free' : `${G.refitBase} scrap`) +
+    `</dl>` +
+    `<div class="note">${HOW[type] || ''}</div>` +
+    `<div class="tag">${type === 'standard'
+      ? `Marks open at wave ${unlock}`
+      : `Wave ${unlock} · ${rp} RP`}</div>`;
+  gunHost.appendChild(el);
+}
+
+/* ---------- power-ups ---------- */
+
+/* How often each one comes up, straight out of the drop table rather than
+   stated — the table is deliberately not uniform (freeze and shield are the
+   strong ones and are rarer), and a briefing that rounded that off to "random"
+   would be hiding the one thing worth knowing about it. */
+const weights = {};
+for (const k of E.DROP_TABLE) weights[k] = (weights[k] || 0) + 1;
+
+$('dropLede').innerHTML =
+  `A destroyed carrier drops one about <b>${pct(E.DROP_CHANCE)}</b> of the time. ` +
+  `A crate can be caught by standing under it, or prised open in the air — that takes ` +
+  `<b>${E.PICKUP_HITS} rounds</b>, and every one of them is spent, so an effect claimed ` +
+  `mid-air is paid for in ammunition rather than in position. ` +
+  `Drops can be switched off entirely in the pause menu.`;
+
+const HOW_PU = {
+  spread: 'Three rounds where there was one. Best on a wide rank; the fan wastes most of itself on a single target.',
+  rapid: 'The same rounds, sooner. Watch the heat — a shorter cooldown fills the gauge faster than the cooling copes with.',
+  pierce: 'Rounds carry on through what they kill. Worth most when the column is packed nose to tail.',
+  freeze: 'The column stops dead. Short, and the only power-up that buys time rather than damage: use it to reposition or to work on the head.',
+  bomb: 'Goes off where the crate was, not where you are, so shooting one open over a crowded rank is the point of it.',
+  ricochet: 'Extra bounces off the side walls, which turns the walls into a way to reach a rank you have no line on.',
+  shield: 'Eats one breach outright. The only thing in the game that can undo the mistake that ends a run — and they stack up to three.',
+};
+
+const puHost = $('powerups');
+const total = E.DROP_TABLE.length;
+for (const kind of E.POWERUP_KEYS) {
+  const P = E.POWERUPS[kind];
+  const share = weights[kind] || 0;
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML =
+    `<h3 style="color:${P.col}"><i class="swatch" style="background:${P.col}"></i>${P.name}</h3>` +
+    `<div class="why">${P.blurb}</div>` +
+    `<dl class="stats">` +
+      row('Lasts', P.dur ? `${P.dur}s` : 'instant') +
+      row('Share of drops', share ? pct(share / total) : 'never') +
+    `</dl>` +
+    `<div class="note">${HOW_PU[kind] || ''}</div>`;
+  puHost.appendChild(el);
+}
+
+$('foot').textContent =
+  `${BUILD_LABEL} — every number on this page is read from the engine, not written here.`;
+</script>

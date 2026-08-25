@@ -16,10 +16,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { bootAndStart } from '../../tools/render-harness.mjs';
+import { JSDOM } from 'jsdom';
+import { inlineGame } from '../../tools/inline.mjs';
 
 // fileURLToPath, not .pathname — on Windows the latter yields a leading slash
 // and percent-encoded spaces, which fs rejects.
 const SHELL = fileURLToPath(new URL('./flak-battery.html', import.meta.url));
+
+/** Open the research screen through the header verb it now lives on. */
+function openResearch(doc, w) {
+  const btn = doc.getElementById('shopResearch');
+  assert.notEqual(btn.style.display, 'none', 'the Research verb is offered');
+  if (!/battery/i.test(btn.textContent)) btn.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+}
 
 /** Open mount `i`'s detail view. The shop opens on the emplacement overview,
  *  whose cards are the gun picker — the per-gun tabs only exist once you are
@@ -280,8 +289,8 @@ test('a first-run shop opens with three rows, grouped, and no Research tab', asy
   assert.deepEqual(named, { Ammunition: ['Damage', 'Calibre'], Thermal: ['Cooling'] });
 
   // no second currency on screen before the first one is understood
-  const tabs = [...doc.querySelectorAll('#shopTabs .tab')].map(t => t.textContent);
-  assert.ok(!tabs.some(t => /research/i.test(t)), 'Research stays hidden on run 1');
+  assert.equal(doc.getElementById('shopResearch').style.display, 'none',
+    'the Research verb stays hidden on run 1');
 
   // and the two rules the economy hangs on are stated
   assert.notEqual(doc.getElementById('shopRule').style.display, 'none');
@@ -345,28 +354,106 @@ test('a locked branch cannot be bought through the shop', async () => {
   assert.equal(E.buyUpgrade(world, 0, 'convergence'), false);
 });
 
-test('the research tab renders alongside the mount tabs and the add slot', async () => {
+test('Research sits on the title line with Next Wave, and toggles', async () => {
   const g = experienced(await bootAndStart(SHELL));
   const { world, window: w } = g;
   const doc = w.document;
   world.scrap = 1e6;
   world.shopOpen = true;
   g.frame(1000);
-  /* On the overview the only tab is Research — the gun buttons were a second
-     copy of the cards below them. Research is not a gun, so it stays. */
-  let tabs = doc.querySelectorAll('#shopTabs .tab');
-  assert.equal(tabs.length, 1, 'the overview offers Research and nothing else');
-  assert.match(tabs[0].textContent, /research/i);
 
-  tabs[0].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-  assert.ok(doc.querySelectorAll('#battery .branch').length > 0, 'the research tab has cards');
+  const head = doc.getElementById('shopHead');
+  const research = doc.getElementById('shopResearch');
+  assert.equal(research.parentElement, head, 'Research is a verb on the header');
+  assert.equal(doc.getElementById('shopGo').parentElement, head, 'and so is Next Wave');
+  assert.equal(doc.getElementById('shopScrap'), null,
+    'the scrap readout is gone — the HUD already states it');
 
-  // in a mount's detail view the gun tabs are back: All, per mount, +, Research
+  /* On the overview there are no tabs at all now: the gun buttons were a second
+     copy of the cards below them, and Research left the strip for the header. */
+  assert.equal(doc.querySelectorAll('#shopTabs .tab').length, 0);
+
+  research.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.ok(doc.querySelectorAll('#battery .branch').length > 0, 'it opened the research screen');
+  assert.match(research.textContent, /battery/i, 'and the same button is the way back');
+  research.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.match(research.textContent, /research/i, 'which returns to the battery');
+
+  // in a mount's detail view the gun tabs are back: All, a tab per mount, +
   openMount(doc, w, 0);
-  tabs = doc.querySelectorAll('#shopTabs .tab');
-  assert.equal(tabs.length, world.battery.guns.length + 3,
-    'All, a tab per mount, the add slot, and research');
-  assert.deepEqual(g.errors, [], 'the research tab threw');
+  assert.equal(doc.querySelectorAll('#shopTabs .tab').length, world.battery.guns.length + 2,
+    'All, a tab per mount, and the add slot');
+  assert.deepEqual(g.errors, [], 'the shop header threw');
+});
+
+test('the upgrade screen is one column of sections, not a two-up grid', async () => {
+  const g = experienced(await bootAndStart(SHELL));
+  const { world, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.shopOpen = true;
+  g.frame(1000);
+  openMount(doc, w, 0);
+
+  /* Reported at v43: "optics and barrel are side by side and squished". They
+     were — the grouped sections span the full width while everything ungrouped
+     dropped into half-width grid cells beside whatever followed it. */
+  const branches = doc.getElementById('branches');
+  const style = w.getComputedStyle(branches);
+  assert.equal(style.display, 'flex', 'the upgrade side is a column');
+  assert.equal(style.flexDirection, 'column');
+  // the research side keeps its grid — cards there compare well side by side
+  openResearch(doc, w);
+  assert.equal(w.getComputedStyle(doc.getElementById('battery')).display, 'grid');
+  assert.deepEqual(g.errors, [], 'the upgrade column threw');
+});
+
+test('the research screen is a ladder: what is open, then what opens when', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.scrap = 1e6;
+  world.research.points = 1e6;
+
+  /* Out and back in, so the screen is rebuilt against the world as it is now —
+     the research view does not repaint itself while it is open, and this test
+     changes the best wave under it between checks. */
+  const showLadder = () => {
+    world.shopOpen = true;
+    g.frame(1000 + Math.random());
+    const btn = doc.getElementById('shopResearch');
+    if (/battery/i.test(btn.textContent)) btn.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    openResearch(doc, w);
+  };
+
+  // before the first rung: nothing to buy, and it says what it is waiting for
+  world.research.best = E.RESEARCH_WAVE - 1;
+  showLadder();
+  assert.equal(doc.querySelectorAll('#battery .buy:not(:disabled)').length, 0,
+    'nothing is purchasable before wave ' + E.RESEARCH_WAVE);
+  assert.match(doc.getElementById('battery').textContent,
+    new RegExp(`opens at wave ${E.RESEARCH_WAVE}`, 'i'));
+
+  // on the first rung: the standard cannon, and everything above it named and dated
+  world.research.best = E.RESEARCH_WAVE;
+  showLadder();
+  const text = doc.getElementById('battery').textContent;
+  assert.match(text, /Cannon/, 'the gun you already own is the first rung');
+  assert.ok(doc.querySelectorAll('#battery .buy:not(:disabled)').length > 0,
+    'and something is finally buyable');
+  for (const [key, wave] of Object.entries(E.RESEARCH_UNLOCK)) {
+    if (wave <= E.RESEARCH_WAVE) continue;
+    assert.match(text, new RegExp(`Opens at wave ${wave}`, 'i'),
+      `${key} is shown as a locked rung at wave ${wave}`);
+  }
+  assert.equal(doc.querySelectorAll('#battery .branch.locked').length,
+    Object.keys(E.RESEARCH_UNLOCK).length - 1, 'one locked card per rung above this one');
+
+  // and at the top of the ladder nothing is locked and there is nothing to promise
+  world.research.best = Math.max(...Object.values(E.RESEARCH_UNLOCK));
+  showLadder();
+  assert.equal(doc.querySelectorAll('#battery .branch.locked').length, 0, 'every rung is open');
+  assert.deepEqual(g.errors, [], 'the research ladder threw');
 });
 
 test('research is bought on the research tab and gates the deep tiers', async () => {
@@ -379,7 +466,6 @@ test('research is bought on the research tab and gates the deep tiers', async ()
 
   /* Tier 4 must read as "go and research this", not as "maxed" — those are a
      signpost and a dead end, and the whole feature fails if they look alike. */
-  const tabs = () => doc.querySelectorAll('#shopTabs .tab');
   const renderTab = (i) => openMount(doc, w, i);
 
   for (let i = 0; i < E.FREE_TIER; i++) E.buyUpgrade(world, 0, 'damage');
@@ -392,7 +478,7 @@ test('research is bought on the research tab and gates the deep tiers', async ()
 
   // now buy the depth on the research tab, through the real button
   world.research.points = 1e6;
-  tabs()[tabs().length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  openResearch(doc, w);
   const depthCard = [...doc.querySelectorAll('#battery .branch')]
     .find(el => /Damage depth/.test(el.querySelector('h3')?.textContent || ''));
   assert.ok(depthCard, 'the research tab offers branch depth');
@@ -424,8 +510,7 @@ test('a gun type is learned with research points, not scrap', async () => {
   world.shopOpen = true;
   g.frame(1000);
 
-  const tabs = doc.querySelectorAll('#shopTabs .tab');
-  tabs[tabs.length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  openResearch(doc, w);
   const card = [...doc.querySelectorAll('#battery .branch')]
     .find(el => /Railgun/.test(el.querySelector('h3')?.textContent || ''));
   assert.ok(card, 'the research tab lists the railgun');
@@ -433,7 +518,7 @@ test('a gun type is learned with research points, not scrap', async () => {
   assert.equal(card.querySelector('button').disabled, true, 'scrap does not buy research');
 
   world.research.points = E.GUN_RP.rail;
-  tabs[tabs.length - 1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  g.frame(1100);
   const live = [...doc.querySelectorAll('#battery .branch')]
     .find(el => /Railgun/.test(el.querySelector('h3')?.textContent || ''));
   live.querySelector('button').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
@@ -582,14 +667,39 @@ test('a buy row previews what the next tier is worth, and stops at the top', asy
   const rowFor = (name) => [...doc.querySelectorAll('#branches .branch')]
     .find(el => el.querySelector('h3')?.textContent === name);
 
-  /* The numbers come off UPGRADES rather than being restated in the shell, so
-     the assertion is that the row shows *this branch's* tier values — a row
-     wired to the wrong branch would still render something plausible. */
-  const damage = rowFor('Damage');
-  const [t0, t1] = [E.UPGRADES.damage.tiers[0].dmg, E.UPGRADES.damage.tiers[1].dmg];
-  const text = damage.querySelector('.preview').textContent.replace(/\s+/g, ' ');
-  assert.match(text, new RegExp(`Damage ${t0} → ${t1}`),
-    `the Damage row previews ${t0} → ${t1}`);
+  /* A preview must read as the same number the Stats block above it reads, or
+     it is answering a different question than the one being asked. Reported at
+     v43 as "the upgrade preview doesn't match after researching cannon": the
+     preview printed raw tier multipliers while the block printed the resolved
+     gun, and the two agree only on an unmarked standard cannon.
+
+     So the assertion is the *relationship*, checked on a gun where the two
+     used to diverge — a researched Railgun, whose type multiplies damage. */
+  const statOf = (name) => [...doc.querySelectorAll('.statBlock .stat')]
+    .find(el => el.querySelector('dt').textContent === name)
+    .querySelector('dd').textContent.trim();
+  const previewOf = (branch, stat) => {
+    const text = rowFor(branch).querySelector('.preview').textContent.replace(/\s+/g, ' ');
+    const m = text.match(new RegExp(`${stat} ([^ ]+) → ([^ ]+)`));
+    assert.ok(m, `${branch} previews ${stat} (got "${text}")`);
+    return m;
+  };
+
+  const [, dmgNow, dmgNext] = previewOf('Damage', 'Damage');
+  assert.equal(dmgNow, statOf('Damage'), 'the preview starts from what the gun actually does');
+  assert.ok(parseFloat(dmgNext) > parseFloat(dmgNow), 'and the next tier is an improvement');
+
+  // now the case that was broken: a gun type whose own multiplier is not 1
+  world.research.points = 1e6;
+  E.researchGun(world, 'rail');
+  E.setGunType(world, 0, 'rail', { free: true });
+  openMount(doc, w, 0);
+  const [, railNow, railNext] = previewOf('Damage', 'Damage');
+  assert.equal(railNow, statOf('Damage'),
+    'the preview follows the gun through a refit rather than quoting the branch table');
+  assert.ok(parseFloat(railNow) > parseFloat(dmgNow),
+    'and a Railgun really does hit harder, so this is not the same number twice');
+  assert.ok(parseFloat(railNext) > parseFloat(railNow));
 
   // Munitions moves two stats — the documented exception — and must show both
   const munitions = rowFor('Munitions').querySelector('.preview').textContent;
@@ -602,4 +712,51 @@ test('a buy row previews what the next tier is worth, and stops at the top', asy
   assert.equal(rowFor('Damage').querySelector('.preview'), null,
     'a maxed branch previews nothing rather than repeating its last tier');
   assert.deepEqual(g.errors, [], 'the buy-row preview threw');
+});
+
+/* The briefing page is not a game shell — no canvas, no loop — so it boots here
+   directly rather than through the render harness. It still needs the harness's
+   one trick: jsdom does not run `type="module"` scripts, and `inlineGame` has
+   already flattened the imports away, so running it as a classic script is
+   equivalent. */
+test('the briefing lists every gun and every power-up, from engine data', async () => {
+  const path = fileURLToPath(new URL('./briefing.html', import.meta.url));
+  const html = inlineGame(path).replace('<script type="module">', '<script>');
+  const errors = [];
+  const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'http://localhost/g/b.html' });
+  dom.virtualConsole.on('jsdomError', e => errors.push(e.message));
+  const doc = dom.window.document;
+  const E = await import('./engine.js');
+
+  assert.deepEqual(errors, [], 'the briefing threw while building itself');
+  assert.equal(doc.querySelectorAll('#guns .card').length, E.GUN_KEYS.length,
+    'one card per gun type, including the one you start with');
+  assert.equal(doc.querySelectorAll('#powerups .card').length, E.POWERUP_KEYS.length,
+    'one card per power-up');
+
+  /* The point of the page is that it cannot drift from the game, so the
+     assertion is that the numbers on it *are* the engine's — a page with the
+     stats typed into it would pass a "does it list five guns" check forever. */
+  const guns = doc.getElementById('guns').textContent.replace(/\s+/g, ' ');
+  for (const type of E.GUN_KEYS) {
+    const G = E.GUN_TYPES[type];
+    assert.ok(guns.includes(G.name), `${type} is named`);
+    assert.ok(guns.includes(G.blurb), `${type} carries the engine's own blurb`);
+    assert.ok(guns.includes(G.dmg.toFixed(2)), `${type} quotes its real damage`);
+    // and the wave it unlocks on, which is the ladder this page has to agree with
+    assert.ok(guns.includes(String(E.RESEARCH_UNLOCK[type])), `${type} states its rung`);
+  }
+
+  const pus = doc.getElementById('powerups').textContent.replace(/\s+/g, ' ');
+  for (const kind of E.POWERUP_KEYS) {
+    const P = E.POWERUPS[kind];
+    assert.ok(pus.includes(P.name), `${kind} is named`);
+    assert.ok(pus.includes(P.blurb), `${kind} carries its blurb`);
+    if (P.dur) assert.ok(pus.includes(`${P.dur}s`), `${kind} states how long it lasts`);
+  }
+
+  // the drop economy, in the words of the constants that run it
+  const lede = doc.getElementById('dropLede').textContent;
+  assert.ok(lede.includes(`${Math.round(E.DROP_CHANCE * 100)}%`), 'the drop rate is the real one');
+  assert.ok(lede.includes(String(E.PICKUP_HITS)), 'and so is the number of rounds to prise one open');
 });

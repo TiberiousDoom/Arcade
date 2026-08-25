@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-23 (v43 — round 14, both games)
+Last updated: 2026-08-25 (v44 — round 15, both games)
 
 ## Read this first
 
@@ -20,7 +20,57 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**550 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **63 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**556 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **67 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 15 feedback — v44 (2026-08-25)
+
+Eleven items and three questions. Two of the questions turned into a page.
+
+**Flak Battery**
+- **The upgrade preview was quoting the wrong numbers.** The Stats block
+  resolved the gun; the branch rows printed raw tier tables. They agree only on
+  an unmarked standard cannon, which is why it took a Railgun to notice. One
+  `statDisplay` now feeds both.
+- **Research is a ladder**: nothing before wave 10, then a rung every ten waves
+  (`RESEARCH_UNLOCK`) — standard cannon, Autocannon, Convergence, Railgun,
+  branch depth, Mortar, Ion. Gated on the best wave ever reached, so a veteran
+  keeps what they earned. Locked rungs are shown, dated, rather than hidden.
+- **The shop header is one line**: title, Research, Next Wave. The scrap
+  readout is gone (the HUD has it) and Research left the tab strip.
+- **The upgrade screen is a column**, not a two-up grid — the reported "optics
+  and barrel side by side and squished".
+- **A briefing page** ([briefing.html](games/flak-battery/briefing.html)),
+  linked from the pause menu: every gun and every power-up, with numbers read
+  from the engine at load rather than typed in.
+- **The swarm escort starts at wave 30** (was 50), with the density ramp
+  following it to wave 60.
+
+**Choke Point**
+- **Circuit everywhere**, never route. The HUD was the only holdout.
+- **The difficulty is in the HUD**, which is where it went after leaving the
+  pause menu last round.
+
+**Answered**
+- *Starting swarm quantity and rate*: 6 motes at wave 30, climbing linearly to
+  26 at wave 60 (about two more every three waves), then health from 2 upward,
+  +1 every five waves. All on the briefing's own terms: `SWARM_MIN`,
+  `SWARM_MAX`, `SWARM_HP_EVERY`.
+- *Power-ups and gun differences*: that is the briefing page.
+
+### Still open after this round
+
+- **Incentives to replay a circuit on Medium and Hard** — asked at round 15,
+  designed and agreed since, **not built**. The plan is
+  [docs/choke-point-replay-plan.md](docs/choke-point-replay-plan.md): a Sever
+  tower class earned on Medium, a Chain armory track on Hard, a Veterancy track
+  and new circuits on a clean sweep of all three difficulties. Pick it up with
+  the next round of feedback; the file says what order to build in and what it
+  costs.
+- The research ladder is a large balance change made without a run behind it:
+  Ion at wave 70 is a long way out, and whether the rungs land in the right
+  order is a phone question.
+- The briefing's tactical prose is hand-written (the numbers are not). It can
+  still go stale in a way the numbers cannot.
 
 ## Round 14 feedback — v43 (2026-08-23)
 
