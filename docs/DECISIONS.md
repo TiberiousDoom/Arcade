@@ -1850,3 +1850,122 @@ The HUD also gained the difficulty. With an armory that grows between runs,
 "wave 14" means something different on Easy than on Hard, and after difficulty
 left the pause menu (v43) there was nowhere on screen that said which one you
 were playing.
+
+
+## 2026-08-27 — Looking at a saved run destroyed it
+
+The worst kind of save bug, reported at v45: start a run, back out, come back to
+a banner offering Continue, back out again without taking it — and the run was
+gone. All three games with saves had it.
+
+`saveNow` ran on the way out of the page and asked one question where there
+were two:
+
+```js
+if (!started || world.over) { clearRun(GAME_ID); return; }
+```
+
+"No run has started in this page instance" was being read as "there is nothing
+worth keeping". A page that has not started a run knows nothing about what is
+stored and must leave it alone; only a run that is genuinely *over* is one to
+clear. The two are separate branches now, and each game's resume suite has a
+regression test that fails on the old code — verified by putting the old line
+back rather than by assuming.
+
+## 2026-08-27 — Damage is a result, not a purchase
+
+Flak Battery's Damage branch was the obvious first buy on every gun, every run,
+at every tier: a row that says "more damage" against seven rows that say
+something conditional wins every time, so the tree's interesting choices were
+all being made *after* the boring one had been paid for.
+
+It is gone. Damage now falls out of what the round is made of — Calibre (how
+much of it there is) and Velocity (how fast it arrives), as
+`roundDamage(shotR, shotSpeed)`, exponents chosen so a fully upgraded gun lands
+within 3% of the ×3.1 the branch used to top out at. Removing a branch must be a
+change to *what you buy*, never a quiet change to how hard a maxed gun hits, and
+a test pins that.
+
+The shop shows **DPS** rather than damage per round, with the reload and the
+barrels already folded in — what a mount is worth is what it puts downrange over
+time. Heat is deliberately excluded from it: how long you can keep firing is
+what the three thermal rows are for, and one number answering two questions
+answers both badly.
+
+Two consequences worth knowing: the opening three branches are now Calibre,
+Velocity and Cooling (Velocity moved to wave 1 precisely because it is a damage
+lever), and the one-stat-per-branch invariant gained a second documented
+exception — Calibre and Velocity each move `dmg` as a consequence.
+
+## 2026-08-27 — One lead marker per round speed
+
+The intercept marker marched the *fastest* gun's round, so a battery holding a
+Railgun (×1.7) and a Mortar (×0.75) was shown a single crosshair that only one
+mount would ever honour. Reported as confusing; it was simply wrong for most of
+the guns.
+
+It reports one intercept per distinct round speed now, and draws the spread —
+the commonest speed keeps the full crosshair, the others get smaller rings in
+their gun's colour, joined by a dashed line. A uniform battery looks exactly as
+it always did.
+
+Two details that were bugs waiting to happen: the per-gun speed has to include
+`gunStats().spd` (reading only `stats()` made every gun report 520 and collapse
+back into one group — the bug wearing the fix's clothes), and an arcing gun's
+marker skips everything inside `MORTAR_ARM`, since that band is precisely what
+a mortar cannot hit and the reason to own one.
+
+Marched by *distance* rather than by time, which is what makes several speeds
+affordable: every round flies the same ray, so the geometry is walked once and
+each speed reaches a given point at its own `d / speed`.
+
+## 2026-08-27 — The escort is a cloud, and cheap to draw
+
+`SWARM_MIN`/`SWARM_MAX` quadrupled (24 rising to 104) and `SWARM_LAG` tightened
+from 24 to 14 — spread over the old lag, 104 motes would have been a 2500px
+queue trailing most of the column rather than a cloud you have to shoot a hole
+in.
+
+Drawing them as full `cube()`s cost **10.9ms a frame** in the harness, more than
+the entire rest of the board. A mote is five pixels across; the extrusion and
+the joining edges it was paying for are invisible at that size. One dark fill
+plus one cheap two-pass glow costs 2.2ms for the same 86 motes — same trade
+Choke Point's crowd mode makes, and the third time this project has learned that
+a quality drop nobody can see is a saving.
+
+## 2026-08-27 — What a harder circuit is for
+
+Built from [choke-point-replay-plan.md](choke-point-replay-plan.md), now
+deleted. Winning on Medium or Hard used to buy nothing but the next circuit at
+that difficulty — which a player had usually already opened on Easy.
+
+- **Sever** (a fourth tower class, earned on Medium) marks a target: it cannot
+  be healed, and takes `MARK_BRITTLE` more from everything else. It is the one
+  verb that answers both Patch (no need to out-damage the heal — stop it) and
+  Phase (`slowImmune`, so Coil's brittle bonus has never applied to it; a mark
+  is not a slow). At 3 damage a second it kills nothing on its own, which is
+  the right shape for a reward earned *after* learning the board.
+- **Chain** (an armory track, earned on Hard) forks every Nth shot to a second
+  target. Deterministic on a per-tower counter rather than a percentage,
+  because nothing else in this simulation calls `rand` — a per-shot roll would
+  make a run irreproducible against any change in how many shots get fired, and
+  a sub-percent proc is unattributable anyway. A counter is also fairer: a
+  percentage would hand Node three times the value of the same purchase simply
+  because it fires three times as often.
+- **Veterancy** (earned on a clean sweep) multiplies XP. It needs no new base
+  stat on any class, and it raises how fast you reach the ceiling rather than
+  the ceiling itself.
+- **Circuits 4 and 5**, earned by holding one circuit on all three
+  difficulties, continue the shortest-is-hardest ordering: a straight dash, and
+  one entering from the top edge so half the board is behind the spawn.
+
+Two rules held throughout, both learned from the v44 research ladder. The first
+reward is gated on **Medium, not Hard**, so most players discover the feature
+exists. And **everything locked is shown with its requirement on it** — a
+dimmed palette slot reading "Hold a circuit on Medium", dimmed armory rows
+naming what opens them. A reward nobody knows about incentivises nobody.
+
+The sweep gate is **additive**: circuits 1-3 keep the per-difficulty ladder
+exactly as it was. Requiring all three difficulties on the existing circuits
+would have stranded an Easy-only player on circuit 1 forever, taking
+progression away from the players who have the least of it.

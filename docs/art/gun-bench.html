@@ -80,7 +80,7 @@
 
 <div class="wrap">
   <header>
-    <div class="stamp"><span>Flak Battery</span><span>·</span><span>shop portraits</span><span>·</span><span>build <b>v40</b></span></div>
+    <div class="stamp"><span>Flak Battery</span><span>·</span><span>shop portraits</span><span>·</span><span>build <b>v44</b></span></div>
     <h1>Gun <span>Bench</span></h1>
     <p class="sub">The five gun portraits, drawn by the repo's own code — <code>shared/glow.js</code> and
     <code>drawCannonPortrait</code>, lifted verbatim. Change the elevation here before it changes in the game. The railgun keeps its own offset from the slider — it is a flat-trajectory gun.</p>
@@ -498,14 +498,19 @@ function scanlines(ctx, w, h, { gap = 3, strength = 0.28 } = {}) {
 
 
 const GUN_TYPES = {
-  standard: { name: 'Cannon',     rate: 1.0,  dmg: 1.0, pierce: 0, spd: 1.0,  col: '#c9a227', refitBase: 0 },
-  auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', refitBase: 120 },
-  rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', refitBase: 160 },
-  mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', refitBase: 200, arc: true },
+  standard: { name: 'Cannon',     rate: 1.0,  dmg: 1.0, pierce: 0, spd: 1.0,  col: '#c9a227', refitBase: 0,
+              blurb: 'The all-rounder every run starts with.' },
+  auto:     { name: 'Autocannon', rate: 0.5,  dmg: 0.6, pierce: 0, spd: 1.0,  col: '#8dbf4a', refitBase: 120,
+              blurb: 'Fast and light. For crowded rows.' },
+  rail:     { name: 'Railgun',    rate: 1.9,  dmg: 2.4, pierce: 2, spd: 1.7,  col: '#6fb7e8', refitBase: 160,
+              blurb: 'Slow, pierces, best against hardened hulls.' },
+  mortar:   { name: 'Mortar',     rate: 1.6,  dmg: 1.8, pierce: 0, spd: 0.75, col: '#e0503c', refitBase: 200, arc: true,
+              blurb: 'Arms late, so it reaches over the front rank.' },
   // The one gun `shielded` can't deflect — the collision loop checks the
   // shot's `gun` field for the literal string 'ion' before ever calling
   // isDeflected, not a stat on this table.
-  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', refitBase: 260 },
+  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', refitBase: 260,
+              blurb: 'Ignores shield plating.' },
 };
 
 
@@ -516,7 +521,19 @@ const E = { GUN_TYPES, BARREL_OFFSETS };
 const PORTRAIT_W = 420, PORTRAIT_H = 372, PORTRAIT_LIFT = 182;
 let PORTRAIT_ANGLE = -1.05;
 
+/** How many barrels the *portrait* draws, however many the mount has.
+ *
+ *  Two. Asked for at v45, and it is a drawing problem rather than a data one:
+ *  the portrait is a side elevation, so flanking barrels stack vertically in
+ *  it and a third one lands where the eye reads the gun's own silhouette —
+ *  three parallel tubes at portrait scale is a bundle, not a gun. The board art
+ *  draws every barrel a mount really has (`BARREL_OFFSETS` there is unclamped),
+ *  which is where the count matters, because that is where the rounds come out.
+ *  The card's text still says "3 barrels", so nothing is hidden — only undrawn. */
+const PORTRAIT_MAX_BARRELS = 2;
+
 function drawCannonPortrait(g, type, barrels = 1) {
+  barrels = Math.min(barrels, PORTRAIT_MAX_BARRELS);
   const G = E.GUN_TYPES[type];
   const col = G.col;
   const W2 = 420, H2 = 190;

@@ -37,6 +37,17 @@
      makeFit's `extra` hook so the board never hides behind it. */
   #controls{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;
     padding-bottom:env(safe-area-inset-bottom,0px)}
+  /* Four classes since v46, and four `min-width:92px` buttons do not fit one
+     phone row. Two by two rather than a wrapped row of unequal widths: a 3+1
+     wrap leaves one button stretched across the width, which reads as more
+     important than the other three. */
+  @media (max-width:460px){
+    .pick{flex:1 1 calc(50% - 4px);min-width:0}
+  }
+  /* A class that has not been earned. Still on the strip — that is the point —
+     but plainly not something you can place. */
+  .pick.locked{opacity:.42;border-style:dashed}
+  .pick.locked .cost{color:var(--dim)}
   /* Sized for thumbs, not cursors — these were reported as too small to hit
      reliably on a phone. Keep min-height at or above ~64px. */
   .pick{
@@ -214,6 +225,19 @@
   .armTable .cell.spec{border-color:var(--accent)}
   .armTable .cell.weak{border-color:#5c3a33}
   .armTable .cell.broke{opacity:.5;cursor:default}
+  /* Earned rows and columns, before they are earned. Dashed and dim, with the
+     requirement on the row head — the same treatment Flak Battery gives a
+     locked research rung, and for the same reason: this is the advertisement
+     for playing Medium and Hard, so it must be legible rather than absent. */
+  .armTable .rh.locked,
+  .armTable .ch.locked{opacity:.55}
+  .armTable .rh.locked em{display:block;font-style:normal;font-size:8px;
+    letter-spacing:.06em;color:var(--accent-hot);opacity:.9;line-height:1.3}
+  .armTable .cell.locked{
+    display:flex;align-items:center;justify-content:center;
+    border:1px dashed var(--line);border-radius:var(--btn-radius);
+    background:#0c1a20;color:var(--dim);min-height:52px;cursor:default;
+  }
   .armTable .cell:disabled{cursor:default}
   .armTable .px{font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.04em;color:var(--accent-hot)}
   .armTable .cell.broke .px{color:var(--dim)}
@@ -580,6 +604,18 @@ const fx = {
     if (!reduce) beams.push({ x1: x, y1: y, type: 'muzzle', col: E.TOWER_TYPES[type].col, life: .12, max: .12 });
     audio.fire();
   },
+  /* A shot forking to a second target. A hard, straight, white-cored bolt —
+     deliberately unlike Coil's bowed arc and unlike Node's thin beam, because
+     it is neither: it is the *same* shot arriving somewhere it was not aimed,
+     and the eye has to be able to follow it from the first target to the
+     second to understand what just happened. */
+  chain(x, y, target, type) {
+    if (!reduce) {
+      const p = E.enemyPos(world, target);
+      beams.push({ x1: x, y1: y, x2: p.x, y2: p.y, type: 'fork',
+                   col: E.TOWER_TYPES[type].col, life: .16, max: .16 });
+    }
+  },
   // and the round arriving: the shockwave, on the frame the damage lands
   impact(x, y, type) {
     if (!reduce) beams.push({ x2: x, y2: y, type: 'blast', col: E.TOWER_TYPES[type].col, life: .26, max: .26 });
@@ -609,6 +645,9 @@ const world = E.createWorld({
   classUpgrades: readArmory(), difficulty: startDifficulty,
   // start on the furthest circuit earned at this difficulty, not on route 1
   routeIndex: nextRoute(startDifficulty),
+  // what this player has earned: Sever, and the two earned armory tracks. A
+  // projection of `progress`, never stored on the world's own save.
+  progress,
 });
 
 let W = world.L.W, H = world.L.H;
@@ -639,7 +678,12 @@ for (const key of E.TOWER_KEYS) {
   // `syncPalette` rather than baked in here
   b.innerHTML = `<b style="color:${T.col}">${T.name}</b><span class="cost">${T.cost}</span><span class="blurb">${T.blurb}</span>`;
   b.querySelector('.cost').id = `cost_${key}`;
-  b.addEventListener('click', () => { selected = key; syncPalette(); });
+  b.addEventListener('click', () => {
+    // a class you have not earned cannot be selected, so a tap cannot leave the
+    // palette pointing at something no cell will accept
+    if (!E.classUnlocked(progress, key)) return;
+    selected = key; syncPalette();
+  });
   controls.append(b);
   pickBtns[key] = b;
 }
@@ -759,6 +803,22 @@ function syncPalette() {
   for (const key of E.TOWER_KEYS) {
     const b = pickBtns[key];
     b.classList.toggle('on', key === selected);
+    /* An unearned class stays on the strip, dimmed, saying what would earn it.
+       Hiding it would be the easier build and the worse one: a reward nobody
+       knows exists incentivises nobody, which is the whole reason these rewards
+       are gated on a harder win in the first place. */
+    if (!E.classUnlocked(progress, key)) {
+      const span = $(`cost_${key}`);
+      if (span.textContent !== 'Locked') span.textContent = 'Locked';
+      const blurb = b.querySelector('.blurb');
+      const want = CLASS_LOCK[key] || 'Not yet earned';
+      if (blurb.textContent !== want) blurb.textContent = want;
+      b.classList.add('locked');
+      b.classList.remove('on', 'broke');
+      b.disabled = false;                 // tappable, so its tooltip is reachable
+      continue;
+    }
+    b.classList.remove('locked');
     /* The price shown is what this build would actually cost on the board as
        it stands, premium included — a palette quoting the list price while the
        purse is checked against something dearer is a palette that lies. */
@@ -796,7 +856,18 @@ function syncPalette() {
 
 /* ---------- the armory ---------- */
 
-const TRACK_LABEL = { dmg: 'Damage', rate: 'Fire rate', range: 'Range', splash: 'Splash' };
+const TRACK_LABEL = {
+  dmg: 'Damage', rate: 'Fire rate', range: 'Range', splash: 'Splash',
+  chain: 'Chain', veterancy: 'Veterancy',
+};
+/* What a locked row is waiting for, in the words a player can act on. Shown
+   rather than hidden, exactly like Flak Battery's locked research rungs: a
+   reward nobody knows about incentivises nobody. */
+const TRACK_LOCK = {
+  chain: 'Hold a circuit on Hard',
+  veterancy: 'Hold one circuit on all three',
+};
+const CLASS_LOCK = { sever: 'Hold a circuit on Medium' };
 
 /* A grid: one column per class, one row per track, and the buy button is the
    cell. It was three stacked per-class cards, which meant comparing what a
@@ -820,14 +891,23 @@ function renderShop() {
   table.insertAdjacentHTML('beforeend', '<div class="corner"></div>');
   for (const type of E.TOWER_KEYS) {
     const T = E.TOWER_TYPES[type];
+    const open = E.classUnlocked(progress, type);
     table.insertAdjacentHTML('beforeend',
-      `<div class="ch" style="color:${T.col};border-color:${T.col}">${T.name}</div>`);
+      `<div class="ch${open ? '' : ' locked'}" style="color:${T.col};border-color:${T.col}">${T.name}</div>`);
   }
 
   for (const track of E.CLASS_TRACKS) {
-    table.insertAdjacentHTML('beforeend', `<div class="rh">${TRACK_LABEL[track]}</div>`);
+    const openTrack = E.trackUnlocked(progress, track);
+    table.insertAdjacentHTML('beforeend',
+      `<div class="rh${openTrack ? '' : ' locked'}">${TRACK_LABEL[track]}` +
+      (openTrack ? '' : `<em>${TRACK_LOCK[track] || 'Locked'}</em>`) + `</div>`);
     for (const type of E.TOWER_KEYS) {
       const T = E.TOWER_TYPES[type];
+      if (!openTrack) {
+        // a row you have not earned: visible, and saying what earns it
+        table.insertAdjacentHTML('beforeend', `<div class="cell locked">—</div>`);
+        continue;
+      }
       const have = world.classUpgrades[type][track];
       const cost = E.classCost(type, track, have);
       const maxed = cost === null;
@@ -1013,6 +1093,7 @@ for (const key of E.TOWER_KEYS) {
     // you pick what to save for. Only the *drag* is gated on affording it,
     // since a drag that cannot end in a build is a dead gesture.
     selected = key; syncPalette();
+    if (!E.classUnlocked(progress, key)) return;
     if (world.components < E.buildCost(world, key)) return;
     dragType = key;
     hoverCell = null;
@@ -1171,6 +1252,8 @@ const pause = makeMenu({
     'Anything a Coil slows takes more damage from everything else.',
     'Towers level by fighting. ⚒ upgrades a whole class, and keeps between runs.',
     'Each tower built makes the next one dearer — a crowded board is a dear one.',
+    'Sever marks a target: it cannot be healed, and everything else hits it harder.',
+    'Holding a circuit on Medium and Hard earns a class and two armory tracks.',
     'Reach the win wave to take the circuit and open the next. Pick either from Select circuit.',
     'Keyboard: 1/2/3 pick, Enter starts.',
   ],
@@ -1253,15 +1336,29 @@ contBtnEl.addEventListener('click', () => {
 function onVictory() {
   world.justWon = false;
   world.running = false;
+  // asked *before* the win is recorded: it answers "what would this open"
+  const earned = E.rewardsFor(progress, world.difficulty, world.routeIndex);
   const opened = E.recordWin(progress, world.difficulty, world.routeIndex);
   writeProgress(progress);
   clearRun(GAME_ID);                 // a won run is not one to come back to
   submit(GAME_ID, world.score, `Won · ${E.DIFFICULTIES[world.difficulty].name}`);
   syncBest();
 
+  /* What this win *earned*, worked out before the win is banked — see
+     `rewardsFor`. Named on the banner rather than left to be discovered in the
+     armory three runs later: the reward for a harder circuit is the whole
+     reason to play one, so the moment it lands is the moment to say so. */
+  E.syncUnlocks(world, progress);
+  syncPalette();
+
   const bits = [`Circuit ${world.routeIndex + 1} held at wave ${world.wave}.`];
   if (opened.route) bits.push(`Circuit ${opened.route + 1} open.`);
   if (opened.difficulty) bits.push(`${E.DIFFICULTIES[opened.difficulty].name} open.`);
+  for (const r of earned) {
+    bits.push(r.kind === 'class'
+      ? `${E.TOWER_TYPES[r.key].name} unlocked.`
+      : `${TRACK_LABEL[r.key]} unlocked in the armory.`);
+  }
   showBanner('Circuit Held', bits.join(' '), opened.route ? 'Next circuit' : 'New run');
   $('go').after(contBtnEl);
   syncDifficultyUI();
@@ -1277,8 +1374,23 @@ function onVictory() {
 
 let resumeOffered = false;
 
+/* Two different questions, and conflating them is what lost people's runs.
+ *
+ * Reported at v45: start a run, back out, come back, decline nothing — just
+ * back out again from the banner offering Continue — and the save was gone.
+ * Leaving the page fires this, and "no run started in this page instance" was
+ * being read as "there is nothing worth keeping", so the stored run was
+ * deleted by the act of looking at it.
+ *
+ * A run that is *over* is not one to come back to, and clearing that is right.
+ * A page where nothing has started yet knows nothing about what is stored and
+ * must leave it alone. */
 function saveNow() {
-  if (!world.running || world.over || !world.wave) { clearRun(GAME_ID); return; }
+  if (world.over) { clearRun(GAME_ID); return; }
+  // `running` is false and `wave` is 0 on a board nobody has played yet, which
+  // is the banner-offering-Continue case above: nothing to save, nothing to
+  // destroy either.
+  if (!world.running || !world.wave) return;
   saveRun(GAME_ID, E.snapshot(world), `Wave ${world.wave} · ${world.score}`);
 }
 
@@ -1897,6 +2009,21 @@ function drawEnemy(e, p) {
     ctx.beginPath(); face(ctx); ctx.fill();
   }
 
+  /* Marked by a Sever: brackets at two corners, in Sever's own colour. A
+     bracket rather than a fill or a ring — the frost overlay is already a fill
+     and a halted deployer is already a ring, and a board this busy can only
+     carry a new status if it has a shape of its own. Drawn at full alpha even
+     in crowd mode: knowing what is marked is *why* you built the tower. */
+  if (e.marked > 0) {
+    const m = half + 4, k = Math.max(3, half * 0.5);
+    ctx.strokeStyle = E.TOWER_TYPES.sever.col;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(p.x - m, p.y - m + k); ctx.lineTo(p.x - m, p.y - m); ctx.lineTo(p.x - m + k, p.y - m);
+    ctx.moveTo(p.x + m, p.y + m - k); ctx.lineTo(p.x + m, p.y + m); ctx.lineTo(p.x + m - k, p.y + m);
+    ctx.stroke();
+  }
+
   // a halted deployer is about to spill Swarm — the one moment a Tank is a
   // stationary target, so it has to be obvious it is happening
   if (e.stopFor > 0) {
@@ -1961,6 +2088,16 @@ function drawBeams() {
           b.col, w2, GLOW_PASSES_CHEAP, fade * 0.9);
       }
       glowDot(ctx, b.x2, b.y2, 5 * fade, '#ffffff', fade * 0.7);
+      continue;
+    } else if (b.type === 'fork') {
+      /* Two strokes, both straight: the class's colour underneath and a white
+         core over it, so it reads as hotter than the shot that spawned it. A
+         small flash at each end says which two bodies it jumped between. */
+      const line = (c) => { c.moveTo(b.x1, b.y1); c.lineTo(b.x2, b.y2); };
+      glowStroke(ctx, line, b.col, 3, GLOW_PASSES_CHEAP, fade);
+      glowStroke(ctx, line, '#ffffff', 1.1, [[1, .9]], fade);
+      glowDot(ctx, b.x2, b.y2, 4, '#ffffff', fade * .8);
+      glowDot(ctx, b.x1, b.y1, 3, b.col, fade * .6);
       continue;
     } else if (b.type === 'coil') {
       /* An arc, not a line. Coil chills a cluster, and a bolt that bends reads

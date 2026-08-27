@@ -51,7 +51,24 @@ const ROUTES = [
   // barely any time to kill; the compensation is that everything funnels
   // through one short corridor, and towers there all fire at once.
   [[0, 3], [7, 3], [7, 6], [11, 6]],
+  /* 4 and 5 are earned by holding a circuit on all three difficulties (see
+     `SWEPT_ROUTES`), and they continue the ordering: shorter than everything
+     above them, which here means barely any time at all.
+
+     4 — the dash. A straight line across the middle: the shortest crossing the
+     board allows, since a route entering at the left edge cannot be under
+     eleven cells. Every tower can reach it and none of them get long. */
+  [[0, 4], [11, 4]],
+  /* 5 — the drop. Enters from the *top* edge rather than the left, which is
+     the only way left to make a route shorter still — and it changes the shape
+     of the problem rather than only its length: the whole left half of the
+     board is behind the spawn and buys nothing, so the same money has to fit
+     into a third of the usual space. */
+  [[5, 0], [5, 4], [11, 4]],
 ];
+/** Circuits from this index on are earned by a *sweep* — one circuit held on
+ *  all three difficulties — on top of the usual per-difficulty ladder. */
+export const SWEPT_ROUTES = 3;
 export const ROUTE_COUNT = ROUTES.length;
 
 const transpose = (route) => route.map(([c, r]) => [r, c]);
@@ -153,6 +170,14 @@ export function pathCells(L, routeIndex = 0) {
    healer you most want to find looked like your own tower. It is electric lime
    now, which the name was always asking for; Patch keeps the teal, because
    green reads as healing and that is its whole job. */
+/* Sever's mark. Deliberately smaller than the slow's brittle bonus, and
+   deliberately stacking with it: a target that is both slowed and marked is
+   two towers' worth of setup and should pay for both. What makes the mark
+   worth its own class is not the multiplier — it is that a marked enemy cannot
+   be healed, and that nothing in the roster resists it. */
+export const MARK_BRITTLE = 1.35;
+export const MARK_DUR = 3;
+
 export const TOWER_TYPES = {
   /* The splash here is deliberately tiny — a fifth of a cell, and even maxed it
      stays well under half of one, so a Node never becomes a cut-price Breaker.
@@ -196,6 +221,26 @@ export const TOWER_TYPES = {
     base: { range: 84, rate: 0.8, dmg: 2, splash: 24, slow: 0.4, slowDur: 1.2 },
     spec: 'splash', weak: 'dmg',
   },
+  /* Sever: earned by holding a circuit on Medium, and the answer to the two
+     enemies the other three do not have one for.
+     
+     **Patch** heals its neighbours faster than a Node can out-damage them, and
+     **Phase** is `slowImmune`, so Coil's brittle bonus — the one multiplier in
+     the game — has never applied to it. A *mark* lands on both: a marked enemy
+     cannot be healed, and takes more from everything else. It is not a slow, so
+     nothing that resists slows resists it.
+     
+     It kills almost nothing on its own (3 damage a second), which is
+     deliberate: a reward earned after learning the board should make the board
+     you already built better, not replace it. `splash` is a real number rather
+     than 0 for the reason the note above Node's gives — a zero base makes that
+     armory track a silent no-op that the armory still charges for. */
+  sever: {
+    name: 'Sever', cost: 30, col: '#ff5fd0', blurb: 'Marks a target: no healing, and it takes more',
+    base: { range: 100, rate: 1.0, dmg: 3, splash: 16, slow: 0, slowDur: 0 },
+    spec: 'rate', weak: 'dmg',
+    mark: MARK_BRITTLE, markDur: MARK_DUR,
+  },
 };
 export const TOWER_KEYS = Object.keys(TOWER_TYPES);
 
@@ -237,7 +282,10 @@ export const XP_PER_DAMAGE = 0.062;
  *  class that hits hardest also levels fastest, compounding an advantage it
  *  already had. Breaker earns at a discount to put the three classes on
  *  comparable footing per unit of work rather than per unit of damage. */
-export const XP_RATE = { node: 1, breaker: 0.45, coil: 1.15 };
+/* Sever earns at Coil's rate and for the same reason: it deals almost no
+   damage, so crediting XP strictly per point of damage would leave it stuck at
+   level 1 for a whole run while doing most of the work of killing things. */
+export const XP_RATE = { node: 1, breaker: 0.45, coil: 1.15, sever: 1.15 };
 /** Flat XP for landing a kill, on top of the damage credited. Small on
  *  purpose: the bulk of a tower's XP should come from steady work, not from
  *  whoever happens to land the last hit on a Load. */
@@ -278,12 +326,50 @@ export function addXp(tower, amount) {
 
 /* ---------- the armory: per-class upgrades, bought and kept ---------- */
 
-export const CLASS_TRACKS = ['dmg', 'rate', 'range', 'splash'];
+/* Four tracks are open to everyone; the last two are earned.
+ *
+ *  `chain` and `veterancy` are the reward for holding a circuit on Hard and for
+ *  sweeping one on all three difficulties — see `TRACK_UNLOCK`. They are listed
+ *  here, not hidden, because everything that enumerates tracks (the armory
+ *  grid, `newClassUpgrades`, a stored armory being sanitised) has to know they
+ *  exist whether or not this player has earned them yet. What the gate governs
+ *  is `buyClassUpgrade`, and the shell drawing the row as locked. */
+export const CLASS_TRACKS = ['dmg', 'rate', 'range', 'splash', 'chain', 'veterancy'];
+/** The four anyone can buy from their first run. */
+export const CLASS_TRACKS_FREE = ['dmg', 'rate', 'range', 'splash'];
 export const CLASS_MAX = 5;
 /** Per-level growth for a purchased track, same divide-don't-multiply rule for
  *  `rate` as above. Range is exactly 1/15 a level so five levels is a clean
  *  +1/3 — see the Breaker reach note on `stats`. */
-export const CLASS_GAIN = { dmg: 0.12, rate: 0.1, range: 1 / 15, splash: 0.15 };
+export const CLASS_GAIN = { dmg: 0.12, rate: 0.1, range: 1 / 15, splash: 0.15, veterancy: 0.08 };
+
+/* Chain: every Nth shot forks to a second target.
+ *
+ *  Deterministic, and that is the design rather than an implementation detail.
+ *  The obvious version is a percentage chance per shot, and it fails twice: at
+ *  a rate small enough to be worth its price a player fires hundreds of rounds
+ *  between forks and cannot attribute one to the purchase, and *nothing else in
+ *  this simulation calls `rand`* — wave plans are pure and spawns are
+ *  scheduled, so a per-shot roll would make a run irreproducible against any
+ *  change in how many shots get fired, and every test about chaining would be
+ *  written against a seeded stream instead of against behaviour.
+ *
+ *  A counter is also fairer: a percentage would hand Node roughly three times
+ *  the value of the identical purchase, simply because it fires three times as
+ *  often. "Every 4th shot forks" is a sentence the armory can print, which is
+ *  the other half of why it is this and not a proc. */
+export const CHAIN_EVERY = [0, 6, 5, 4, 3, 2];
+/** What the forked hit deals, as a fraction of the shot that spawned it. */
+export const CHAIN_DAMAGE = 0.6;
+/** How far a fork will reach for its second target. Well past `splash`, which
+ *  is the point of it: splash is a radius around the impact, and a fork is the
+ *  answer to a lane too strung out for splash to touch. */
+export const CHAIN_RADIUS = 108;
+
+/** Shots between forks for a given chain level, or 0 for never. */
+export function chainEvery(level) {
+  return CHAIN_EVERY[Math.min(Math.max(0, level | 0), CLASS_MAX)] || 0;
+}
 
 /* Raised across the board in v31, and again in v41.
    
@@ -301,7 +387,15 @@ export const CLASS_GAIN = { dmg: 0.12, rate: 0.1, range: 1 / 15, splash: 0.15 };
    speciality is a campaign's work; filling everything is not meant to happen.
    
    Balance numbers, so: measured, not played. */
-const CLASS_BASE_COST = { dmg: 240, rate: 222, range: 202, splash: 222 };
+/* The two earned tracks are dearer than the four open ones, and priced flat —
+   neither `spec` nor `weak` for anybody. A track you had to hold a circuit on
+   Hard to reach should cost every class the same; the spec/weak pricing exists
+   to keep the three classes from converging, and these two are not part of that
+   argument. Veterancy is the dearest thing in the armory because it compounds
+   with everything else: it does not raise the ceiling, it raises how fast you
+   reach it, which is worth more the longer a run goes. */
+const CLASS_BASE_COST = { dmg: 240, rate: 222, range: 202, splash: 222,
+                          chain: 300, veterancy: 340 };
 /** A class buys its speciality at a discount and its opposite at a surcharge. */
 export const SPEC_DISCOUNT = 0.6;
 export const WEAK_PENALTY = 1.8;
@@ -340,6 +434,7 @@ export function classCost(type, track, level) {
 export function buyClassUpgrade(w, type, track) {
   const have = w.classUpgrades?.[type];
   if (!have) return false;
+  if (w.unlocked && w.unlocked.tracks[track] === false) return false;
   const cost = classCost(type, track, have[track]);
   if (cost === null || w.components < cost) return false;
   w.components -= cost;
@@ -401,6 +496,18 @@ export function stats(w, tower) {
     range: b.range * grow('range'),
     dmg: b.dmg * grow('dmg'),
     splash: b.splash * grow('splash'),
+    /* Carried through rather than derived: the armory has no mark track, so
+       these are the class's own numbers. Absent on the classes that do not
+       mark, which is what `damageEnemy` tests. */
+    mark: T.mark || 0,
+    markDur: T.markDur || 0,
+    /* The two earned tracks resolve here like everything else, so `stats` stays
+       the one place a tower's numbers come from — and so the test that every
+       track moves something on every class can see them at all.
+       `chainEvery` is shots-between-forks, 0 meaning never; `xpMult` is what
+       Veterancy multiplies earned XP by. */
+    chainEvery: chainEvery(cls.chain || 0),
+    xpMult: 1 + CLASS_GAIN.veterancy * (cls.veterancy || 0),
     rate: b.rate / grow('rate'),
     slow: b.slow,
     slowDur: b.slowDur,
@@ -471,6 +578,7 @@ export const MIN_DAMAGE = 1;
  *  building: on its own it barely scratches anything, but it sets targets up
  *  for everything else, so it becomes a support piece rather than a weak gun. */
 export const SLOW_BRITTLE = 1.4;
+
 
 /* ---------- waves ---------- */
 
@@ -546,10 +654,102 @@ export function sanitizeProgress(raw) {
 export const hasWon = (progress, difficulty, routeIndex) =>
   !!progress?.wins?.[difficulty]?.includes(routeIndex);
 
+/* ---------- what a harder win is *for* ----------
+
+   Winning on Medium or Hard used to buy nothing but the next circuit at that
+   difficulty — which a player had usually already opened on Easy, so the
+   reward was one they held before they started. These are the things a harder
+   win actually earns.
+
+   Everything is gated on holding a circuit rather than on reaching a wave: a
+   win is the thing being rewarded, and it is already recorded per circuit per
+   difficulty. `sweep` means one circuit held on *all three* difficulties, the
+   deepest thing the progression can express. */
+export const CLASS_UNLOCK = { sever: { difficulty: 'medium' } };
+export const TRACK_UNLOCK = { chain: { difficulty: 'hard' }, veterancy: { sweep: true } };
+
+/** Has any one circuit been held on every difficulty? */
+export function hasSweep(progress) {
+  for (let r = 0; r < ROUTE_COUNT; r++) {
+    if (DIFFICULTY_KEYS.every(d => hasWon(progress, d, r))) return true;
+  }
+  return false;
+}
+
+/** Which circuits have been swept, for a shell that wants to say so. */
+export function sweptCircuits(progress) {
+  const out = [];
+  for (let r = 0; r < ROUTE_COUNT; r++) {
+    if (DIFFICULTY_KEYS.every(d => hasWon(progress, d, r))) out.push(r);
+  }
+  return out;
+}
+
+/** Is a requirement of the `{ difficulty }` / `{ sweep }` shape met? */
+function unlockMet(progress, req) {
+  if (!req) return true;
+  if (req.sweep) return hasSweep(progress);
+  return (progress?.wins?.[req.difficulty] || []).length > 0;
+}
+
+/** Can this tower class be built yet? Classes with no entry are always open. */
+export function classUnlocked(progress, type) {
+  return unlockMet(progress, CLASS_UNLOCK[type]);
+}
+
+/** Can this armory track be bought yet? Tracks with no entry are always open. */
+export function trackUnlocked(progress, track) {
+  return unlockMet(progress, TRACK_UNLOCK[track]);
+}
+
+/** The classes a player may build, in table order. */
+export function unlockedClasses(progress) {
+  return TOWER_KEYS.filter(t => classUnlocked(progress, t));
+}
+
+/** Push what a player has earned down into the run's own view of it.
+ *
+ *  The same split every other permanent thing here uses: the *shell* stores
+ *  progress, and the world carries a projection of it so `canBuild` and
+ *  `buyClassUpgrade` can refuse without the engine ever touching storage.
+ *  Deliberately **not** snapshotted, exactly like Flak Battery's `gunUnlocks`:
+ *  a save must not be able to smuggle a class past the current progression, and
+ *  a run resumed after earning Sever should have Sever. */
+export function syncUnlocks(w, progress) {
+  w.unlocked = { classes: {}, tracks: {} };
+  for (const t of TOWER_KEYS) w.unlocked.classes[t] = classUnlocked(progress, t);
+  for (const t of CLASS_TRACKS) w.unlocked.tracks[t] = trackUnlocked(progress, t);
+  return w;
+}
+
+/** What holding this circuit at this difficulty would open, so the victory
+ *  banner can say what was earned rather than only that something was. */
+export function rewardsFor(progress, difficulty, routeIndex) {
+  const after = { wins: {} };
+  for (const d of DIFFICULTY_KEYS) after.wins[d] = [...(progress?.wins?.[d] || [])];
+  if (!after.wins[difficulty].includes(routeIndex)) after.wins[difficulty].push(routeIndex);
+
+  const out = [];
+  for (const [type, req] of Object.entries(CLASS_UNLOCK)) {
+    if (!unlockMet(progress, req) && unlockMet(after, req)) out.push({ kind: 'class', key: type });
+  }
+  for (const [track, req] of Object.entries(TRACK_UNLOCK)) {
+    if (!unlockMet(progress, req) && unlockMet(after, req)) out.push({ kind: 'track', key: track });
+  }
+  return out;
+}
+
 /** Route 1 is always open; every later one waits on the win before it. */
 export function routeUnlocked(progress, difficulty, routeIndex) {
   if (routeIndex <= 0) return true;
   if (routeIndex >= ROUTE_COUNT) return false;
+  /* The deep circuits ask for both: the ordinary ladder (hold the one before
+     it, at this difficulty) *and* a sweep. Adding the sweep as an extra key
+     rather than replacing the ladder is deliberate — making the existing
+     circuits need all three difficulties would strand an Easy-only player on
+     circuit 1 forever, taking progression away from the players who have the
+     least of it. This only ever adds boards. */
+  if (routeIndex >= SWEPT_ROUTES && !hasSweep(progress)) return false;
   return hasWon(progress, difficulty, routeIndex - 1);
 }
 
@@ -729,6 +929,10 @@ export function createWorld(opts = {}) {
        resolves stats, but it is the *shell* that loads and saves it — the
        engine touches no storage, same rule as every other engine here. */
     classUpgrades: opts.classUpgrades || newClassUpgrades(),
+    /* What this run may build and buy, projected from the player's progress by
+       `syncUnlocks` below. A world built without progress has only what a new
+       player has, which is the safe direction. */
+    unlocked: { classes: {}, tracks: {} },
     score: 0,
     over: false,
     won: false, justWon: false,
@@ -739,10 +943,11 @@ export function createWorld(opts = {}) {
     seed,
     fx: {
       kill() {}, leak() {}, shot() {}, build() {}, level() {},
-      launch() {}, impact() {},
+      launch() {}, impact() {}, chain() {},
       ...(opts.fx || {}),
     },
   };
+  syncUnlocks(w, opts.progress);
   return w;
 }
 
@@ -781,6 +986,8 @@ export function towerAt(w, c, r) {
  *  cell and enough components. */
 export function canBuild(w, c, r, type) {
   if (w.over) return false;
+  // a class this player has not earned is not on the board at any price
+  if (w.unlocked && w.unlocked.classes[type] === false) return false;
   if (!inGrid(w.L, c, r)) return false;
   if (w.blocked.has(cellKey(c, r))) return false;
   if (towerAt(w, c, r)) return false;
@@ -940,7 +1147,7 @@ export function setRush(w, on) {
 function spawnEnemy(w, type, dist = 0, wave = w.wave) {
   const E = ENEMY_TYPES[type];
   const hp = Math.round(E.hp * hpScale(w.wave, w.difficulty));
-  const e = { type, dist, hp, maxhp: hp, speed: E.speed, r: E.r, slow: 0, wave };
+  const e = { type, dist, hp, maxhp: hp, speed: E.speed, r: E.r, slow: 0, marked: 0, wave };
   // a deployer counts down to its next stop, then sits still while unloading
   if (E.deploys) { e.deployIn = E.deployEvery; e.stopFor = 0; }
   w.enemies.push(e);
@@ -1012,29 +1219,59 @@ export function towerReady(w, tower, margin = READY_MARGIN) {
 /** Apply a tower's shot: damage the target (plus splash), and slow if it slows.
  *  Kills are resolved here so bounty and fx fire immediately. The caller passes
  *  the target in — `step` already acquired one this frame for the barrel. */
+/** Is this the shot that forks? Counted per tower rather than rolled, so it is
+ *  a thing a player can watch coming — see `CHAIN_EVERY`. The counter advances
+ *  on every shot the tower takes, including ones that fork. */
+function chainShot(w, tower) {
+  const every = stats(w, tower).chainEvery;
+  if (!every) return false;
+  tower.shots = (tower.shots || 0) + 1;
+  if (tower.shots < every) return false;
+  tower.shots = 0;
+  return true;
+}
+
 function fireTower(w, tower, target) {
   if (!target) return;
   const s = stats(w, tower);
   const tc = cellCenter(w.L, tower.c, tower.r);
+  const forks = chainShot(w, tower);
 
   /* A projectile tower resolves nothing here. The stat line is captured at the
      muzzle — the shot is worth what the tower was when it fired, not what it
      is when the round lands — and everything else waits for `stepSlugs`. */
   if (TOWER_TYPES[tower.type].projectile) {
     const p = enemyPos(w, target);
-    w.slugs.push({ x: tc.x, y: tc.y, tx: p.x, ty: p.y, target, s, src: tower, type: tower.type });
+    // the fork rides on the round rather than leaving with it: a Breaker
+    // resolves nothing until its slug arrives, forks included
+    w.slugs.push({ x: tc.x, y: tc.y, tx: p.x, ty: p.y, target, s, src: tower, type: tower.type, forks });
     w.fx.launch(tc.x, tc.y, tower.type);
     return;
   }
 
   w.fx.shot(tc.x, tc.y, target, tower.type);
-  detonate(w, tower, target, s, enemyPos(w, target));
+  detonate(w, tower, target, s, enemyPos(w, target), forks);
+}
+
+/** The second target a fork jumps to: the nearest live enemy to the first,
+ *  inside `CHAIN_RADIUS` and not the first itself. Nearest to the *target*, not
+ *  to the tower — a fork is electricity leaping between bodies, and picking by
+ *  distance from the tower would make it a second targeting rule instead. */
+function chainTarget(w, from, at) {
+  let best = null, bestD = CHAIN_RADIUS;
+  for (const e of w.enemies) {
+    if (e === from || e.hp <= 0) continue;
+    const p = enemyPos(w, e);
+    const d = Math.hypot(p.x - at.x, p.y - at.y);
+    if (d < bestD) { best = e; bestD = d; }
+  }
+  return best;
 }
 
 /** Land a shot at a point: full damage to the target if it is still alive, half
  *  to everything else inside the splash radius *of the impact point* — which is
  *  where the round actually went off, not where the target has since walked. */
-function detonate(w, tower, target, s, at) {
+function detonate(w, tower, target, s, at, forks = false) {
   if (target && target.hp > 0) damageEnemy(w, target, s.dmg, s, false, tower);
   if (s.splash > 0) {
     for (const e of w.enemies) {
@@ -1043,6 +1280,17 @@ function detonate(w, tower, target, s, at) {
       if (Math.hypot(p.x - at.x, p.y - at.y) <= s.splash) damageEnemy(w, e, s.dmg * 0.5, s, true, tower);
     }
   }
+  /* The fork: one extra target, never a cascade. It is resolved after the
+     shot's own damage and splash, so a fork can finish something the splash
+     softened — and it is *not* splash, so `splashResist` does not blunt it and
+     a Sever's mark travels with it. It jumps even when the first target died
+     on this hit: the round arrived, and where it arrived is what the arc
+     leaves from. */
+  if (!forks) return;
+  const second = chainTarget(w, target, at);
+  if (!second) return;
+  damageEnemy(w, second, s.dmg * CHAIN_DAMAGE, s, false, tower);
+  w.fx.chain(at.x, at.y, second, tower.type);
 }
 
 /** Advance every round in flight, and burst the ones that arrive.
@@ -1071,7 +1319,7 @@ function stepSlugs(w, dt) {
     const reach = SLUG_SPEED * dt;
     if (d <= reach) {
       g.x = g.tx; g.y = g.ty;
-      detonate(w, g.src, g.target, g.s, g);
+      detonate(w, g.src, g.target, g.s, g, g.forks);
       w.fx.impact(g.x, g.y, g.type);
       w.slugs.splice(i, 1);
     } else {
@@ -1091,6 +1339,12 @@ function damageEnemy(w, e, dmg, s, isSplash = false, src = null) {
   const T = ENEMY_TYPES[e.type];
 
   if (e.slow > 0) dmg *= SLOW_BRITTLE;
+  /* The mark stacks with the slow rather than replacing it: they are two
+     different towers' worth of setup, and a target carrying both has been
+     worked on by both. Read *before* this hit's own mark is stamped, same rule
+     as the slow — a Sever sets a target up for what shoots it next, not for
+     its own 3 damage. */
+  if (e.marked > 0) dmg *= MARK_BRITTLE;
   if (isSplash && T.splashResist) dmg *= (1 - T.splashResist);
   if (T.armor) dmg = Math.max(MIN_DAMAGE, dmg - T.armor);
 
@@ -1103,12 +1357,18 @@ function damageEnemy(w, e, dmg, s, isSplash = false, src = null) {
      spawn would level on wasted splash. */
   if (src) {
     const dealt = Math.max(0, before - Math.max(0, e.hp));
-    const rate = (XP_RATE[src.type] ?? 1) * (diffOf(w.difficulty).xp ?? 1);
+    const rate = (XP_RATE[src.type] ?? 1) * (diffOf(w.difficulty).xp ?? 1)
+      * stats(w, src).xpMult;
     if (addXp(src, (dealt * XP_PER_DAMAGE + (e.hp <= 0 ? XP_KILL_BONUS : 0)) * rate)) {
       const c = cellCenter(w.L, src.c, src.r);
       w.fx.level?.(c.x, c.y, src);
     }
   }
+
+  /* A marking tower stamps the mark and refreshes it. Nothing in the roster
+     resists it — that is the point of the class, since Phase's `slowImmune` is
+     what puts it outside Coil's reach. */
+  if (s && s.mark && e.hp > 0) e.marked = Math.max(e.marked || 0, s.markDur || MARK_DUR);
 
   // a slowing tower stamps its strength and refreshes the timer — unless the
   // target is insulated, in which case Coil is simply the wrong pick here
@@ -1124,6 +1384,9 @@ function stepHealers(w, dt) {
     const hp = enemyPos(w, h);
     for (const e of w.enemies) {
       if (e === h || e.hp <= 0 || e.hp >= e.maxhp) continue;
+      // a marked target cannot be mended, which is the half of Sever that
+      // answers Patch: it does not have to out-damage the heal, it stops it
+      if (e.marked > 0) continue;
       const p = enemyPos(w, e);
       if (Math.hypot(p.x - hp.x, p.y - hp.y) <= HEAL_RADIUS) {
         e.hp = Math.min(e.maxhp, e.hp + heals * dt);
@@ -1161,6 +1424,7 @@ export function step(w, dt) {
   for (let i = 0; i < movingCount; i++) {
     const e = w.enemies[i];
     if (e.slow > 0) { e.slow = Math.max(0, e.slow - dt); }
+    if (e.marked > 0) e.marked = Math.max(0, e.marked - dt);
     if (e.healed > 0) e.healed = Math.max(0, e.healed - dt);
 
     if (e.stopFor > 0) {           // halted, unloading — no forward progress
@@ -1313,7 +1577,7 @@ export function snapshot(w) {
     })),
     enemies: w.enemies.map(e => ({
       type: e.type, dist: e.dist, hp: e.hp, maxhp: e.maxhp, speed: e.speed, r: e.r,
-      slow: e.slow, slowStrength: e.slowStrength,
+      slow: e.slow, slowStrength: e.slowStrength, marked: e.marked,
     })),
     spawnQueue: w.spawnQueue.map(s => ({ type: s.type, at: s.at })),
   };
@@ -1365,7 +1629,7 @@ export function hydrate(w, snap) {
     priority: PRIORITIES.includes(t.priority) ? t.priority : 'first',
     cool: t.cool || 0, aim: null,
   }));
-  w.enemies = snap.enemies.map(e => ({ ...e, healed: 0 }));
+  w.enemies = snap.enemies.map(e => ({ ...e, healed: 0, marked: e.marked || 0 }));
   /* Rounds in flight are deliberately not saved: they point at enemy objects,
      which JSON cannot carry, and half a second of ballistics is not worth
      rebuilding. Clearing here matters — a resumed world must not keep slugs

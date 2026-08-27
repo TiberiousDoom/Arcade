@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-25 (v44 — round 15, both games)
+Last updated: 2026-08-27 (v45 — round 16, both games)
 
 ## Read this first
 
@@ -20,7 +20,58 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**556 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **67 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**570 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **75 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 16 feedback — v45 (2026-08-27)
+
+Seven feedback items plus the whole replay-rewards plan, which is why this round
+is large. The plan file is deleted; its reasoning is in DECISIONS.
+
+**All games — the save bug**
+- **Looking at a saved run destroyed it.** Start a run, back out, return to the
+  Continue banner, back out again — gone. `saveNow` read "nothing started in
+  this page" as "nothing worth keeping" and cleared the save on the way out.
+  Fixed in all three games, with a regression test each that was verified to
+  fail on the old code.
+
+**Flak Battery**
+- **There is no Damage branch.** Damage falls out of Calibre and Velocity
+  (`roundDamage`), and the shop shows **DPS** — reload and barrels folded in.
+  A maxed gun hits within 3% of what it did, which a test pins.
+- **The lead marker reports one intercept per round speed.** With a mixed
+  battery it was marching the fastest gun and lying to every other mount.
+- **Optics, Barrels and Refit are one Refit section**; the All view is a 2×3
+  grid again; the shop's own screen stays a single column.
+- **The escort is four times denser** (24 → 104 motes) and five times cheaper to
+  draw. Portraits stop at two barrels; the board art still draws all three.
+
+**Choke Point — the replay rewards**
+- **Sever**, a fourth class earned by holding a circuit on Medium: it marks a
+  target, which blocks healing and makes everything else hit harder. The answer
+  to Patch and to Phase, neither of which the other three classes address.
+- **Chain**, an armory track earned on Hard: every Nth shot forks to a second
+  target. Deterministic, not a proc — see DECISIONS for why that matters here.
+- **Veterancy**, earned by holding one circuit on all three difficulties:
+  towers level faster, ceiling untouched.
+- **Circuits 4 and 5**, earned by the same sweep. Additive — the existing
+  circuits keep their per-difficulty ladder untouched.
+- Everything gated is **shown locked with its requirement on it**, on the
+  palette and in the armory.
+
+### Still open after this round
+
+- Every number in the replay rewards is measured, not played: `MARK_BRITTLE`,
+  `CHAIN_EVERY`, the two new tracks' prices, and whether Sever is worth a slot
+  on a crowded board at all.
+- The armory-total ratio (~11× an Easy run) has **not** been re-derived for six
+  tracks. It was pinned deliberately as a ratio so this could not be fudged, and
+  the honest answer is that two more tracks make it dearer and nobody has played
+  it yet.
+- Circuits 4 and 5 are the first routes whose difficulty comes from *shape*
+  rather than only length. Route 5 entering from the top edge is the biggest
+  untested guess in this round.
+- DPS excludes heat on purpose. Whether players read it as "sustained" is a
+  phone question.
 
 ## Round 15 feedback — v44 (2026-08-25)
 
@@ -59,13 +110,9 @@ Eleven items and three questions. Two of the questions turned into a page.
 
 ### Still open after this round
 
-- **Incentives to replay a circuit on Medium and Hard** — asked at round 15,
-  designed and agreed since, **not built**. The plan is
-  [docs/choke-point-replay-plan.md](docs/choke-point-replay-plan.md): a Sever
-  tower class earned on Medium, a Chain armory track on Hard, a Veterancy track
-  and new circuits on a clean sweep of all three difficulties. Pick it up with
-  the next round of feedback; the file says what order to build in and what it
-  costs.
+- ~~**Incentives to replay a circuit on Medium and Hard**~~ — **built in round
+  16**: Sever on Medium, Chain on Hard, Veterancy and two new circuits on a
+  clean sweep. The plan file is gone; the reasoning is in DECISIONS.
 - The research ladder is a large balance change made without a run behind it:
   Ion at wave 70 is a long way out, and whether the rungs land in the right
   order is a phone question.

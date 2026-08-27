@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { bootAndStart, wait } from '../../tools/render-harness.mjs';
+import { bootAndStart, wait, bootGame } from '../../tools/render-harness.mjs';
 
 const SHELL = fileURLToPath(new URL('./choke-point.html', import.meta.url));
 
@@ -94,4 +94,37 @@ test('a corrupt save does not stop the game loading', async () => {
   assert.deepEqual(g.errors, [], 'boot threw on a corrupt save');
   assert.ok(g.world, 'the game still came up');
   assert.equal(g.world.wave, 0, 'as a fresh run');
+});
+
+/* The v45 report, which is the nastiest kind of save bug: looking at your run
+   destroyed it. Start a run, back out, come back — the banner offers Continue —
+   then back out again without taking it, and the save was gone. `saveNow` fired
+   on the way out and read "nothing started in this page" as "nothing worth
+   keeping", so leaving the page deleted what leaving the page was meant to
+   protect. */
+test('backing out of the resume banner does not destroy the saved run', async () => {
+  const background = (g) => {
+    const doc = g.window.document;
+    Object.defineProperty(doc, 'hidden', { value: true, configurable: true });
+    doc.dispatchEvent(new g.window.Event('visibilitychange', { bubbles: true }));
+  };
+  const first = await bootAndStart(SHELL);
+  await playAWhile(first);
+  background(first);
+  const stored = first.window.localStorage.getItem('arcade:run:choke-point');
+  assert.ok(stored, 'there is a run to come back to');
+
+  // open the game again and *do not* press Continue — just leave
+  const second = bootGame(SHELL, { storage: { ['arcade:run:choke-point']: stored } });
+  await wait(300);
+  assert.deepEqual(second.errors, [], 'the second visit threw');
+  background(second);
+
+  assert.equal(second.window.localStorage.getItem('arcade:run:choke-point'), stored,
+    'the save survived being looked at and walked away from');
+
+  // and it is still resumable on the third visit, which is the actual complaint
+  const third = await bootAndStart(SHELL, { storage: { ['arcade:run:choke-point']: stored } });
+  assert.deepEqual(third.errors, [], 'the third visit threw');
+  assert.ok(third.world.wave >= 1);
 });

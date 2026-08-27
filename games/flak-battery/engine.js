@@ -534,22 +534,35 @@ export const LOCK_TIME = 1.5;
 
    `convergence` is new, and is the answer to guns firing at a fixed point while
    the column moves: see `aimPoint`. */
+/* There is no Damage branch, and that is the design (v45).
+ *
+ *  It was the obvious first purchase on every gun, every run, at every tier —
+ *  a row that says "more damage" against seven rows that say something
+ *  conditional will always win, so the tree's interesting choices were being
+ *  made after the boring one had already been paid for. Damage is a *result*
+ *  now: it comes out of what the round is made of, which is Calibre (how much
+ *  of it there is) and Velocity (how fast it arrives). See `roundDamage`.
+ *
+ *  The shop shows DPS rather than damage-per-round for the same reason — what
+ *  a gun is worth is what it puts downrange over time, and a player comparing
+ *  two mounts wants one number that already has the reload in it. */
 export const UPGRADES = {
-  damage: {
-    name: 'Damage', stat: 'dmg',
-    blurb: 'Damage per round',
-    costs: [23, 50, 88, 142, 215],
-    tiers: [{ dmg: 1.0 }, { dmg: 1.3 }, { dmg: 1.6 }, { dmg: 2.0 }, { dmg: 2.5 }, { dmg: 3.1 }],
-  },
   calibre: {
     name: 'Calibre', stat: 'shotR',
     /* Round size is a real stat — a fatter round forgives a near miss — but its
        top end stays pulled in: the shell draws a filled arc at `r` plus glow at
        `r` and `r/2`, so the bloom is about twice the number, and a maxed round
        used to be a blob big enough to hide what it was about to hit. */
-    blurb: 'Round size, so a near miss still connects',
+    blurb: 'A bigger round: more damage, and a near miss still connects',
     costs: [19, 41, 73, 117, 177],
     tiers: [{ shotR: 3.0 }, { shotR: 3.2 }, { shotR: 3.5 }, { shotR: 3.8 }, { shotR: 4.2 }, { shotR: 4.6 }],
+  },
+  velocity: {
+    name: 'Velocity', stat: 'shotSpeed',
+    blurb: 'Faster rounds, and a faster round hits harder',
+    costs: [25, 54, 95, 153, 232],
+    tiers: [{ shotSpeed: 520 }, { shotSpeed: 585 }, { shotSpeed: 650 },
+            { shotSpeed: 720 }, { shotSpeed: 800 }, { shotSpeed: 890 }],
   },
   cooling: {
     name: 'Cooling', stat: 'cool',
@@ -569,13 +582,6 @@ export const UPGRADES = {
     blurb: 'Shorter overheat lockout',
     costs: [13, 27, 48, 77, 117],
     tiers: [{ lock: 1.0 }, { lock: 0.92 }, { lock: 0.84 }, { lock: 0.76 }, { lock: 0.68 }, { lock: 0.6 }],
-  },
-  velocity: {
-    name: 'Velocity', stat: 'shotSpeed',
-    blurb: 'Faster rounds',
-    costs: [25, 54, 95, 153, 232],
-    tiers: [{ shotSpeed: 520 }, { shotSpeed: 585 }, { shotSpeed: 650 },
-            { shotSpeed: 720 }, { shotSpeed: 800 }, { shotSpeed: 890 }],
   },
   /* Optics used to buy `predict` — how many seconds ahead the shell's aim
      marker led its target — and nothing else. No simulation code read it. It
@@ -608,6 +614,28 @@ export const UPGRADES = {
 export const BRANCHES = Object.keys(UPGRADES);
 export const MAX_TIER = 5;
 
+/* Damage per round, derived from the round itself rather than bought.
+ *
+ *  Mass times speed, near enough: a round's damage is how big it is (Calibre)
+ *  against how fast it arrives (Velocity), each relative to the opening tier.
+ *  The exponents are chosen so a fully-upgraded gun lands within a few percent
+ *  of the ×3.1 the old Damage branch topped out at — this is a change to *what
+ *  you buy*, deliberately not a change to how hard a maxed gun hits.
+ *
+ *  Both inputs stay worth buying on their own terms (a fat round forgives a
+ *  near miss, a fast one reaches the column sooner), so neither collapses into
+ *  being "the damage branch under another name". */
+export const DMG_CAL_EXP = 1.2;
+export const DMG_VEL_EXP = 1.2;
+/* `BASE_SHOT_R` is already declared above, next to the knockback curve that
+   also measures against it — one opening round, read by both. */
+const BASE_SHOT_SPEED = UPGRADES.velocity.tiers[0].shotSpeed;
+
+export function roundDamage(shotR, shotSpeed) {
+  return Math.pow(shotR / BASE_SHOT_R, DMG_CAL_EXP)
+       * Math.pow(shotSpeed / BASE_SHOT_SPEED, DMG_VEL_EXP);
+}
+
 /* Which wave each branch first appears in the shop.
 
    Nine branches is not too many; nine *at once, on the first shop screen* is.
@@ -627,12 +655,18 @@ export const MAX_TIER = 5;
    and round size are visible immediately, heat once you have held the trigger
    down, and Convergence — which engages by range and rewards reading the
    column — is last. */
+/* Still three at the opening, which is the point of the ramp — but with Damage
+   gone the opening three are Calibre, Velocity and Cooling. Two of the three
+   raise damage (see `roundDamage`), so a first-time player still has an obvious
+   "make the gun hurt more" purchase; it is simply one that also buys something
+   else, which is the whole reason the Damage branch was removed. Velocity moves
+   from wave 5 to the opening for exactly that reason, and everything below it
+   shifts up two waves to keep the ramp evenly spaced. */
 export const BRANCH_UNLOCK = {
-  damage: 1, calibre: 1, cooling: 1,
+  calibre: 1, velocity: 1, cooling: 1,
   breech: 3, interlock: 3,
-  velocity: 5,
-  optics: 7,
-  munitions: 9,
+  optics: 5,
+  munitions: 7,
 };
 
 /** Best wave ever reached, which is what the branch ramp is measured against.
@@ -786,6 +820,10 @@ export function stats(w, gun) {
     const tiers = UPGRADES[b].tiers;
     Object.assign(out, tiers[Math.min(u[b] || 0, tiers.length - 1)]);
   }
+  /* `dmg` is the one stat no branch sets — it falls out of the two that do.
+     Injected here rather than at the call sites so everything that reads a
+     gun's damage (shots, previews, the stat block) reads the same number. */
+  out.dmg = roundDamage(out.shotR, out.shotSpeed);
   return out;
 }
 
@@ -923,8 +961,14 @@ export const SWARM_WAVE = 30;
  *  first appears, which is the ramp length the pacing was written against;
  *  moving the start moves this with it rather than compressing the ramp. */
 export const SWARM_FULL = SWARM_WAVE + 30;
-export const SWARM_MIN = 6;
-export const SWARM_MAX = 26;
+/* Quadrupled at v45 — it was 6 rising to 26, which on a board already carrying
+   forty craft read as a handful of stray specks rather than as an escort. Four
+   times as many is what makes it a *cloud* you have to shoot a hole in, which
+   is the thing it was always meant to be. The per-wave increase quadruples with
+   it, since the ramp is derived from these two numbers rather than stated
+   separately. */
+export const SWARM_MIN = 24;
+export const SWARM_MAX = 104;
 /** Health, in the same damage units a segment's is. Two rounds at the opening
  *  gun, which is chaff — the threat is the count, until the count stops. */
 export const SWARM_HP_BASE = 2;
@@ -934,7 +978,12 @@ export const SWARM_R = 5;             // much smaller than any segment (13-15)
 export const SWARM_SPAN = 52;         // half-width of the eight, across the lane
 export const SWARM_LEN = 34;          // half-length of it, along the lane
 export const SWARM_RATE = 1.6;        // radians per second around the figure
-export const SWARM_LAG = 24;          // arc length between one mote's anchor and the next
+/* Tightened from 24 at v45, when the count quadrupled. Density is the point of
+   an escort — spread over the old lag, 104 motes would have been a 2500px
+   queue trailing most of the column rather than a cloud you have to shoot a
+   hole in. At 14 a full escort covers the leading ~1400px of a 3276px column,
+   about two motes per segment gap. */
+export const SWARM_LAG = 14;          // arc length between one mote's anchor and the next
 export const SWARM_SCORE = 15;
 
 /** How many motes escort wave `n`. Zero before `SWARM_WAVE`. */
