@@ -196,6 +196,48 @@ test('every cannon portrait draws something', async () => {
 /* The two-mode aiming split. Below the breach line a touch drags relatively;
    above it the guns point where the finger is. Driven through real pointer
    events on the canvas, because the whole rule lives in those handlers. */
+test('the lead marker reports one intercept per round speed, not just the fastest', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  world.scrap = 1e6;
+  world.research.points = 1e6;
+  world.research.best = 99;
+
+  // a uniform battery is unchanged: one speed, one marker
+  world.wave = 6;
+  E.spawnWave(world);
+  world.chains[0].s = 900;
+  world.cannon.ang = -Math.PI / 2;
+  g.frame(1000);
+  assert.equal(w.eval('aimGroups().length'), 1, 'one gun type, one group');
+
+  /* Now a mixed battery — Railgun x1.7, Mortar x0.75 — which is the v45
+     report: one marker was marched at the *fastest* speed, so it was wrong for
+     every other mount on the board. */
+  E.researchGun(world, 'rail');
+  E.researchGun(world, 'mortar');
+  E.buyMount(world); E.buyMount(world);
+  E.setGunType(world, 1, 'rail', true);
+  E.setGunType(world, 2, 'mortar', true);
+  g.frame(1050);
+
+  const groups = JSON.parse(w.eval('JSON.stringify(aimGroups())'));
+  assert.equal(groups.length, 3, 'three speeds on the battery, three groups');
+  assert.ok(groups[0].speed > groups[2].speed, 'and they really do differ');
+  /* The gun type's own multiplier has to be in there. Without it every mount
+     reported the branch speed (520) and collapsed back into one group — the
+     bug wearing the fix's clothes. */
+  assert.ok(groups.some(x => x.type === 'mortar' && x.speed < 520), 'the mortar is slower');
+  assert.ok(groups.some(x => x.type === 'rail' && x.speed > 520), 'the railgun is faster');
+
+  const hits = JSON.parse(w.eval('JSON.stringify(predictHits())'));
+  assert.ok(hits.length > 1, 'a mixed battery is shown more than one intercept');
+  // the slower round meets the column further along, since it arrives later
+  const xs = hits.map(h => Math.round(h.x) + ':' + Math.round(h.y));
+  assert.ok(new Set(xs).size > 1, `the intercepts are in different places (${xs})`);
+  assert.deepEqual(g.errors, [], 'the lead marker threw');
+});
+
 test('a touch above the breach line aims at the finger, below it drags', async () => {
   const g = await bootAndStart(SHELL);
   const { world, E, window: w } = g;
@@ -257,7 +299,7 @@ test('the emplacement bar shows how built-out the gun is, not its heat', async (
   assert.equal(bar(), '0%', 'an unbuilt gun reads empty however hot it is');
 
   // buy into it and the bar has to move
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(world, 0, 'damage');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(world, 0, 'calibre');
   // the shop rebuilds on interaction, not on a frame — go into the mount and
   // back out to the overview so the card is redrawn
   openMount(doc, w, 0);
@@ -277,7 +319,7 @@ test('a first-run shop opens with three rows, grouped, and no Research tab', asy
   openMount(doc, w, 0);
 
   const names = [...doc.querySelectorAll('#branches .buyRow h3')].map(el => el.textContent);
-  assert.deepEqual(names, ['Damage', 'Calibre', 'Cooling'],
+  assert.deepEqual(names, ['Calibre', 'Velocity', 'Cooling'],
     'a new player meets three branches, not nine');
 
   /* Two cards on the opening shop: Ammunition holding what has opened of it,
@@ -286,7 +328,7 @@ test('a first-run shop opens with three rows, grouped, and no Research tab', asy
   const named = Object.fromEntries(cards.map(c =>
     [c.querySelector('.groupName').textContent,
      [...c.querySelectorAll('.buyRow h3')].map(el => el.textContent)]));
-  assert.deepEqual(named, { Ammunition: ['Damage', 'Calibre'], Thermal: ['Cooling'] });
+  assert.deepEqual(named, { Ammunition: ['Calibre', 'Velocity'], Thermal: ['Cooling'] });
 
   // no second currency on screen before the first one is understood
   assert.equal(doc.getElementById('shopResearch').style.display, 'none',
@@ -312,14 +354,25 @@ test('the branch groups gather their rows once the ramp opens them', async () =>
     [c.querySelector('.groupName').textContent,
      [...c.querySelectorAll('.buyRow h3')].map(el => el.textContent)]));
   assert.deepEqual(named.Thermal, ['Cooling', 'Breech', 'Interlock'], 'one card, three knobs');
-  assert.deepEqual(named.Ammunition, ['Damage', 'Calibre', 'Velocity', 'Munitions']);
+  assert.deepEqual(named.Ammunition, ['Calibre', 'Velocity', 'Munitions']);
+  assert.deepEqual(named.Refit, ['Optics'], 'Optics is the branch inside Refit');
 
   // one card per group — a group must not be rebuilt per branch
-  assert.equal(cards.length, 2, 'Ammunition and Thermal, and no more');
+  assert.equal(cards.length, 3, 'Ammunition, Thermal and Refit, and no more');
 
-  // Optics stands alone rather than becoming a heading over one row
+  /* Refit is where a mount's identity is bought: how far it reaches, how many
+     barrels it has, and which gun it is. The last two are built by their own
+     renderers rather than from `UPGRADES`, so this checks they really landed
+     inside the card rather than trailing after the tree as loose blocks. */
+  const refitCard = cards.find(c => c.querySelector('.groupName').textContent === 'Refit');
+  assert.ok(refitCard.querySelector('.barrels'), 'barrels sit in the Refit card');
+  assert.ok(refitCard.querySelector('.retro'), 'and so does the type swap');
+  assert.equal(doc.querySelectorAll('#branches > .barrels, #branches > .retro').length, 0,
+    'and neither is left loose at the end of the tree');
+
+  // nothing ungrouped is left in the tree at all now
   const loose = [...doc.querySelectorAll('#branches > .buyRow h3')].map(el => el.textContent);
-  assert.deepEqual(loose, ['Optics'], 'the one ungrouped branch is not given a card');
+  assert.deepEqual(loose, [], 'every branch is in a card');
   // and the veteran is not told about a ramp they are past
   assert.equal(doc.querySelector('#branches .openingSoon'), null);
   assert.equal(doc.getElementById('shopRule').style.display, 'none',
@@ -468,11 +521,11 @@ test('research is bought on the research tab and gates the deep tiers', async ()
      signpost and a dead end, and the whole feature fails if they look alike. */
   const renderTab = (i) => openMount(doc, w, i);
 
-  for (let i = 0; i < E.FREE_TIER; i++) E.buyUpgrade(world, 0, 'damage');
+  for (let i = 0; i < E.FREE_TIER; i++) E.buyUpgrade(world, 0, 'calibre');
   renderTab(0);
   const branch = [...doc.querySelectorAll('#branches .branch')]
-    .find(el => /^Damage$/.test(el.querySelector('h3')?.textContent || ''));
-  assert.ok(branch, 'the mount tab shows the Damage branch');
+    .find(el => /^Calibre$/.test(el.querySelector('h3')?.textContent || ''));
+  assert.ok(branch, 'the mount tab shows the Calibre branch');
   assert.match(branch.querySelector('button').textContent, /research/i,
     'a gated tier says so rather than claiming to be maxed');
 
@@ -480,17 +533,17 @@ test('research is bought on the research tab and gates the deep tiers', async ()
   world.research.points = 1e6;
   openResearch(doc, w);
   const depthCard = [...doc.querySelectorAll('#battery .branch')]
-    .find(el => /Damage depth/.test(el.querySelector('h3')?.textContent || ''));
+    .find(el => /Calibre depth/.test(el.querySelector('h3')?.textContent || ''));
   assert.ok(depthCard, 'the research tab offers branch depth');
   const before = world.research.points;
   depthCard.querySelector('button').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   assert.ok(world.research.points < before, 'it spent research points');
-  assert.equal(E.tierCap(world, 'damage'), E.FREE_TIER + 1);
+  assert.equal(E.tierCap(world, 'calibre'), E.FREE_TIER + 1);
 
   // and the mount's tab now sells the tier it refused a moment ago
   renderTab(0);
   const again = [...doc.querySelectorAll('#branches .branch')]
-    .find(el => /^Damage$/.test(el.querySelector('h3')?.textContent || ''));
+    .find(el => /^Calibre$/.test(el.querySelector('h3')?.textContent || ''));
   /* The buy button carries the bare price now rather than "Buy · 142" — nine of
      those rows is a lot of words for nine numbers. So the check is the state,
      not the wording: it must no longer say "Research", and it must be tappable. */
@@ -627,14 +680,19 @@ test('buying an upgrade flashes the stat it moved', async () => {
   openMount(doc, w, 0);
 
   const row = [...doc.querySelectorAll('#branches .branch')]
-    .find(el => /^Damage$/.test(el.querySelector('h3')?.textContent || ''));
-  assert.ok(row, 'the Damage row is there');
+    .find(el => /^Calibre$/.test(el.querySelector('h3')?.textContent || ''));
+  assert.ok(row, 'the Calibre row is there');
   row.querySelector('button').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-  assert.equal(world.battery.guns[0].upgrades.damage, 1, 'the tier was bought');
+  assert.equal(world.battery.guns[0].upgrades.calibre, 1, 'the tier was bought');
 
+  /* Three rows light, not one, and that is the point of the v45 change: Calibre
+     moves round size *and* — because damage is derived from it — DPS and
+     damage per round. A purchase that silently improved two numbers it never
+     named is the thing this flash exists to prevent. */
   const lit = [...doc.querySelectorAll('#branches .statBlock .stat.bought')];
-  assert.equal(lit.length, 1, 'exactly one stat is highlighted');
-  assert.equal(lit[0].dataset.stat, 'damage', 'and it is the one that moved');
+  assert.equal(lit.length, 3, 'every stat the purchase moved is highlighted');
+  const labels = lit.map(el => el.querySelector('dt').textContent);
+  assert.deepEqual(labels, ['DPS', 'Damage/round', 'Round size']);
   assert.deepEqual(g.errors, [], 'the buy flash threw');
 });
 
@@ -649,7 +707,7 @@ test('every branch in the tree points at a stat the block shows', async () => {
   openMount(doc, w, 0);
 
   const shown = new Set([...doc.querySelectorAll('#branches .statBlock .stat')]
-    .map(el => el.dataset.stat).filter(Boolean));
+    .flatMap(el => (el.dataset.stat || '').split(/\s+/)).filter(Boolean));
   for (const b of g.E.BRANCHES) {
     assert.ok(shown.has(b), `${b} moves a stat the block displays`);
   }
@@ -679,14 +737,20 @@ test('a buy row previews what the next tier is worth, and stops at the top', asy
     .find(el => el.querySelector('dt').textContent === name)
     .querySelector('dd').textContent.trim();
   const previewOf = (branch, stat) => {
-    const text = rowFor(branch).querySelector('.preview').textContent.replace(/\s+/g, ' ');
+    const el = rowFor(branch);
+    assert.ok(el, `there is a ${branch} row (saw ${[...doc.querySelectorAll('#branches .branch h3')].map(h => h.textContent)})`);
+    const text = el.querySelector('.preview').textContent.replace(/\s+/g, ' ');
     const m = text.match(new RegExp(`${stat} ([^ ]+) → ([^ ]+)`));
     assert.ok(m, `${branch} previews ${stat} (got "${text}")`);
     return m;
   };
 
-  const [, dmgNow, dmgNext] = previewOf('Damage', 'Damage');
-  assert.equal(dmgNow, statOf('Damage'), 'the preview starts from what the gun actually does');
+  /* Calibre rather than Damage, since v45: there is no Damage branch, and the
+     row that carries damage is the one that buys the round it comes out of.
+     Its preview leads with DPS for exactly that reason — a row offering "3.8 →
+     4.2 round size" for 117 scrap never mentions the reason anyone would pay. */
+  const [, dmgNow, dmgNext] = previewOf('Calibre', 'DPS');
+  assert.equal(dmgNow, statOf('DPS'), 'the preview starts from what the gun actually does');
   assert.ok(parseFloat(dmgNext) > parseFloat(dmgNow), 'and the next tier is an improvement');
 
   // now the case that was broken: a gun type whose own multiplier is not 1
@@ -694,8 +758,8 @@ test('a buy row previews what the next tier is worth, and stops at the top', asy
   E.researchGun(world, 'rail');
   E.setGunType(world, 0, 'rail', { free: true });
   openMount(doc, w, 0);
-  const [, railNow, railNext] = previewOf('Damage', 'Damage');
-  assert.equal(railNow, statOf('Damage'),
+  const [, railNow, railNext] = previewOf('Calibre', 'DPS');
+  assert.equal(railNow, statOf('DPS'),
     'the preview follows the gun through a refit rather than quoting the branch table');
   assert.ok(parseFloat(railNow) > parseFloat(dmgNow),
     'and a Railgun really does hit harder, so this is not the same number twice');
@@ -707,9 +771,9 @@ test('a buy row previews what the next tier is worth, and stops at the top', asy
   assert.match(munitions, /Bounces/, 'Munitions previews bounces');
 
   // at the top of a branch there is no next tier, so there is nothing to promise
-  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(world, 0, 'damage');
+  for (let i = 0; i < E.MAX_TIER; i++) E.buyUpgrade(world, 0, 'calibre');
   openMount(doc, w, 0);
-  assert.equal(rowFor('Damage').querySelector('.preview'), null,
+  assert.equal(rowFor('Calibre').querySelector('.preview'), null,
     'a maxed branch previews nothing rather than repeating its last tier');
   assert.deepEqual(g.errors, [], 'the buy-row preview threw');
 });

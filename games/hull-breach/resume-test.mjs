@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { bootAndStart } from '../../tools/render-harness.mjs';
+import { bootAndStart, bootGame, wait } from '../../tools/render-harness.mjs';
 
 const SHELL = fileURLToPath(new URL('./hull-breach.html', import.meta.url));
 const KEY = 'arcade:run:hull-breach';
@@ -90,4 +90,32 @@ test('a corrupt save does not stop the game loading', async () => {
   const g = await bootAndStart(SHELL, { storage: { [KEY]: '{{{' } });
   assert.deepEqual(g.errors, [], 'boot threw on a corrupt save');
   assert.ok(g.world, 'the game still came up');
+});
+
+/* The v45 report, which is the nastiest kind of save bug: looking at your run
+   destroyed it. Start a run, back out, come back — the banner offers Continue —
+   then back out again without taking it, and the save was gone. `saveNow` fired
+   on the way out and read "nothing started in this page" as "nothing worth
+   keeping", so leaving the page deleted what leaving the page was meant to
+   protect. */
+test('backing out of the resume banner does not destroy the saved run', async () => {
+  const first = await bootAndStart(SHELL);
+  await playAWhile(first);
+  background(first);
+  const stored = first.window.localStorage.getItem(KEY);
+  assert.ok(stored, 'there is a run to come back to');
+
+  // open the game again and *do not* press Continue — just leave
+  const second = bootGame(SHELL, { storage: { [KEY]: stored } });
+  await wait(300);
+  assert.deepEqual(second.errors, [], 'the second visit threw');
+  background(second);
+
+  assert.equal(second.window.localStorage.getItem(KEY), stored,
+    'the save survived being looked at and walked away from');
+
+  // and it is still resumable on the third visit, which is the actual complaint
+  const third = await bootAndStart(SHELL, { storage: { [KEY]: stored } });
+  assert.deepEqual(third.errors, [], 'the third visit threw');
+  assert.ok(third.world.level >= 1, 'and the level came back with it');
 });

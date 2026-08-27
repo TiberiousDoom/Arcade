@@ -14,6 +14,14 @@ import { bootAndStart, wait } from '../../tools/render-harness.mjs';
 // and percent-encoded spaces, which fs rejects.
 const SHELL = fileURLToPath(new URL('./choke-point.html', import.meta.url));
 
+/* A player who has held a circuit on all three difficulties — so Sever, Chain
+   and Veterancy are all earned. Passed as stored progress, which is how the
+   shell really learns it: `progress` is read from localStorage at boot and
+   projected onto the world by `syncUnlocks`. */
+const SWEPT = JSON.stringify({ wins: { easy: [0], medium: [0], hard: [0] } });
+const swept = (opts = {}) =>
+  ({ ...opts, storage: { 'arcade:choke-point:progress': SWEPT, ...(opts.storage || {}) } });
+
 test('the shell boots without throwing', async () => {
   const g = await bootAndStart(SHELL);
   assert.deepEqual(g.errors, [], 'boot threw');
@@ -36,7 +44,9 @@ test('every enemy type renders, slow/heal overlays included', async () => {
 });
 
 test('every tower type renders across the level range, aiming and firing', async () => {
-  const g = await bootAndStart(SHELL);
+  // swept, so the earned class is on the board too — an unbuildable class draws
+  // nothing, and a draw test that quietly skipped one would prove nothing
+  const g = await bootAndStart(SHELL, swept());
   const { world, E } = g;
   world.components = 99999;
   // one of each type at a spread of levels, wherever they will fit — level 1,
@@ -95,7 +105,7 @@ test('towers draw both idle and deployed', async () => {
 });
 
 test('the armory opens and renders every class and track', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, swept());
   const { world, window: w } = g;
   const doc = w.document;
   world.components = 99999;
@@ -341,6 +351,129 @@ test('the circuit picker puts the board on the left and the difficulties down th
   assert.equal(diffs.querySelectorAll('button').length, E.DIFFICULTY_KEYS.length,
     'every difficulty is offered, locked ones included');
   assert.deepEqual(g.errors, [], 'the picker threw');
+});
+
+test('an unearned class sits on the palette, locked, saying what earns it', async () => {
+  const g = await bootAndStart(SHELL);            // a fresh player: nothing swept
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.components = 99999;
+  g.frame(1000);
+
+  const picks = [...doc.querySelectorAll('.pick')];
+  assert.equal(picks.length, E.TOWER_KEYS.length, 'every class is on the strip');
+  const sever = picks.find(b => /sever/i.test(b.textContent));
+  assert.ok(sever, 'including the one that has to be earned');
+  assert.ok(sever.classList.contains('locked'));
+  assert.match(sever.textContent, /Medium/i, 'and it says what would earn it');
+
+  // tapping it must not select it — a palette pointing at an unbuildable class
+  // is a palette that will silently swallow the next tap on the board
+  sever.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  sever.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  g.frame(1050);
+  assert.ok(!sever.classList.contains('on'), 'it cannot be picked');
+
+  // and the engine refuses it even if something did select it
+  const cell = (() => {
+    for (let r = 0; r < world.L.ROWS; r++)
+      for (let c = 0; c < world.L.COLS; c++)
+        if (E.canBuild(world, c, r, 'node')) return { c, r };
+  })();
+  assert.equal(E.buildTower(world, cell.c, cell.r, 'sever'), false, 'and cannot be built');
+  assert.deepEqual(g.errors, [], 'the locked palette threw');
+});
+
+test('a swept player gets the class, and the two earned armory rows', async () => {
+  const g = await bootAndStart(SHELL, swept());
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.components = 99999;
+  g.frame(1000);
+
+  const sever = [...doc.querySelectorAll('.pick')].find(b => /sever/i.test(b.textContent));
+  assert.ok(!sever.classList.contains('locked'), 'Sever is on the palette for real');
+  sever.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  g.frame(1050);
+  assert.ok(sever.classList.contains('on'), 'and it can be picked');
+
+  doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const buys = doc.querySelectorAll('#shopClasses .armTable button[data-t]');
+  assert.equal(buys.length, E.TOWER_KEYS.length * E.CLASS_TRACKS.length,
+    'every track is buyable on every class');
+  assert.equal(doc.querySelectorAll('#shopClasses .armTable .cell.locked').length, 0,
+    'and nothing is left locked');
+  assert.deepEqual(g.errors, [], 'the earned armory threw');
+});
+
+test('the armory shows the earned rows locked rather than hiding them', async () => {
+  const g = await bootAndStart(SHELL);            // fresh player again
+  const { E, window: w } = g;
+  const doc = w.document;
+  g.frame(1000);
+  doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+
+  const heads = [...doc.querySelectorAll('#shopClasses .armTable .rh')].map(el => el.textContent);
+  assert.equal(heads.length, E.CLASS_TRACKS.length, 'a row per track, earned or not');
+  const locked = [...doc.querySelectorAll('#shopClasses .armTable .rh.locked')];
+  assert.equal(locked.length, E.CLASS_TRACKS.length - E.CLASS_TRACKS_FREE.length,
+    'the two earned tracks read as locked');
+  assert.match(locked.map(el => el.textContent).join(' '), /Hard/i,
+    'and each says what would earn it');
+
+  // the four open tracks are still buyable, so a locked row cannot break the grid
+  const buys = doc.querySelectorAll('#shopClasses .armTable button[data-t]');
+  assert.equal(buys.length, E.TOWER_KEYS.length * E.CLASS_TRACKS_FREE.length);
+  assert.deepEqual(g.errors, [], 'the locked armory threw');
+});
+
+test('a fork and a mark both draw on a real board', async () => {
+  const g = await bootAndStart(SHELL, swept());
+  const { world, E } = g;
+  world.components = 99999;
+  world.classUpgrades.node.chain = E.CLASS_MAX;
+
+  /* A Sever and a Node covering the same stretch. Placed by *what they can
+     see* rather than by the first free cell — a tower in the corner shoots
+     nothing, and a test that placed two of them would pass its build
+     assertions and then prove nothing at all. */
+  /* Find a stretch of route that a buildable cell actually overlooks, and put
+     both towers on it. Placing by the first free cell instead would pass its
+     build assertions and prove nothing: a tower in the corner shoots nothing. */
+  let d = null, built = 0;
+  outer:
+  for (let r = 0; r < world.L.ROWS && built < 2; r++)
+    for (let c = 0; c < world.L.COLS && built < 2; c++) {
+      const type = built === 0 ? 'sever' : 'node';
+      if (!E.canBuild(world, c, r, type)) continue;
+      const cc = E.cellCenter(world.L, c, r);
+      /* 0.9 of the range, not 0.6: the route runs through cell centres and the
+         cells are 64px, so the nearest buildable cell is a full cell away —
+         at 0.6 of a 100px range nothing on the board qualifies and the search
+         silently finds nothing. */
+      const reach = E.TOWER_TYPES[type].base.range * 0.9;
+      for (let s = 0; s < world.pathLen; s += 16) {
+        const at = E.atS(world.path, world.pathLen, s);
+        if (Math.hypot(at.x - cc.x, at.y - cc.y) > reach) continue;
+        if (d === null) d = s;
+        else if (Math.abs(s - d) > reach) continue;      // the same stretch, not another
+        assert.equal(E.buildTower(world, c, r, type), true);
+        built++;
+        continue outer;
+      }
+    }
+  assert.equal(built, 2, 'both towers cover the stretch the enemies are on');
+  world.enemies = [0, 22, 44].map(off => ({
+    type: 'surge', dist: d + off, hp: 400, maxhp: 400, speed: 0, r: 12, slow: 0, marked: 0,
+  }));
+
+  let t = 1000, sawMark = false;
+  for (let i = 0; i < 600; i++) {
+    g.frame(t += 16);
+    if (world.enemies.some(e => e.marked > 0)) sawMark = true;
+  }
+  assert.ok(sawMark, 'something got marked, so the bracket art ran');
+  assert.deepEqual(g.errors, [], 'drawing marks and forks threw');
 });
 
 test('the tower popup opens and renders on a real DOM', async () => {

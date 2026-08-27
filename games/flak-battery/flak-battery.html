@@ -105,6 +105,16 @@
   /* Everything in the column is a full-width section, so the grid-spanning
      rules the group cards carry are simply inert here rather than wrong. */
   #branches > *{width:100%}
+  /* …except the emplacement overview, which goes back to a grid (v45). The
+     column was right for the *upgrade* screen — those are sections you read
+     down — and wrong for the All view, which is six cards you compare against
+     each other. Two across at MAX_MOUNTS 6 is the 2x3 it was. */
+  #branches.overview{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+  #branches.overview > *{width:auto}
+  @media (min-width:620px){
+    /* three across once there is room, so a full battery is one glance */
+    #branches.overview{grid-template-columns:repeat(3,1fr)}
+  }
   /* A branch is a row, not a card: name and pips left, price right, nothing
      else. Nine cards each carrying a heading, a pip strip, a blurb paragraph
      and a full-width button was most of a screen of furniture for nine numbers.
@@ -156,6 +166,14 @@
   }
   .branchGroup .buyRow{margin-bottom:4px}
   .branchGroup .buyRow:last-child{margin-bottom:0}
+  /* The Refit card holds two blocks that are not buy rows — the barrel purchase
+     and the type swap — so they need the same rhythm as the rows above them
+     rather than the card padding they were designed against when they sat on
+     their own. */
+  .branchGroup .barrels,
+  .branchGroup .retro{margin-bottom:4px;border:0;background:transparent;padding:4px 0 0}
+  .branchGroup .barrels:last-child,
+  .branchGroup .retro:last-child{margin-bottom:0}
   .openingSoon{
     margin:8px 2px 0;font-size:11px;color:var(--dim);text-align:center;
   }
@@ -379,7 +397,7 @@
 <script type="module">
 import * as E from './engine.js';
 import { makeFit } from '../../shared/fit.js';
-import { glowStroke, glowDot, glowDots, dim, inkDot, extrudeRect, extrudeDisc, cube, GLOW_PASSES_CHEAP, DOT_PASSES_CHEAP } from '../../shared/glow.js';
+import { glowStroke, glowDot, glowDots, dim, inkDot, extrudeRect, extrudeDisc, GLOW_PASSES_CHEAP, DOT_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
 import { recordProgress } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
@@ -741,60 +759,111 @@ syncBest();
 
 let tapPulse = 0;
 
-/* March a virtual shot forward and report the first segment it would meet,
-   advancing the chains at the same time. Cheap, and exact enough to trust. */
-function predictHit() {
-  const c = world.cannon;
-  /* How far ahead the marker leads is the same for everyone now — `E.AIM_LEAD`
-     — because Optics stopped being the branch that bought it. Aiming comfort
-     was never a fair thing to sell: it was the only branch with no combat
-     effect, and it was also the one you had to buy to see what you were doing.
+/* Where the battery's rounds will actually meet the column.
+ *
+ *  One marker was right while every mount fired at the same speed, and became
+ *  a lie the moment they did not: it marched the *fastest* gun's round, so a
+ *  battery holding a Railgun (x1.7) and a Mortar (x0.75) was shown one
+ *  intercept that only one mount would ever honour. Reported at v45 as the
+ *  crosshair being confusing with mixed velocities — it was not confusing, it
+ *  was wrong for most of the guns.
+ *
+ *  So it reports one intercept per distinct round speed, and the shell draws
+ *  the spread. A uniform battery therefore looks exactly as it always did (one
+ *  marker), and a mixed one is told the truth: your volley arrives in a spread,
+ *  and here is where each part of it lands.
+ *
+ *  Marched by *distance* rather than by time, which is what makes several
+ *  speeds affordable: every round flies the same ray from the same muzzle, so
+ *  the geometry is walked once and each speed simply reaches a given point at
+ *  its own time `d / speed`. Walking it once per speed would multiply the whole
+ *  march; this multiplies only the segment test. */
+const AIM_STEP = 7;              // px between samples along the ray
+const AIM_MAX_GROUPS = 3;        // distinct speeds worth drawing at once
 
-     Shot speed still comes from the *fastest* gun on the battery, so the ray
-     march matches a round some mount can really put there. It used to take
-     guns[0] on the grounds that the aim line is drawn through the centre gun,
-     which since v27's per-emplacement upgrades meant buying Velocity on mounts
-     2-6 changed nothing you could see. */
-  const S = world.battery.guns.reduce((best, g) => {
-    const s = E.stats(world, g);
-    return !best || s.shotSpeed > best.shotSpeed ? s : best;
-  }, null) || E.stats(world, null);
-  const step = 1 / 90, maxT = E.AIM_LEAD;
+/** The distinct round speeds on the battery, commonest first, with a colour.
+ *  Speeds are bucketed: two mounts a few px/s apart are one marker, not two
+ *  markers a pixel apart pretending to be information. */
+function aimGroups() {
+  const by = new Map();
+  for (const g of world.battery.guns) {
+    /* The gun type's own multiplier belongs in here, and leaving it out is what
+       made the whole marker wrong on a mixed battery: `stats()` returns what
+       the *branches* bought, and `fireGun` multiplies that by `gunStats().spd`
+       before the round ever moves. Read without it, a Mortar (x0.75) and a
+       Railgun (x1.7) both reported 520 and collapsed into one group — one
+       marker again, for three guns that arrive at three different times. */
+    const sp = E.stats(world, g).shotSpeed * E.gunStats(world, g.type).spd;
+    const key = Math.round(sp / 25);
+    const got = by.get(key);
+    if (got) { got.n++; if (got.type !== g.type) { got.type = null; got.arc = false; } }
+    else by.set(key, { speed: sp, n: 1, type: g.type, arc: !!E.GUN_TYPES[g.type].arc });
+  }
+  return [...by.values()]
+    .sort((a, b) => b.n - a.n || b.speed - a.speed)
+    .slice(0, AIM_MAX_GROUPS)
+    .map(x => ({ ...x, col: x.type ? E.GUN_TYPES[x.type].col : '#e6e9e2' }));
+}
+
+function predictHits() {
+  const c = world.cannon;
+  const groups = aimGroups();
+  if (!groups.length) return [];
+  const pending = groups.map(g => ({ ...g, hit: null, done: false }));
+  const fastest = Math.max(...groups.map(g => g.speed));
+  const maxD = fastest * E.AIM_LEAD;
+
   let x = c.x + Math.cos(c.ang) * c.len;
   let y = c.y + Math.sin(c.ang) * c.len;
-  let vx = Math.cos(c.ang) * S.shotSpeed, vy = Math.sin(c.ang) * S.shotSpeed;
+  let dx = Math.cos(c.ang), dy = Math.sin(c.ang);
 
-  for (let t = 0; t < maxT; t += step) {
-    x += vx * step; y += vy * step;
-    if (x < 6) { x = 6; vx = -vx; }
-    if (x > W - 6) { x = W - 6; vx = -vx; }
-    if (y < -20 || y > H + 20) return null;
+  for (let d = 0; d < maxD; d += AIM_STEP) {
+    x += dx * AIM_STEP; y += dy * AIM_STEP;
+    if (x < 6) { x = 6; dx = -dx; }
+    if (x > W - 6) { x = W - 6; dx = -dx; }
+    if (y < -20 || y > H + 20) break;
 
-    for (const ch of world.chains) {
-      // E.RECOIL_RATE, not a copy of it: this was a hardcoded 2.4 left behind
-      // when the engine's rate changed to 1.3, so the marker mispredicted
-      // against any chain that was being pushed back — which is every chain
-      // you are actively cutting into.
-      const s = ch.recoil > 0 ? ch.s - Math.min(ch.recoil, ch.speed * E.RECOIL_RATE * t) : ch.s + ch.speed * t;
-      for (let i = 0; i < ch.segs.length; i++) {
-        const p = E.atS(world.path, world.pathLen, s - i * ch.spacing);
-        if (p.off) continue;
-        if (Math.hypot(x - p.x, y - p.y) < ch.segs[i].r + 3.2) {
-          // a shot that would glance off the plate is not a hit, so the
-          // marker must not promise one. Heading is sampled at the segment's
-          // *predicted* position, not its current one.
-          const sAt = s - i * ch.spacing;
-          const a = E.atS(world.path, world.pathLen, Math.max(0.01, sAt - 4));
-          const b = E.atS(world.path, world.pathLen, Math.min(world.pathLen - 0.01, sAt + 4));
-          const m = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-          const h = { x: (b.x - a.x) / m, y: (b.y - a.y) / m };
-          if (E.isDeflected(ch.segs[i], h, vx, vy)) return { x: p.x, y: p.y, blocked: true };
-          return { x: p.x, y: p.y };
+    for (const p of pending) {
+      if (p.done) continue;
+      /* A lobbed round is over the column until it arms, so a mortar's marker
+         must not promise a hit inside `MORTAR_ARM` — that band is precisely
+         what the gun cannot touch, and it is the reason to own one. */
+      if (p.arc && d < E.MORTAR_ARM) continue;
+      const t = d / p.speed;
+      if (t > E.AIM_LEAD) { p.done = true; continue; }
+
+      for (const ch of world.chains) {
+        /* `E.RECOIL_RATE`, not a copy of it: this was a hardcoded 2.4 left
+           behind when the engine's rate changed to 1.3, so the marker
+           mispredicted against any chain being pushed back — which is every
+           chain you are actively cutting into. */
+        const s = ch.recoil > 0
+          ? ch.s - Math.min(ch.recoil, ch.speed * E.RECOIL_RATE * t)
+          : ch.s + ch.speed * t;
+        for (let i = 0; i < ch.segs.length; i++) {
+          const q = E.atS(world.path, world.pathLen, s - i * ch.spacing);
+          if (q.off) continue;
+          if (Math.hypot(x - q.x, y - q.y) < ch.segs[i].r + 3.2) {
+            // a round that would glance off the plate is not a hit, so the
+            // marker must not promise one. Heading is sampled at the segment's
+            // *predicted* position, not its current one.
+            const sAt = s - i * ch.spacing;
+            const a2 = E.atS(world.path, world.pathLen, Math.max(0.01, sAt - 4));
+            const b2 = E.atS(world.path, world.pathLen, Math.min(world.pathLen - 0.01, sAt + 4));
+            const m = Math.hypot(b2.x - a2.x, b2.y - a2.y) || 1;
+            const h = { x: (b2.x - a2.x) / m, y: (b2.y - a2.y) / m };
+            const blocked = E.isDeflected(ch.segs[i], h, dx * p.speed, dy * p.speed);
+            p.hit = { x: q.x, y: q.y, blocked, col: p.col, n: p.n };
+            p.done = true;
+            break;
+          }
         }
+        if (p.done) break;
       }
     }
+    if (pending.every(p => p.done)) break;
   }
-  return null;
+  return pending.filter(p => p.hit).map(p => p.hit);
 }
 
 /* ---------- shop ----------
@@ -827,6 +896,9 @@ function renderShop(bought) {
   const host = $('branches');
   host.innerHTML = '';
 
+  // the overview is a grid of cards to compare; every other view is a column of
+  // sections to read down
+  host.classList.toggle('overview', shopTab === OVERVIEW);
   if (shopTab === OVERVIEW) { $('battery').style.display = 'none'; renderOverview(host); return; }
   if (shopTab === RESEARCH) { $('battery').style.display = ''; renderBattery(); return; }
   $('battery').style.display = 'none';
@@ -895,8 +967,9 @@ function renderShop(bought) {
        drift from what the purchase does, and every key in the tier object is
        shown, which is what covers Munitions moving two. */
     const next = { ...gun.upgrades, [b]: tier + 1 };
+    const keys = [...(PREVIEW_DERIVED[b] || []), ...Object.keys(U.tiers[tier])];
     const preview = (!maxed && U.tiers[tier + 1])
-      ? Object.keys(U.tiers[tier]).map(k =>
+      ? keys.map(k =>
           `<span class="delta"><i>${statLabel(k)}</i> ${statDisplay(gun, k)} → <b>${statDisplay(gun, k, next)}</b></span>`).join('')
       : '';
 
@@ -961,8 +1034,19 @@ function renderShop(bought) {
     host.appendChild(note);
   }
 
-  host.appendChild(renderBarrels(gun));
-  host.appendChild(renderRetrofit(gun));
+  /* Barrels and the type swap join Optics inside the Refit card, rather than
+     trailing after the tree as two loose blocks. All three answer "what is this
+     mount", which is a different question from "what does its round do". */
+  const refit = groupHosts.get('Refit');
+  if (refit) {
+    refit.appendChild(renderBarrels(gun));
+    refit.appendChild(renderRetrofit(gun));
+  } else {
+    // Optics is not open yet, so the card does not exist — the two still have
+    // to go somewhere, and the tail of the tree is where they used to live
+    host.appendChild(renderBarrels(gun));
+    host.appendChild(renderRetrofit(gun));
+  }
 
   if (bought) flashStat(host, bought);
 }
@@ -999,8 +1083,16 @@ function hasResearch() {
    Optics is deliberately left ungrouped: it is the only branch about *range*,
    and a group of one is a heading with nothing to organize. */
 const BRANCH_GROUPS = [
-  { name: 'Ammunition', of: ['damage', 'calibre', 'velocity', 'munitions'] },
+  { name: 'Ammunition', of: ['calibre', 'velocity', 'munitions'] },
   { name: 'Thermal',    of: ['cooling', 'breech', 'interlock'] },
+  /* Refit is what the gun *is*, rather than what it fires: how far it shoots,
+     how many barrels it shoots from, and which gun it is at all. Optics used to
+     stand alone here on the grounds that a group of one is a heading with
+     nothing to organise — which was true while it was alone, and stopped being
+     true the moment barrels and the type swap joined it (v45). Those two are
+     built by their own renderers rather than from `UPGRADES`, so the group is
+     assembled by hand below; this entry is what puts Optics inside it. */
+  { name: 'Refit',      of: ['optics'] },
 ];
 
 /** The group a branch belongs to, or null if it stands alone. */
@@ -1026,10 +1118,17 @@ function nextBranchOpening() {
    the same thing. An unmapped key falls back to itself rather than vanishing —
    a branch added without a label should look untidy, not silently show nothing. */
 const STAT_LABELS = {
-  dmg: 'Damage', shotR: 'Round size', shotSpeed: 'Round speed', reach: 'Reach',
+  dmg: 'Damage', dps: 'DPS', shotR: 'Round size', shotSpeed: 'Round speed', reach: 'Reach',
   pierce: 'Pierce', bounces: 'Bounces', heatPerShot: 'Heat/shot', cool: 'Cooling',
   lock: 'Lockout', converge: 'Convergence',
 };
+
+/* Stats a branch moves that are not in its own tier table. Damage is derived
+   from Calibre and Velocity now (`roundDamage`), so those two rows have to
+   preview the DPS they buy — otherwise the shop offers "3.8 → 4.2 round size"
+   for 117 scrap and never mentions the reason anyone would pay it. Listed
+   first, because it is the reason. */
+const PREVIEW_DERIVED = { calibre: ['dps'], velocity: ['dps'] };
 const statLabel = k => STAT_LABELS[k] || k;
 
 /** Tier values are a mix of multipliers, absolutes and counts, so print what
@@ -1039,7 +1138,9 @@ const fmtStat = v => (Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0$
 
 /** Mark the stat a purchase just moved, on the freshly rebuilt block. */
 function flashStat(host, branch) {
-  for (const el of host.querySelectorAll(`.statBlock .stat[data-stat="${branch}"]`)) {
+  // `~=` rather than `=`: a row can name more than one branch, since DPS is
+  // moved by both Calibre and Velocity
+  for (const el of host.querySelectorAll(`.statBlock .stat[data-stat~="${branch}"]`)) {
     el.classList.add('bought');
   }
 }
@@ -1052,7 +1153,7 @@ function renderBarrels(gun) {
   const cost = E.barrelCost(world, shopTab);
   const afford = cost !== null && world.scrap >= cost;
   const el = document.createElement('div');
-  el.className = 'branch';
+  el.className = 'branch barrels';
   const dots = Array.from({ length: E.MAX_BARRELS }, (_, i) =>
     `<i class="${i < have ? 'on' : ''}"></i>`).join('');
   el.innerHTML =
@@ -1235,6 +1336,17 @@ function statDisplay(gun, key, ups = gun.upgrades) {
   const n = E.barrelsOf(gun);
   switch (key) {
     case 'dmg': return (T.dmg * S.dmg * G.dmg).toFixed(1);
+    /* What the mount actually puts downrange, per second of firing: the round's
+       damage, every barrel that fires with it, over the reload. Flanking
+       barrels count at `SUB_BARREL_DMG`, which is what they really deal —
+       counting them as whole barrels would advertise a number the gun cannot
+       produce. Heat is deliberately *not* in here: how long you can keep firing
+       is what the three thermal rows below are for, and folding a duty cycle
+       into this would make one number answer two questions badly. */
+    case 'dps': {
+      const per = T.dmg * S.dmg * G.dmg * (1 + (n - 1) * E.SUB_BARREL_DMG);
+      return (per / (T.rate * G.rate)).toFixed(1);
+    }
     case 'pierce': return String(T.pierce + S.pierce + G.pierce);
     case 'shotR': return S.shotR.toFixed(1);
     case 'shotSpeed': return String(Math.round(S.shotSpeed));
@@ -1253,12 +1365,15 @@ function renderGunStats(gun) {
   const T = E.OD_TIERS[0];                    // base tier, so the numbers are comparable
   const n = E.barrelsOf(gun);
 
-  /* Third element is the branch that moves this number, so buying an upgrade
-     can flash the stat it bought. Without it there is no way to tell which of
-     nine rows just changed — the number ticks over silently in a block of
-     nine, which is the whole complaint. `null` for the rows no branch owns. */
+  /* Third element is which branches move this number, space separated, so
+     buying an upgrade can flash the stat it bought. Without it there is no way
+     to tell which of ten rows just changed — the number ticks over silently in
+     a block of ten, which is the whole complaint. `null` for the rows no branch
+     owns, and two names for DPS, which is exactly the point of it: damage is a
+     result of Calibre and Velocity now, not a thing you buy. */
   const rows = [
-    ['Damage', statDisplay(gun, 'dmg') + (n > 1 ? ` ×${n}` : ''), 'damage'],
+    ['DPS', statDisplay(gun, 'dps'), 'calibre velocity'],
+    ['Damage/round', statDisplay(gun, 'dmg') + (n > 1 ? ` ×${n}` : ''), 'calibre velocity'],
     ['Round size', statDisplay(gun, 'shotR'), 'calibre'],
     ['Reload', (T.rate * G.rate).toFixed(2) + 's', null],
     ['Round speed', statDisplay(gun, 'shotSpeed'), 'velocity'],
@@ -1553,7 +1668,19 @@ function buyResearch(buy) {
 const PORTRAIT_W = 420, PORTRAIT_H = 372, PORTRAIT_LIFT = 182;
 const PORTRAIT_ANGLE = -1.05;
 
+/** How many barrels the *portrait* draws, however many the mount has.
+ *
+ *  Two. Asked for at v45, and it is a drawing problem rather than a data one:
+ *  the portrait is a side elevation, so flanking barrels stack vertically in
+ *  it and a third one lands where the eye reads the gun's own silhouette —
+ *  three parallel tubes at portrait scale is a bundle, not a gun. The board art
+ *  draws every barrel a mount really has (`BARREL_OFFSETS` there is unclamped),
+ *  which is where the count matters, because that is where the rounds come out.
+ *  The card's text still says "3 barrels", so nothing is hidden — only undrawn. */
+const PORTRAIT_MAX_BARRELS = 2;
+
 function drawCannonPortrait(g, type, barrels = 1) {
+  barrels = Math.min(barrels, PORTRAIT_MAX_BARRELS);
   const G = E.GUN_TYPES[type];
   const col = G.col;
   const W2 = 420, H2 = 190;
@@ -2513,38 +2640,32 @@ function perspScale(y) {
 function drawSwarm() {
   const swarm = world.swarm;
   if (!swarm || !swarm.length) return;
-  const now = performance.now();
+
+  /* Cheap on purpose, and measured: at v45 the escort is up to 104 motes, and
+     drawing each one as a full `cube()` — two fills and three glow strokes,
+     eight passes in all — cost 10.9ms a frame in the harness, more than the
+     entire rest of the board. A mote is five pixels across; the extrusion and
+     the joining edges it was paying for are invisible at that size.
+
+     So: one dark fill for the body, one cheap two-pass glow for the outline.
+     Still a square, still the escort's own colour, still darkening as it takes
+     damage — the three things that carry meaning, which is the same trade
+     Choke Point's crowd mode makes and for the same reason. */
+  ctx.save();
   for (const m of swarm) {
     if (m.off) continue;
-    const persp = perspScale(m.y);
-    const size = E.SWARM_R * 2.1 * persp;
-    /* Health as brightness, same language the rest of the board speaks: a mote
+    const size = E.SWARM_R * 2.1 * perspScale(m.y);
+    const half = size / 2;
+    /* Health as brightness, the language the rest of the board speaks: a mote
        that has taken a round goes dark rather than growing a bar over it. */
     const lit = m.maxhp > 1 ? 0.45 + 0.55 * Math.max(0, m.hp / m.maxhp) : 1;
     const col = m.flash > 0 ? '#ffffff' : dim(E.SWARM_COL, lit);
-    cube(ctx, m.x, m.y, size, col, {
-      width: 1.2,
-      depth: size * 0.3,
-      body: 'rgba(22,26,44,.95)',
-      back: 'rgba(14,17,30,.9)',
-    });
-    /* A faint mark under each one, so a mote reads as flying *over* the column
-       rather than as sitting in it. Painted with the normal composite: additive
-       glow cannot darken, and this has to read as shadow. */
-    if (!reduce) {
-      inkDot(ctx, m.x + 2, m.y + 5 * persp, size * 0.32, 'rgba(6,10,14,.5)');
-    }
+    ctx.fillStyle = 'rgba(22,26,44,.92)';
+    ctx.fillRect(m.x - half, m.y - half, size, size);
+    glowStroke(ctx, c => c.rect(m.x - half, m.y - half, size, size),
+      col, 1.1, GLOW_PASSES_CHEAP, m.flash > 0 ? 1 : 0.85);
   }
-  // a single sweep of light across the cloud, so it reads as one formation
-  // moving rather than as scattered debris
-  if (!reduce) {
-    const t = (now / 900) % 1;
-    for (const m of swarm) {
-      if (m.off) continue;
-      const d = Math.abs(((m.lag / E.SWARM_LAG) / Math.max(1, swarm.length)) - t);
-      if (d < 0.12) glowDot(ctx, m.x, m.y, 3.2, E.SWARM_COL, (0.12 - d) * 4);
-    }
-  }
+  ctx.restore();
 }
 
 /* ---------- segment rendering ---------- */
@@ -3330,23 +3451,46 @@ function draw() {
     ctx.beginPath(); ctx.arc(tp.x, tp.y, 7, 0, TAU); ctx.stroke();
   }
 
-  // intercept marker: where the shot will actually meet the snake, accounting
-  // for travel time. Without this the player is guessing the lead by feel.
-  const hit = predictHit();
-  if (hit) {
-    // a blocked marker warns that the shot will glance off a plate
-    ctx.strokeStyle = hit.blocked ? '#9fc4e8' : E.OD_TIERS[world.cannon.od].col;
-    ctx.lineWidth = 1.5; ctx.globalAlpha = hit.blocked ? .6 : .85;
-    if (hit.blocked) ctx.setLineDash([3, 4]);
-    ctx.beginPath(); ctx.arc(hit.x, hit.y, 11, 0, TAU); ctx.stroke();
-    ctx.setLineDash([]);
-    if (!hit.blocked) {
+  /* Intercept markers: where the volley will actually meet the column, travel
+     time included. Without them the player is guessing the lead by feel.
+
+     One per distinct round speed (see `predictHits`). A battery firing at one
+     speed draws exactly the marker it always did; a mixed one draws where each
+     part of its volley lands, joined by a thin line so the *spread* reads as
+     one fact about the battery rather than as several unrelated rings. */
+  const hits = predictHits();
+  if (hits.length) {
+    if (hits.length > 1) {
+      // the spread, drawn first and faintly, so the markers sit on top of it
+      ctx.strokeStyle = 'rgba(230,233,226,.28)';
+      ctx.lineWidth = 1; ctx.setLineDash([2, 5]);
       ctx.beginPath();
-      ctx.moveTo(hit.x - 15, hit.y); ctx.lineTo(hit.x - 7, hit.y);
-      ctx.moveTo(hit.x + 7, hit.y); ctx.lineTo(hit.x + 15, hit.y);
+      hits.forEach((h, i) => i ? ctx.lineTo(h.x, h.y) : ctx.moveTo(h.x, h.y));
       ctx.stroke();
+      ctx.setLineDash([]);
     }
-    ctx.globalAlpha = 1;
+    /* The commonest speed keeps the full-size crosshair — with four mounts
+       firing one speed and one firing another, the big marker should be where
+       most of the volley is going. `predictHits` returns commonest first. */
+    hits.forEach((hit, i) => {
+      const lead = i === 0;
+      const r = lead ? 11 : 7;
+      // a blocked marker warns that the round will glance off a plate
+      ctx.strokeStyle = hit.blocked ? '#9fc4e8'
+        : hits.length > 1 ? hit.col : E.OD_TIERS[world.cannon.od].col;
+      ctx.lineWidth = lead ? 1.5 : 1.2;
+      ctx.globalAlpha = hit.blocked ? .55 : lead ? .85 : .7;
+      if (hit.blocked) ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.arc(hit.x, hit.y, r, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      if (!hit.blocked && lead) {
+        ctx.beginPath();
+        ctx.moveTo(hit.x - 15, hit.y); ctx.lineTo(hit.x - 7, hit.y);
+        ctx.moveTo(hit.x + 7, hit.y); ctx.lineTo(hit.x + 15, hit.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    });
   }
 
   // muzzle flash on every gun on tap, so a press always reads as registered
@@ -3478,8 +3622,20 @@ let resumeOffered = false;
    states are exactly the ones most worth saving. */
 let started = false;
 
+/* Two different questions, and conflating them is what lost people's runs.
+ *
+ * Reported at v45: start a run, back out, come back, decline nothing — just
+ * back out again from the banner offering Continue — and the save was gone.
+ * Leaving the page fires this, and "no run started in this page instance" was
+ * being read as "there is nothing worth keeping", so the stored run was
+ * deleted by the act of looking at it.
+ *
+ * A run that is *over* is not one to come back to, and clearing that is right.
+ * A page where nothing has started yet knows nothing about what is stored and
+ * must leave it alone. */
 function saveNow() {
-  if (!started || world.over) { clearRun(GAME_ID); return; }
+  if (world.over) { clearRun(GAME_ID); return; }
+  if (!started) return;
   saveRun(GAME_ID, E.snapshot(world), `Wave ${world.wave} · ${world.score}`);
 }
 

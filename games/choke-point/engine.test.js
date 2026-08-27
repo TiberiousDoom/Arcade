@@ -429,8 +429,15 @@ test('every track does something on every class, however it is priced', () => {
       const bumped = E.createWorld({});
       bumped.classUpgrades[type][track] = E.CLASS_MAX;
       const after = E.stats(bumped, t);
-      // rate is a cooldown, so "better" means smaller
-      const moved = track === 'rate' ? after.rate < before.rate : after[track] > before[track];
+      /* What "better" means is per track: `rate` is a cooldown and `chain` is
+         shots-between-forks, so both improve by going *down* — except that
+         chain starts at 0 meaning never, which is why it is checked as
+         "was never, is now something". */
+      const moved =
+        track === 'rate' ? after.rate < before.rate
+        : track === 'chain' ? (before.chainEvery === 0 && after.chainEvery > 0)
+        : track === 'veterancy' ? after.xpMult > before.xpMult
+        : after[track] > before[track];
       assert.ok(moved, `${type}'s ${track} track buys nothing`);
     }
   }
@@ -719,6 +726,8 @@ test('recordWin reports what it opened, and only the first time', () => {
 
 test('the last circuit has nothing after it to open', () => {
   const p = E.newProgress();
+  // the deep circuits need a sweep as well as the ladder, so sweep circuit 1
+  for (const d of E.DIFFICULTY_KEYS) E.recordWin(p, d, 0);
   for (let i = 0; i < E.ROUTE_COUNT - 1; i++) E.recordWin(p, 'easy', i);
   assert.equal(E.unlockedRoutes(p, 'easy'), E.ROUTE_COUNT);
   const last = E.recordWin(p, 'easy', E.ROUTE_COUNT - 1);
@@ -1011,6 +1020,238 @@ test('rotating the board carries a moved tower with it', () => {
     'and it did not land on the route');
 });
 
+/* ---------- Sever, and the mark ---------- */
+
+test('Sever marks what it hits, and the mark is not a slow', () => {
+  const w = fullyEarned('sever');
+  const e = w.enemies[0];
+  assert.equal(e.marked, 0, 'nothing is marked to begin with');
+  volley(w);
+  assert.ok(e.marked > 0, 'the target is marked');
+  assert.equal(e.slow, 0, 'and it is not slowed — this is a different status');
+});
+
+test('a marked target takes more from everything else', () => {
+  // the same Node shot, against a marked target and an unmarked one
+  const plain = towerVsEnemy('node');
+  const hp0 = plain.enemies[0].hp;
+  E.step(plain, 1 / 60);
+  const plainDealt = hp0 - plain.enemies[0].hp;
+
+  const marked = towerVsEnemy('node');
+  marked.enemies[0].marked = E.MARK_DUR;
+  const hp1 = marked.enemies[0].hp;
+  E.step(marked, 1 / 60);
+  const markedDealt = hp1 - marked.enemies[0].hp;
+
+  assert.ok(markedDealt > plainDealt, `${markedDealt} vs ${plainDealt}`);
+  assert.ok(Math.abs(markedDealt / plainDealt - E.MARK_BRITTLE) < 0.01,
+    'and by exactly the mark multiplier');
+});
+
+test('the mark stacks with a slow, since they are two towers of setup', () => {
+  const w = towerVsEnemy('node');
+  const e = w.enemies[0];
+  e.marked = E.MARK_DUR; e.slow = 1; e.slowStrength = 0.4;
+  const hp0 = e.hp;
+  E.step(w, 1 / 60);
+  const dealt = hp0 - e.hp;
+
+  const bare = towerVsEnemy('node');
+  const hp1 = bare.enemies[0].hp;
+  E.step(bare, 1 / 60);
+  const plain = hp1 - bare.enemies[0].hp;
+  assert.ok(Math.abs(dealt / plain - E.MARK_BRITTLE * E.SLOW_BRITTLE) < 0.02,
+    'both multipliers apply');
+});
+
+test('a marked enemy cannot be mended, which is what answers Patch', () => {
+  const build = (marked) => {
+    const w = richWorld();
+    const { d } = overlook(w, 'node');
+    const hurt = { type: 'surge', dist: d, hp: 10, maxhp: 90, speed: 0, r: 12, slow: 0,
+                   marked: marked ? E.MARK_DUR : 0 };
+    const patch = { type: 'patch', dist: d + 8, hp: 44, maxhp: 44, speed: 0, r: 13, slow: 0 };
+    w.enemies.push(hurt, patch);
+    return { w, hurt };
+  };
+  const open = build(false);
+  for (let i = 0; i < 30; i++) E.step(open.w, 1 / 60);
+  assert.ok(open.hurt.hp > 10, 'an unmarked casualty is mended');
+
+  const shut = build(true);
+  const before = shut.hurt.hp;
+  for (let i = 0; i < 30; i++) E.step(shut.w, 1 / 60);
+  assert.ok(shut.hurt.hp <= before, 'a marked one is not');
+});
+
+test('the mark expires, and rides a save through', () => {
+  const w = towerVsEnemy('node');
+  w.enemies[0].marked = 0.1;
+  for (let i = 0; i < 20; i++) E.step(w, 1 / 60);
+  assert.equal(w.enemies[0].marked, 0, 'it runs out');
+
+  const saved = towerVsEnemy('node');
+  saved.enemies[0].marked = 2;
+  const snap = JSON.parse(JSON.stringify(E.snapshot(saved)));
+  const back = E.createWorld({});
+  assert.equal(E.hydrate(back, snap), true);
+  assert.equal(back.enemies[0].marked, 2, 'a resumed run remembers what was marked');
+});
+
+test('Sever is earned on Medium, and cannot be built before that', () => {
+  const p = E.newProgress();
+  assert.equal(E.classUnlocked(p, 'sever'), false);
+  for (const t of ['node', 'breaker', 'coil']) {
+    assert.equal(E.classUnlocked(p, t), true, `${t} is open from the first run`);
+  }
+
+  const locked = richWorld();
+  E.syncUnlocks(locked, p);
+  const cell = firstBuildable(locked);
+  assert.equal(E.canBuild(locked, cell.c, cell.r, 'sever'), false, 'not without the win');
+  assert.equal(E.buildTower(locked, cell.c, cell.r, 'sever'), false);
+
+  E.recordWin(p, 'medium', 0);
+  assert.equal(E.classUnlocked(p, 'sever'), true, 'one Medium circuit is the price');
+  const open = richWorld();
+  E.syncUnlocks(open, p);
+  assert.equal(E.buildTower(open, cell.c, cell.r, 'sever'), true);
+});
+
+/* ---------- Chain and Veterancy ---------- */
+
+test('Chain forks every Nth shot, deterministically', () => {
+  const w = fullyEarned('node');
+  w.classUpgrades.node.chain = 1;
+  const every = E.chainEvery(1);
+  assert.ok(every > 0);
+
+  // a second enemy alongside the first, within a fork's reach
+  const lead = w.enemies[0];
+  const second = { ...lead, dist: lead.dist + 18, hp: 500, maxhp: 500, marked: 0 };
+  w.enemies.push(second);
+
+  let shots = 0, forked = 0;
+  const rate = E.stats(w, w.towers[0]).rate;
+  for (let i = 0; i < every * 3; i++) {
+    const before = second.hp;
+    E.step(w, 1 / 60);
+    if (w.towers[0].cool > 0) shots++;      // it fired this frame
+    if (second.hp < before) forked++;
+    for (let k = 0; k < Math.ceil(rate * 60); k++) E.step(w, 1 / 60);
+  }
+  assert.ok(forked >= 2, `the fork happened repeatedly (${forked} of ${shots})`);
+  assert.ok(forked < shots, 'but not on every shot');
+});
+
+test('a higher Chain level forks more often', () => {
+  const gaps = [];
+  for (let lvl = 1; lvl <= E.CLASS_MAX; lvl++) gaps.push(E.chainEvery(lvl));
+  assert.equal(E.chainEvery(0), 0, 'unbought, it never forks');
+  for (let i = 1; i < gaps.length; i++) {
+    assert.ok(gaps[i] < gaps[i - 1], `level ${i + 1} forks sooner than level ${i}`);
+  }
+  assert.ok(gaps[gaps.length - 1] >= 2, 'and never every single shot');
+});
+
+test('a fork is not splash — it reaches past it, and Phase cannot shrug it off', () => {
+  assert.ok(E.CHAIN_RADIUS > E.TOWER_TYPES.node.base.splash * 3,
+    'a fork reaches well beyond a Node splash');
+  const w = fullyEarned('node');
+  w.classUpgrades.node.chain = E.CLASS_MAX;
+  const lead = w.enemies[0];
+  // far enough away that splash cannot touch it, near enough for a fork
+  const far = { type: 'phase', dist: lead.dist + 60, hp: 900, maxhp: 900, speed: 0, r: 10,
+                slow: 0, marked: 0 };
+  w.enemies.push(far);
+  const before = far.hp;
+  for (let i = 0; i < 400 && far.hp === before; i++) volley(w);
+  assert.ok(far.hp < before, 'the fork landed on a splash-resistant enemy at range');
+});
+
+test('Chain and Veterancy are earned, and refused until they are', () => {
+  const p = E.newProgress();
+  assert.equal(E.trackUnlocked(p, 'chain'), false);
+  assert.equal(E.trackUnlocked(p, 'veterancy'), false);
+  for (const t of E.CLASS_TRACKS_FREE) {
+    assert.equal(E.trackUnlocked(p, t), true, `${t} is open to everyone`);
+  }
+
+  const w = richWorld();
+  E.syncUnlocks(w, p);
+  assert.equal(E.buyClassUpgrade(w, 'node', 'chain'), false, 'not without the win');
+  assert.equal(E.buyClassUpgrade(w, 'node', 'dmg'), true, 'the open tracks still sell');
+
+  E.recordWin(p, 'hard', 0);
+  assert.equal(E.trackUnlocked(p, 'chain'), true, 'one Hard circuit buys Chain');
+  assert.equal(E.trackUnlocked(p, 'veterancy'), false, 'Veterancy asks for more than that');
+
+  for (const d of E.DIFFICULTY_KEYS) E.recordWin(p, d, 0);
+  assert.equal(E.hasSweep(p), true, 'one circuit held on all three');
+  assert.equal(E.trackUnlocked(p, 'veterancy'), true);
+
+  const swept = richWorld();
+  E.syncUnlocks(swept, p);
+  assert.equal(E.buyClassUpgrade(swept, 'node', 'chain'), true);
+  assert.equal(E.buyClassUpgrade(swept, 'node', 'veterancy'), true);
+});
+
+test('Veterancy levels a tower faster without raising its ceiling', () => {
+  const xpAfter = (levels) => {
+    const w = towerVsEnemy('node');
+    w.classUpgrades.node.veterancy = levels;
+    w.enemies[0].hp = 1e6; w.enemies[0].maxhp = 1e6;
+    for (let i = 0; i < 300; i++) E.step(w, 1 / 60);
+    return w.towers[0].xp + (w.towers[0].level - 1) * 1e-9;
+  };
+  assert.ok(xpAfter(E.CLASS_MAX) > xpAfter(0) * 1.2, 'maxed, it earns visibly faster');
+
+  // the ceiling is untouched: a level-10 tower is a level-10 tower
+  const plain = E.createWorld({});
+  const fast = E.createWorld({});
+  fast.classUpgrades.node.veterancy = E.CLASS_MAX;
+  const t = { type: 'node', level: E.MAX_LEVEL, xp: 0 };
+  assert.equal(E.stats(fast, t).dmg, E.stats(plain, t).dmg, 'same damage at the top');
+  assert.equal(E.stats(fast, t).range, E.stats(plain, t).range, 'same reach at the top');
+});
+
+/* ---------- circuits earned by a sweep ---------- */
+
+test('the deep circuits need a sweep as well as the ladder', () => {
+  assert.ok(E.ROUTE_COUNT > E.SWEPT_ROUTES, 'there are circuits past the first three');
+  const p = E.newProgress();
+  // win every circuit on Easy: the ladder alone must not reach the deep ones
+  for (let i = 0; i < E.SWEPT_ROUTES; i++) E.recordWin(p, 'easy', i);
+  assert.equal(E.routeUnlocked(p, 'easy', E.SWEPT_ROUTES), false,
+    'an Easy-only player is not handed the earned boards');
+  assert.equal(E.unlockedRoutes(p, 'easy'), E.SWEPT_ROUTES);
+
+  // …and a sweep alone is not enough either: the ladder still applies
+  const q = E.newProgress();
+  for (const d of E.DIFFICULTY_KEYS) E.recordWin(q, d, 0);
+  assert.equal(E.hasSweep(q), true);
+  assert.equal(E.routeUnlocked(q, 'easy', E.SWEPT_ROUTES), false, 'the ladder is still there');
+
+  for (let i = 0; i < E.SWEPT_ROUTES; i++) E.recordWin(q, 'easy', i);
+  assert.equal(E.routeUnlocked(q, 'easy', E.SWEPT_ROUTES), true, 'both keys, and it opens');
+});
+
+test('a win says what it opened, so the banner can name the reward', () => {
+  const p = E.newProgress();
+  E.recordWin(p, 'easy', 0);
+  const medium = E.rewardsFor(p, 'medium', 0);
+  assert.deepEqual(medium, [{ kind: 'class', key: 'sever' }], 'Medium opens Sever');
+
+  E.recordWin(p, 'medium', 0);
+  const hard = E.rewardsFor(p, 'hard', 0);
+  assert.deepEqual(hard.map(r => r.key).sort(), ['chain', 'veterancy'],
+    'and the Hard win that completes the sweep opens both tracks');
+
+  E.recordWin(p, 'hard', 0);
+  assert.deepEqual(E.rewardsFor(p, 'hard', 1), [], 'nothing left to open twice');
+});
+
 /* ---------- towers firing ---------- */
 
 /** Put one enemy at a known distance and one tower next to that point. */
@@ -1051,6 +1292,19 @@ function towerVsEnemy(type, opts = {}) {
   w.enemies.push({ type: 'load', dist: d, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0 });
   return w;
 }
+/** `towerVsEnemy`, but with everything earned first — the gated classes cannot
+ *  be built out of a bare world, which is the whole point of them. */
+function fullyEarned(type) {
+  const w = richWorld();
+  const p = E.newProgress();
+  for (const d of E.DIFFICULTY_KEYS) E.recordWin(p, d, 0);
+  E.syncUnlocks(w, p);
+  const { c, r, d } = overlook(w, type);
+  assert.equal(E.buildTower(w, c, r, type), true, `built a ${type}`);
+  w.enemies.push({ type: 'load', dist: d, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0, marked: 0 });
+  return w;
+}
+
 /** A fresh level-1 tower's numbers — what a newly built one actually fires at. */
 const stats0 = (type) => E.stats(E.createWorld({}), { type, level: 1, xp: 0 });
 
