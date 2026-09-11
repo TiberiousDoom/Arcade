@@ -434,6 +434,11 @@ export function classCost(type, track, level) {
 export function buyClassUpgrade(w, type, track) {
   const have = w.classUpgrades?.[type];
   if (!have) return false;
+  /* Both gates, and the class one matters as much as the track one: an armory
+     column for a class you cannot build yet is somewhere to pour components
+     with nothing to show for it, on the one economy in the game that never
+     resets. Earning Sever should be what opens Sever's upgrades. */
+  if (w.unlocked && w.unlocked.classes[type] === false) return false;
   if (w.unlocked && w.unlocked.tracks[track] === false) return false;
   const cost = classCost(type, track, have[track]);
   if (cost === null || w.components < cost) return false;

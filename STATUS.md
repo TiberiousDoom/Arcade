@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-09-11 (v47 — round 18, tap-to-cancel)
+Last updated: 2026-09-11 (v48 — round 19, Sever's upgrades follow Sever)
 
 ## Read this first
 
@@ -20,7 +20,16 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**570 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**571 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 19 feedback — v48 (2026-09-11)
+
+- **Sever's armory column is locked until Sever is.** It was buyable before the
+  class was earned: `buyClassUpgrade` checked the track gate and never the class
+  one, so components could go permanently into a tower that could not be placed.
+  Both gates are checked now, and the shell draws dashed placeholders instead of
+  prices — a button the engine will refuse is a lie with a price on it. What
+  earns the column is named once under the table, not four times inside it.
 
 ## Round 18 feedback — v47 (2026-09-11)
 

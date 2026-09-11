@@ -2056,3 +2056,21 @@ and the theme neutralises the pressed look.
 Tested through a real shell rather than in isolation, by stubbing
 `elementFromPoint` to supply the geometry jsdom has not got — and checked the
 honest way, by switching `guardTaps()` off and watching the new test fail.
+
+
+## 2026-09-11 — Earning a class is what opens its upgrades
+
+Sever's armory column was buyable before Sever was. `buyClassUpgrade` checked
+the *track* gate added with Chain and Veterancy, and never the *class* one — so
+a player could pour components into four tracks for a tower they could not
+place, on the one economy in this game that never resets. The armory is
+permanent by design, which makes a wasted purchase there permanent too.
+
+Both gates are checked now, and the shell stopped offering the buttons at all:
+an unearned class draws a dashed placeholder in each of its cells rather than a
+price. Offering a button the engine will refuse is a lie with a price on it.
+
+What earns the column is said **once, under the table** — a column heading is a
+quarter of the table's width and cannot carry a sentence. That is the same
+mistake the v45 locked rows made in the row *heads*, where it dragged the whole
+grid sideways; the fix is the same shape, one rung out.

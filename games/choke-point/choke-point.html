@@ -289,13 +289,21 @@
   .armTable .rh.locked,
   .armTable .ch.locked{opacity:.55}
   .armTable .cell.locked{
-    grid-column:span var(--cols);
     display:flex;align-items:center;justify-content:center;gap:6px;
     border:1px dashed var(--line);border-radius:var(--btn-radius);
-    background:#0c1a20;height:30px;cursor:default;
+    background:#0c1a20;cursor:default;
     font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-hot);
   }
+  /* A locked *track* is one cell across the whole grid; a locked *class* is one
+     cell in its own column, the height of the buttons beside it so the row
+     still reads as a row. */
+  .armTable .cell.locked.row{grid-column:span var(--cols);height:30px}
+  .armTable .cell.locked.col{height:46px;color:var(--dim)}
   .armTable .cell.locked b{font-weight:700;opacity:.75;color:var(--dim)}
+  /* What earns a locked column, said once under the table rather than four
+     times inside it — the cells are a quarter of the width and a sentence in
+     one is what shoved this whole grid sideways at v45. */
+  #shop .armLock{font-size:10px;color:var(--accent-hot);opacity:.85;line-height:1.5}
   .armTable .cell:disabled{cursor:default}
   .armTable .px{font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.04em;color:var(--accent-hot)}
   .armTable .cell.broke .px{color:var(--dim)}
@@ -998,11 +1006,19 @@ function renderShop() {
        column. Same information, in the space that was empty anyway. */
     if (!openTrack) {
       table.insertAdjacentHTML('beforeend',
-        `<div class="cell locked"><b>Locked</b>${TRACK_LOCK[track] || ''}</div>`);
+        `<div class="cell locked row"><b>Locked</b>${TRACK_LOCK[track] || ''}</div>`);
       continue;
     }
     for (const type of E.TOWER_KEYS) {
       const T = E.TOWER_TYPES[type];
+      /* No upgrades for a class you cannot build yet. The armory never resets,
+         so a column for an unearned class is somewhere to sink components with
+         nothing to show for it — and `buyClassUpgrade` refuses it anyway, so
+         offering the button would only be a lie with a price on it. */
+      if (!E.classUnlocked(progress, type)) {
+        table.insertAdjacentHTML('beforeend', `<div class="cell locked col">—</div>`);
+        continue;
+      }
       const have = world.classUpgrades[type][track];
       const cost = E.classCost(type, track, have);
       const maxed = cost === null;
@@ -1021,6 +1037,19 @@ function renderShop() {
     }
   }
   host.append(table);
+
+  /* Named once, under the grid. The column heading is a quarter of the table's
+     width and cannot carry a sentence — which is exactly the mistake the v45
+     locked rows made in the row heads. */
+  const lockedClasses = E.TOWER_KEYS.filter(t => !E.classUnlocked(progress, t));
+  if (lockedClasses.length) {
+    const note = document.createElement('p');
+    note.className = 'armLock';
+    note.textContent = lockedClasses
+      .map(t => `${E.TOWER_TYPES[t].name}: ${CLASS_LOCK[t] || 'not yet earned'}.`)
+      .join(' ');
+    host.append(note);
+  }
 
   for (const b of host.querySelectorAll('button[data-t]')) {
     b.addEventListener('click', () => {

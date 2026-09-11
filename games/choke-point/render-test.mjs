@@ -494,15 +494,29 @@ test('the armory shows the earned rows locked rather than hiding them', async ()
   for (const el of locked) {
     assert.ok(el.textContent.length < 16, `a row head is a label, not a sentence (got "${el.textContent}")`);
   }
-  const lockedCells = [...doc.querySelectorAll('#shopClasses .armTable .cell.locked')];
+  const lockedCells = [...doc.querySelectorAll('#shopClasses .armTable .cell.locked.row')];
   assert.equal(lockedCells.length, E.CLASS_TRACKS.length - E.CLASS_TRACKS_FREE.length,
     'one cell per locked row, not one per class per locked row');
   assert.match(lockedCells.map(el => el.textContent).join(' '), /Hard/i,
     'and it says what would earn the row');
 
-  // the four open tracks are still buyable, so a locked row cannot break the grid
+  /* A class you have not earned has no upgrades to sell either — the armory
+     never resets, so a column for a tower you cannot build is somewhere to
+     sink components with nothing to show for it. */
+  const openTracks = E.CLASS_TRACKS_FREE.length;
+  const colCells = [...doc.querySelectorAll('#shopClasses .armTable .cell.locked.col')];
+  assert.equal(colCells.length, openTracks,
+    'the unearned class is locked on every track that is otherwise open');
+  assert.equal(doc.querySelectorAll('#shopClasses .armTable button[data-t="sever"]').length, 0,
+    'and it offers no buy button at all');
+  assert.match(doc.querySelector('#shopClasses .armLock').textContent, /Sever.*Medium/i,
+    'with what earns it said once, under the table');
+
+  /* The open tracks on the earned classes are still buyable, so neither a
+     locked row nor a locked column can break the grid: three classes this
+     player has, times the four tracks anyone has. */
   const buys = doc.querySelectorAll('#shopClasses .armTable button[data-t]');
-  assert.equal(buys.length, E.TOWER_KEYS.length * E.CLASS_TRACKS_FREE.length);
+  assert.equal(buys.length, (E.TOWER_KEYS.length - 1) * E.CLASS_TRACKS_FREE.length);
   assert.deepEqual(g.errors, [], 'the locked armory threw');
 });
 
