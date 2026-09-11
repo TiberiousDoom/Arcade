@@ -1969,3 +1969,108 @@ The sweep gate is **additive**: circuits 1-3 keep the per-difficulty ladder
 exactly as it was. Requiring all three difficulties on the existing circuits
 would have stranded an Easy-only player on circuit 1 forever, taking
 progression away from the players who have the least of it.
+
+
+## 2026-09-11 — A panel is bounded by the screen, not by the board
+
+Reported with a screenshot: the Choke Point armory was cut off at the bottom,
+its buy buttons were various sizes, and the two locked rows shoved the whole
+grid to the right. Three causes, and two of them were mine from v45.
+
+**Cut off.** A full-board panel was `inset:0` — exactly the stage — and the
+stage is only what is left after the header and the controls strip. v45 added
+two armory rows *and* a fourth palette button; the button wrapped the strip to a
+second row, which came straight off the board's height, so the panel got shorter
+at the same moment its contents got taller. `overflow-y:auto` then hid the
+difference behind a scrollbar nobody could see.
+
+Panels are now `bottom:auto` with `min-height:100%`: at least the stage, and as
+much more as they need, growing over the controls strip — which is faded and
+inert while a panel is open. They are capped by `--panel-max`, measured in JS
+from the stage's real position to the bottom of the visual viewport, because
+`body` is `overflow:hidden` here (Choke Point deliberately declines
+`body.scrolls`) and below the fold is *unreachable*, not scrollable. Measured
+rather than guessed: the stage's top depends on how many lines the HUD wrapped
+to. Added up against an iPhone 15, the armory needs 418px and the stage is 477
+— it now fits without growing at all.
+
+**Various sizes.** `grid-template-columns: auto repeat(n, 1fr)`. `1fr` is
+`minmax(auto, 1fr)`, so a cell whose price and pips measured wider than its
+share simply took it and the others shrank to pay. `minmax(0, 1fr)` makes every
+column an exact quarter, and the cells carry a fixed `height` rather than a
+`min-height` so a four-digit price cannot make one row taller than the rest.
+
+**Shoved right.** The locked rows put their requirement in the row head — a
+column sized to its content, so a sentence in there was the widest thing in the
+table. The requirement moved into a single cell spanning the row, where there
+was nothing but four identical "—" anyway. The label column is a fixed 56px and
+carries a label. A test now asserts a row head is a label and not a sentence,
+which is the shape of the bug rather than its symptom.
+
+The palette also went back to one row: the rule meant to lay four buttons out
+two-by-two was written *above* `.pick` in the file and lost the cascade to it,
+so four 92px buttons plus gaps came to 392px against a 393px phone and wrapped
+3+1. Four across at `min-width:0`, with the name and price clipping rather than
+wrapping below 430px — furniture height is paid for out of the board.
+
+
+## 2026-09-11 — A press you slide off is a cancel
+
+Reported: tap a button, drag your finger off it, let go — and the action still
+happened.
+
+This is not a bug in any one shell, and the reason it survived this long is
+worth writing down: **a touch pointer gets implicit pointer capture** on the
+element it went down on, so every `pointermove` and `pointerup` is retargeted
+back to that element however far the finger has travelled, and the synthesized
+`click` lands on it too. A mouse does the right thing unaided — a mousedown on
+a button and a mouseup outside fire `click` on their *common ancestor*, not on
+the button — so at a desk everything looks correct. Another entry in the same
+column as the `:hover` one and the safe-area one: touch is not a mouse with a
+fatter cursor, and a desk check cannot see the difference.
+
+[shared/tap.js](../shared/tap.js) installs one capture-phase guard per shell.
+It remembers which control a press began on, asks `elementFromPoint` where the
+finger actually is on move and release, and swallows the click if the release
+was somewhere else. Two limits are deliberate:
+
+- **It only cancels what it is sure of.** `elementFromPoint` returns null
+  outside the viewport (and in jsdom, which lays nothing out); when it cannot
+  answer, the tap is allowed through. A guard that eats real taps when it is
+  confused is worse than the bug.
+- **It only governs `click`.** Anything that must answer on *press* — a
+  gameplay canvas, Feedline's d-pad, Flak Battery's trigger — is untouched,
+  because there the press *is* the action.
+
+That second limit left one hole, which was the actual offender in Choke Point:
+its palette committed the selection in a `pointerdown` handler, so the guard
+never saw a click to stop. The press now only arms the drag-to-build gesture;
+the selection is committed by the button's own `click`. **A control that acts on
+press cannot be guarded — so a control that does not need to should not.**
+
+The press styling had to let go as well: under implicit capture `:active` stays
+lit while the finger is elsewhere, telling the player the tap is still live at
+the exact moment it has been cancelled. The guard marks the control `.tapOff`
+and the theme neutralises the pressed look.
+
+Tested through a real shell rather than in isolation, by stubbing
+`elementFromPoint` to supply the geometry jsdom has not got — and checked the
+honest way, by switching `guardTaps()` off and watching the new test fail.
+
+
+## 2026-09-11 — Earning a class is what opens its upgrades
+
+Sever's armory column was buyable before Sever was. `buyClassUpgrade` checked
+the *track* gate added with Chain and Veterancy, and never the *class* one — so
+a player could pour components into four tracks for a tower they could not
+place, on the one economy in this game that never resets. The armory is
+permanent by design, which makes a wasted purchase there permanent too.
+
+Both gates are checked now, and the shell stopped offering the buttons at all:
+an unearned class draws a dashed placeholder in each of its cells rather than a
+price. Offering a button the engine will refuse is a lie with a price on it.
+
+What earns the column is said **once, under the table** — a column heading is a
+quarter of the table's width and cannot carry a sentence. That is the same
+mistake the v45 locked rows made in the row *heads*, where it dragged the whole
+grid sideways; the fix is the same shape, one rung out.

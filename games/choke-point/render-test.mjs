@@ -22,6 +22,35 @@ const SWEPT = JSON.stringify({ wins: { easy: [0], medium: [0], hard: [0] } });
 const swept = (opts = {}) =>
   ({ ...opts, storage: { 'arcade:choke-point:progress': SWEPT, ...(opts.storage || {}) } });
 
+/** A real tap: press and release on the same control, then the click the
+ *  browser synthesizes from it. */
+function tap(w, el) {
+  const doc = w.document;
+  const was = doc.elementFromPoint;
+  doc.elementFromPoint = () => el;            // jsdom lays nothing out
+  el.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new w.PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+  doc.elementFromPoint = was;
+}
+
+/** A press that starts on `el` and is released somewhere else entirely.
+ *  Touch gives the pointer implicit capture, so the browser retargets every
+ *  later event — including the click — back to `el` however far the finger
+ *  went. That retargeting is exactly what is being tested: the click below is
+ *  dispatched on `el`, as a phone really does dispatch it. */
+function slideOff(w, el, away) {
+  const doc = w.document;
+  const was = doc.elementFromPoint;
+  doc.elementFromPoint = () => el;
+  el.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  doc.elementFromPoint = () => away;          // the finger has left
+  el.dispatchEvent(new w.PointerEvent('pointermove', { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new w.PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+  el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+  doc.elementFromPoint = was;
+}
+
 test('the shell boots without throwing', async () => {
   const g = await bootAndStart(SHELL);
   assert.deepEqual(g.errors, [], 'boot threw');
@@ -180,6 +209,42 @@ test('the armory pauses the wave but keeps repainting affordability', async () =
    v26 would quietly move the highlight to whatever was still affordable — so a
    tap you thought you had made had become a different tap. Selection is yours
    now; being broke only changes how the button looks. */
+test('a press slid off a button does nothing when it is let go', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.components = 9999;
+  g.frame(1000);
+
+  /* Reported at v46. This is a touch-only fault and that is the whole reason
+     it survived: a touch pointer gets implicit capture, so the browser
+     retargets the release *and the click* back to the button the finger
+     started on, however far away it ended up. On a mouse the browser fires the
+     click on the common ancestor instead, so nothing looks wrong at a desk. */
+  const picks = [...doc.querySelectorAll('.pick')];
+  const node = picks.find(b => /node/i.test(b.textContent));
+  const breaker = picks.find(b => /breaker/i.test(b.textContent));
+  tap(w, node);
+  g.frame(1010);
+  assert.ok(node.classList.contains('on'), 'the node is selected to begin with');
+
+  slideOff(w, breaker, doc.getElementById('cv'));
+  g.frame(1020);
+  assert.ok(node.classList.contains('on'), 'sliding off the breaker changed nothing');
+  assert.ok(!breaker.classList.contains('on'), 'and it certainly did not select it');
+
+  // the same gesture on a verb, where "did it fire" is unambiguous
+  const start = doc.getElementById('startWave');
+  const wave = world.wave;
+  slideOff(w, start, doc.getElementById('cv'));
+  assert.equal(world.wave, wave, 'a wave that was never really started is never started');
+
+  // …and a real tap on the same button still works, which is the other half
+  tap(w, start);
+  assert.equal(world.wave, wave + 1, 'a tap that stays put still starts the wave');
+  assert.deepEqual(g.errors, [], 'the tap guard threw');
+});
+
 test('a palette selection survives going broke', async () => {
   const g = await bootAndStart(SHELL);
   const { world, window: w } = g;
@@ -190,7 +255,10 @@ test('a palette selection survives going broke', async () => {
   const breaker = picks.find(b => /breaker/i.test(b.textContent));
   world.components = 9999;
   g.frame(1000);
-  breaker.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  // a tap, not a press: the palette commits its selection on `click` since
+  // v47, so that a press slid off the strip selects nothing
+  tap(w, breaker);
+  g.frame(1010);
   assert.ok(breaker.classList.contains('on'), 'picked the breaker');
 
   // broke: less than the cheapest tower, let alone a Breaker
@@ -203,7 +271,7 @@ test('a palette selection survives going broke', async () => {
   // and you can still *select* something you cannot yet afford, which is how
   // you pick what to save up for
   const node = picks.find(b => /node/i.test(b.textContent));
-  node.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  tap(w, node);
   g.frame(1100);
   assert.ok(node.classList.contains('on'), 'switched to the node while broke');
   assert.deepEqual(g.errors, [], 'the palette threw');
@@ -418,13 +486,68 @@ test('the armory shows the earned rows locked rather than hiding them', async ()
   const locked = [...doc.querySelectorAll('#shopClasses .armTable .rh.locked')];
   assert.equal(locked.length, E.CLASS_TRACKS.length - E.CLASS_TRACKS_FREE.length,
     'the two earned tracks read as locked');
-  assert.match(locked.map(el => el.textContent).join(' '), /Hard/i,
-    'and each says what would earn it');
 
-  // the four open tracks are still buyable, so a locked row cannot break the grid
+  /* The requirement lives in one cell spanning the row, *not* in the row head.
+     Reported at v45: the head is a grid column sized to its content, so a
+     sentence in there was the widest thing in the table and shoved every
+     button off to the right. The label column carries a label. */
+  for (const el of locked) {
+    assert.ok(el.textContent.length < 16, `a row head is a label, not a sentence (got "${el.textContent}")`);
+  }
+  const lockedCells = [...doc.querySelectorAll('#shopClasses .armTable .cell.locked.row')];
+  assert.equal(lockedCells.length, E.CLASS_TRACKS.length - E.CLASS_TRACKS_FREE.length,
+    'one cell per locked row, not one per class per locked row');
+  assert.match(lockedCells.map(el => el.textContent).join(' '), /Hard/i,
+    'and it says what would earn the row');
+
+  /* A class you have not earned has no upgrades to sell either — the armory
+     never resets, so a column for a tower you cannot build is somewhere to
+     sink components with nothing to show for it. */
+  const openTracks = E.CLASS_TRACKS_FREE.length;
+  const colCells = [...doc.querySelectorAll('#shopClasses .armTable .cell.locked.col')];
+  assert.equal(colCells.length, openTracks,
+    'the unearned class is locked on every track that is otherwise open');
+  assert.equal(doc.querySelectorAll('#shopClasses .armTable button[data-t="sever"]').length, 0,
+    'and it offers no buy button at all');
+  assert.match(doc.querySelector('#shopClasses .armLock').textContent, /Sever.*Medium/i,
+    'with what earns it said once, under the table');
+
+  /* The open tracks on the earned classes are still buyable, so neither a
+     locked row nor a locked column can break the grid: three classes this
+     player has, times the four tracks anyone has. */
   const buys = doc.querySelectorAll('#shopClasses .armTable button[data-t]');
-  assert.equal(buys.length, E.TOWER_KEYS.length * E.CLASS_TRACKS_FREE.length);
+  assert.equal(buys.length, (E.TOWER_KEYS.length - 1) * E.CLASS_TRACKS_FREE.length);
   assert.deepEqual(g.errors, [], 'the locked armory threw');
+});
+
+test('an open panel is bounded by the screen, and its buttons are one size', async () => {
+  const g = await bootAndStart(SHELL, swept());
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.components = 99999;
+  g.frame(1000);
+
+  const root = doc.documentElement;
+  assert.equal(root.style.getPropertyValue('--panel-max'), '', 'nothing reserved before a panel opens');
+  doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+
+  /* The armory grew past the stage at v45 and hid its own bottom behind a
+     scroll — the stage is only what is left after the header and the controls
+     strip, and two new rows did not fit. It may now grow over the (faded)
+     strip, but never past the screen: `body` is `overflow:hidden` here, so
+     below the fold is unreachable rather than scrollable. */
+  const max = parseFloat(root.style.getPropertyValue('--panel-max'));
+  assert.ok(max > 0, `the panel is bounded by a measured height (got ${max})`);
+
+  /* Fixed columns, not `auto`/`1fr`: `1fr` is `minmax(auto,1fr)`, so the cell
+     with the widest price took more than its share and the rest shrank to pay
+     — the "buttons are various sizes" report. */
+  const cols = w.getComputedStyle(doc.querySelector('.armTable')).gridTemplateColumns;
+  assert.doesNotMatch(cols, /auto/, `every column is a fixed share (got "${cols}")`);
+  assert.match(cols, /minmax\(0/, 'and the class columns cannot be widened by their contents');
+
+  doc.getElementById('shopClose').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.deepEqual(g.errors, [], 'the armory panel threw');
 });
 
 test('a fork and a mark both draw on a real board', async () => {

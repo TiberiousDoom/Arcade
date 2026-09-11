@@ -1197,6 +1197,28 @@ test('Chain and Veterancy are earned, and refused until they are', () => {
   assert.equal(E.buyClassUpgrade(swept, 'node', 'veterancy'), true);
 });
 
+test('a class you have not earned has no upgrades to buy either', () => {
+  const p = E.newProgress();
+  const w = richWorld();
+  E.syncUnlocks(w, p);
+  const purse = w.components;
+
+  /* The armory never resets, so a column for a tower you cannot build is
+     somewhere to sink components permanently with nothing to show for it.
+     Earning the class is what opens the class's upgrades. */
+  for (const track of E.CLASS_TRACKS_FREE) {
+    assert.equal(E.buyClassUpgrade(w, 'sever', track), false, `${track} is not for sale yet`);
+    assert.equal(w.classUpgrades.sever[track], 0, 'and nothing was banked');
+  }
+  assert.equal(w.components, purse, 'nor charged for');
+  assert.equal(E.buyClassUpgrade(w, 'node', 'dmg'), true, 'the earned classes still sell');
+
+  E.recordWin(p, 'medium', 0);
+  E.syncUnlocks(w, p);
+  assert.equal(E.buyClassUpgrade(w, 'sever', 'dmg'), true, 'and the win opens them');
+  assert.equal(w.classUpgrades.sever.dmg, 1);
+});
+
 test('Veterancy levels a tower faster without raising its ceiling', () => {
   const xpAfter = (levels) => {
     const w = towerVsEnemy('node');
