@@ -37,13 +37,12 @@
      makeFit's `extra` hook so the board never hides behind it. */
   #controls{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;
     padding-bottom:env(safe-area-inset-bottom,0px)}
-  /* Four classes since v46, and four `min-width:92px` buttons do not fit one
-     phone row. Two by two rather than a wrapped row of unequal widths: a 3+1
-     wrap leaves one button stretched across the width, which reads as more
-     important than the other three. */
-  @media (max-width:460px){
-    .pick{flex:1 1 calc(50% - 4px);min-width:0}
-  }
+  /* This rule used to live here and was dead: it came *before* `.pick` in the
+     file, so `.pick{min-width:92px}` — same specificity, later — won, and four
+     92px buttons plus gaps came to 392px against a 393px phone. The strip
+     wrapped 3+1, which cost the board a whole button's height (the stage is
+     fitted to what is left over, so furniture is paid for in board). Four
+     across on one row now, at whatever width there is. */
   /* A class that has not been earned. Still on the strip — that is the point —
      but plainly not something you can place. */
   .pick.locked{opacity:.42;border-style:dashed}
@@ -51,7 +50,7 @@
   /* Sized for thumbs, not cursors — these were reported as too small to hit
      reliably on a phone. Keep min-height at or above ~64px. */
   .pick{
-    flex:1 1 0;min-width:92px;min-height:72px;
+    flex:1 1 0;min-width:0;min-height:72px;
     border:1px solid var(--line);background:#0f2027;color:var(--bone);
     border-radius:var(--btn-radius);padding:10px 11px;cursor:pointer;text-align:left;
     display:flex;flex-direction:column;gap:3px;
@@ -124,6 +123,15 @@
     .pick{min-height:56px;padding:8px 9px;flex-direction:row;align-items:baseline;gap:6px}
     .pick .blurb{display:none}
   }
+  /* Four names and four prices across a narrow phone. The type name is the
+     thing that has to survive — it is what the button *is* — so the padding
+     and the letter-spacing give way first, and the row clips rather than
+     wrapping to a second line and taking the board's height with it. */
+  @media (max-width:430px){
+    .pick{padding:8px 6px;gap:4px;overflow:hidden}
+    .pick b{font-size:11px;letter-spacing:.04em}
+    .pick .cost{font-size:11px}
+  }
 
   /* the tap-a-tower popup: targeting / sell */
   #tsel{position:absolute;z-index:6;display:none;flex-direction:column;gap:6px;
@@ -154,8 +162,18 @@
      reason: it is a place you stop and think, not an overlay you peek past. */
   /* The circuit picker shares the armory's slab: same z, same ground, so the
      two full-board panels feel like one piece of furniture. */
-  #pick{position:absolute;inset:0;display:none;flex-direction:column;z-index:7;
-    background:rgba(11,20,24,.96);padding:16px 14px;overflow-y:auto;gap:12px}
+  /* Same growth rule as #shop above, and needed for the same reason: there are
+     five circuits since v45, and five preview rows are taller than the stage. */
+  #pick{position:absolute;inset:0 0 auto 0;min-height:100%;
+    /* …and never past the bottom of the screen. `body` is `overflow:hidden`
+       here (Choke Point deliberately does not take `body.scrolls` — see the
+       note by `makeFit`), so anything below the fold is unreachable rather
+       than scrollable. `--panel-max` is measured from the stage's real
+       position on screen whenever a panel opens; the fallback keeps it inside
+       the stage if that ever fails to run. */
+    max-height:var(--panel-max,100%);display:none;
+    flex-direction:column;z-index:7;
+    background:rgba(11,20,24,.96);padding:12px 12px 14px;overflow-y:auto;gap:10px}
   #pick.on{display:flex}
   #pickHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,19px);
     text-transform:uppercase;letter-spacing:-.02em}
@@ -175,15 +193,18 @@
   /* The map is the row's real label, so it gets the left column outright.
      Pixelated: it is a tiny diagram, not a photograph. */
   .pickMap{border:1px solid var(--line);border-radius:3px;image-rendering:pixelated;
-    height:104px;width:auto;flex:none}
+    height:84px;width:auto;flex:none}
   .pickRow .lock{font-size:10px;color:var(--dim);align-self:center;flex:1 1 auto}
   .pickDiffs{display:flex;flex-direction:column;gap:6px;flex:1 1 auto;justify-content:center}
   /* One row per difficulty, all the same size, so the column does not reflow
      as difficulties unlock. */
-  .pickDiffs button{flex:1 1 0;min-height:46px;font-size:11px;letter-spacing:.1em;
+  /* 42px rather than 46: three stacked buttons are what sets a row's height,
+     and there are five rows since v45 — the picker is the one panel that can
+     still outgrow a short screen. */
+  .pickDiffs button{flex:1 1 0;min-height:42px;font-size:11px;letter-spacing:.1em;
     display:flex;flex-direction:row;align-items:center;justify-content:center;gap:8px}
   @media (max-width:360px){
-    .pickMap{height:84px}
+    .pickMap{height:68px}
     .pickRow{gap:8px;padding:8px}
   }
   .pickDiffs button.held{border:1px solid var(--accent)}
@@ -194,8 +215,26 @@
      alone left them the same colour as the ones you can press. */
   .pickDiffs button:disabled{opacity:.34;background:#0c1a20;color:var(--dim);
     border:1px dashed var(--line);cursor:default}
-  #shop{position:absolute;inset:0;display:none;flex-direction:column;z-index:7;
-    background:rgba(11,20,24,.96);padding:16px 14px;overflow-y:auto;gap:12px}
+  /* `bottom:auto` with `min-height:100%`, not `inset:0`.
+     
+     A full-board panel used to be exactly the stage's height, and the stage is
+     whatever is left after the header and the controls strip — so adding two
+     armory rows (and a fifth circuit to the picker) put their bottoms below the
+     fold, where `overflow-y:auto` hid them behind a scroll nobody could see was
+     there. The panel is now at least the stage and as much more as it needs,
+     growing down over the controls strip, which is faded and inert while it is
+     open anyway. The board does not move and the page does not scroll — the two
+     things v31 settled — and nothing is cut off. */
+  #shop{position:absolute;inset:0 0 auto 0;min-height:100%;
+    /* …and never past the bottom of the screen. `body` is `overflow:hidden`
+       here (Choke Point deliberately does not take `body.scrolls` — see the
+       note by `makeFit`), so anything below the fold is unreachable rather
+       than scrollable. `--panel-max` is measured from the stage's real
+       position on screen whenever a panel opens; the fallback keeps it inside
+       the stage if that ever fails to run. */
+    max-height:var(--panel-max,100%);display:none;
+    flex-direction:column;z-index:7;
+    background:rgba(11,20,24,.96);padding:12px 12px 14px;overflow-y:auto;gap:8px}
   #shop.on{display:flex}
   #shopHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
   #shopHead h2{font-family:'Archivo Black',sans-serif;font-size:clamp(15px,3.6vw,19px);text-transform:uppercase;letter-spacing:-.02em}
@@ -204,19 +243,31 @@
   /* The armory grid: a track-label column plus one column per class. The
      buttons are the cells, so a row is "what this track costs on each class" —
      which is the comparison the spec/weak pricing is asking you to make. */
-  .armTable{display:grid;grid-template-columns:auto repeat(var(--cols),1fr);gap:5px;align-items:stretch}
+  /* `56px` for the labels and `minmax(0,1fr)` for the rest, neither of them
+     `auto`. Both were reported at v45 as "the buttons are various sizes":
+     `1fr` is `minmax(auto,1fr)`, so a cell whose price and pips measured wider
+     than its share took it, and the others shrank to pay for it. `minmax(0,..)`
+     makes every column exactly a quarter of the row. The label column was
+     `auto` and therefore as wide as its widest content — which, once a locked
+     row put its requirement in the row head, was a whole sentence pushing the
+     entire grid off to the right. */
+  .armTable{display:grid;grid-template-columns:56px repeat(var(--cols),minmax(0,1fr));
+    gap:4px;align-items:stretch}
   .armTable .ch{
-    font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.08em;text-transform:uppercase;
+    font:700 11px/1 'Chivo Mono',monospace;letter-spacing:.06em;text-transform:uppercase;
     display:flex;align-items:flex-end;justify-content:center;text-align:center;
-    padding:0 2px 6px;border-bottom:2px solid;
+    padding:0 2px 4px;border-bottom:2px solid;
   }
   .armTable .rh{
-    font-size:10px;letter-spacing:.06em;color:var(--bone);
-    display:flex;align-items:center;padding-right:6px;
+    font-size:10px;letter-spacing:.04em;color:var(--bone);line-height:1.15;
+    display:flex;align-items:center;padding-right:4px;
   }
+  /* A fixed height, not a minimum: every cell in the grid is the same button,
+     and one row growing because its numbers ran to four digits is exactly the
+     unevenness this is here to stop. */
   .armTable .cell{
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
-    min-height:52px;padding:7px 4px;border:1px solid var(--line);border-radius:var(--btn-radius);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    height:46px;padding:4px 2px;border:1px solid var(--line);border-radius:var(--btn-radius);
     background:#16303a;color:var(--bone);cursor:pointer;
   }
   @media (hover: hover) { .armTable .cell:hover:not(:disabled){background:#1d3d49;border-color:var(--accent-hot)} }
@@ -225,19 +276,26 @@
   .armTable .cell.spec{border-color:var(--accent)}
   .armTable .cell.weak{border-color:#5c3a33}
   .armTable .cell.broke{opacity:.5;cursor:default}
-  /* Earned rows and columns, before they are earned. Dashed and dim, with the
-     requirement on the row head — the same treatment Flak Battery gives a
-     locked research rung, and for the same reason: this is the advertisement
-     for playing Medium and Hard, so it must be legible rather than absent. */
+  /* Earned rows and columns, before they are earned — the same treatment Flak
+     Battery gives a locked research rung, and for the same reason: this is the
+     advertisement for playing Medium and Hard, so it must be legible rather
+     than absent.
+
+     The requirement sits in **one cell spanning the row**, not in the row head.
+     In the head it was the widest thing in a column sized to its content, so
+     two locked rows dragged the whole grid sideways and squeezed every button
+     — and four identical "—" cells said nothing anyway. One wide cell has room
+     to say what earns the row, in the space that was doing nothing. */
   .armTable .rh.locked,
   .armTable .ch.locked{opacity:.55}
-  .armTable .rh.locked em{display:block;font-style:normal;font-size:8px;
-    letter-spacing:.06em;color:var(--accent-hot);opacity:.9;line-height:1.3}
   .armTable .cell.locked{
-    display:flex;align-items:center;justify-content:center;
+    grid-column:span var(--cols);
+    display:flex;align-items:center;justify-content:center;gap:6px;
     border:1px dashed var(--line);border-radius:var(--btn-radius);
-    background:#0c1a20;color:var(--dim);min-height:52px;cursor:default;
+    background:#0c1a20;height:30px;cursor:default;
+    font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-hot);
   }
+  .armTable .cell.locked b{font-weight:700;opacity:.75;color:var(--dim)}
   .armTable .cell:disabled{cursor:default}
   .armTable .px{font:700 12px/1 'Chivo Mono',monospace;letter-spacing:.04em;color:var(--accent-hot)}
   .armTable .cell.broke .px{color:var(--dim)}
@@ -251,7 +309,14 @@
     .armTable .rh{font-size:9px;padding-right:4px}
     .armTable .cell{min-height:46px;padding:5px 2px}
   }
-  #shopClose{align-self:center;margin-top:2px;min-height:48px;padding:12px 28px}
+  /* Sticky, so the way out is on screen even in the one case a panel still
+     has to scroll: five circuits on a short phone. Full width rather than
+     centred — a sticky bar with a transparent gutter either side lets the
+     content slide past it, which looks like a bug. */
+  #shopClose,#pickClose{
+    position:sticky;bottom:0;align-self:stretch;margin-top:auto;
+    min-height:48px;padding:12px 28px;
+  }
 
   /* a difficulty not yet earned: visible, so you know what is up there, but
      plainly out of reach */
@@ -539,9 +604,30 @@ function closePicker() { $('pick').classList.remove('on'); panelOpen(false); pau
  *  on. Driven off both panels rather than off either one, so opening the
  *  armory from the picker and closing it again cannot leave the strip dimmed. */
 function panelOpen(on) {
-  document.body.classList.toggle('panelOpen',
-    on || $('shop').classList.contains('on') || $('pick').classList.contains('on'));
+  const open = on || $('shop').classList.contains('on') || $('pick').classList.contains('on');
+  document.body.classList.toggle('panelOpen', open);
+  if (open) setPanelMax();
 }
+
+/** How tall a full-board panel may grow: from the top of the stage to the
+ *  bottom of the screen, less a hair of breathing room.
+ *
+ *  A panel is as tall as its content and at least as tall as the stage, so it
+ *  can spill over the controls strip — which is faded and inert while it is
+ *  open — rather than hiding its own bottom behind a scroll. But `body` is
+ *  `overflow:hidden` here, so it must never spill past the screen itself:
+ *  that would be unreachable, not scrollable. Measured rather than guessed,
+ *  because the stage's position depends on how many lines the HUD wrapped to.
+ *  `visualViewport.height` where it exists, since iOS Safari's collapsing
+ *  address bar changes that without changing `innerHeight`. */
+function setPanelMax() {
+  const stage = $('stage');
+  const top = stage.getBoundingClientRect().top;
+  const vh = (window.visualViewport && visualViewport.height) || innerHeight;
+  const max = Math.max(200, vh - top - 6);
+  document.documentElement.style.setProperty('--panel-max', max + 'px');
+}
+addEventListener('resize', () => { if (document.body.classList.contains('panelOpen')) setPanelMax(); });
 
 /* Enemy screen positions for the current frame, and whether the board is busy
    enough to need the cheap draw. Both are frame state, rebuilt in `draw`. */
@@ -899,15 +985,17 @@ function renderShop() {
   for (const track of E.CLASS_TRACKS) {
     const openTrack = E.trackUnlocked(progress, track);
     table.insertAdjacentHTML('beforeend',
-      `<div class="rh${openTrack ? '' : ' locked'}">${TRACK_LABEL[track]}` +
-      (openTrack ? '' : `<em>${TRACK_LOCK[track] || 'Locked'}</em>`) + `</div>`);
+      `<div class="rh${openTrack ? '' : ' locked'}">${TRACK_LABEL[track]}</div>`);
+    /* An unearned row is one cell across the whole grid saying what earns it,
+       rather than four identical dashes and a sentence wedged into the label
+       column. Same information, in the space that was empty anyway. */
+    if (!openTrack) {
+      table.insertAdjacentHTML('beforeend',
+        `<div class="cell locked"><b>Locked</b>${TRACK_LOCK[track] || ''}</div>`);
+      continue;
+    }
     for (const type of E.TOWER_KEYS) {
       const T = E.TOWER_TYPES[type];
-      if (!openTrack) {
-        // a row you have not earned: visible, and saying what earns it
-        table.insertAdjacentHTML('beforeend', `<div class="cell locked">—</div>`);
-        continue;
-      }
       const have = world.classUpgrades[type][track];
       const cost = E.classCost(type, track, have);
       const maxed = cost === null;

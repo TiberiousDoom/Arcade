@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-08-27 (v45 — round 16, both games)
+Last updated: 2026-09-11 (v46 — round 17, Choke Point layout)
 
 ## Read this first
 
@@ -20,7 +20,40 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**570 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **75 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**570 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **76 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 17 feedback — v46 (2026-09-11)
+
+One screenshot, three faults in the Choke Point armory — two of them introduced
+by v45's own additions.
+
+- **The panel was cut off.** A full-board panel was exactly the stage's height,
+  and the stage is what is left after the header and the controls strip. v45
+  added two armory rows *and* a fourth palette button that wrapped the strip to
+  a second row — so the panel shrank as its contents grew. Panels now grow
+  downward over the (faded, inert) controls strip, capped by `--panel-max`
+  measured from the stage's real position to the bottom of the viewport.
+- **The buy buttons were various sizes.** `1fr` is `minmax(auto,1fr)`, so the
+  widest price took more than its share. Every class column is now
+  `minmax(0,1fr)` and every cell a fixed 46px tall.
+- **The locked rows shoved the grid right.** Their requirement sat in the row
+  head, which is a column sized to its content. It moved to one cell spanning
+  the row — where four identical "—" were doing nothing — and the label column
+  is a fixed 56px.
+- The palette is back to one row: the two-by-two rule was written above `.pick`
+  in the file and lost the cascade to it, so it never applied.
+
+### Still open after this round
+
+- **The circuit picker is the tight one now.** Five circuits, each row as tall
+  as three stacked difficulty buttons, comes to roughly 690px against about
+  640px of room on a short phone — so it scrolls inside the panel, with the
+  Back button pinned. Not broken, but it is the next thing to outgrow its
+  space, and locked circuits being short rows is what currently saves it.
+- The fit arithmetic above is desk work against an iPhone 15's numbers
+  (`scratchpad/fits.mjs`-style: stage 477, armory 418). The phone is the verdict.
+- Everything carried over from round 16 is still open: the armory-total ratio
+  has not been re-derived for six tracks, and no replay reward has been played.
 
 ## Round 16 feedback — v45 (2026-08-27)
 

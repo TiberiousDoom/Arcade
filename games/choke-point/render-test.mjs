@@ -418,13 +418,54 @@ test('the armory shows the earned rows locked rather than hiding them', async ()
   const locked = [...doc.querySelectorAll('#shopClasses .armTable .rh.locked')];
   assert.equal(locked.length, E.CLASS_TRACKS.length - E.CLASS_TRACKS_FREE.length,
     'the two earned tracks read as locked');
-  assert.match(locked.map(el => el.textContent).join(' '), /Hard/i,
-    'and each says what would earn it');
+
+  /* The requirement lives in one cell spanning the row, *not* in the row head.
+     Reported at v45: the head is a grid column sized to its content, so a
+     sentence in there was the widest thing in the table and shoved every
+     button off to the right. The label column carries a label. */
+  for (const el of locked) {
+    assert.ok(el.textContent.length < 16, `a row head is a label, not a sentence (got "${el.textContent}")`);
+  }
+  const lockedCells = [...doc.querySelectorAll('#shopClasses .armTable .cell.locked')];
+  assert.equal(lockedCells.length, E.CLASS_TRACKS.length - E.CLASS_TRACKS_FREE.length,
+    'one cell per locked row, not one per class per locked row');
+  assert.match(lockedCells.map(el => el.textContent).join(' '), /Hard/i,
+    'and it says what would earn the row');
 
   // the four open tracks are still buyable, so a locked row cannot break the grid
   const buys = doc.querySelectorAll('#shopClasses .armTable button[data-t]');
   assert.equal(buys.length, E.TOWER_KEYS.length * E.CLASS_TRACKS_FREE.length);
   assert.deepEqual(g.errors, [], 'the locked armory threw');
+});
+
+test('an open panel is bounded by the screen, and its buttons are one size', async () => {
+  const g = await bootAndStart(SHELL, swept());
+  const { world, E, window: w } = g;
+  const doc = w.document;
+  world.components = 99999;
+  g.frame(1000);
+
+  const root = doc.documentElement;
+  assert.equal(root.style.getPropertyValue('--panel-max'), '', 'nothing reserved before a panel opens');
+  doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+
+  /* The armory grew past the stage at v45 and hid its own bottom behind a
+     scroll — the stage is only what is left after the header and the controls
+     strip, and two new rows did not fit. It may now grow over the (faded)
+     strip, but never past the screen: `body` is `overflow:hidden` here, so
+     below the fold is unreachable rather than scrollable. */
+  const max = parseFloat(root.style.getPropertyValue('--panel-max'));
+  assert.ok(max > 0, `the panel is bounded by a measured height (got ${max})`);
+
+  /* Fixed columns, not `auto`/`1fr`: `1fr` is `minmax(auto,1fr)`, so the cell
+     with the widest price took more than its share and the rest shrank to pay
+     — the "buttons are various sizes" report. */
+  const cols = w.getComputedStyle(doc.querySelector('.armTable')).gridTemplateColumns;
+  assert.doesNotMatch(cols, /auto/, `every column is a fixed share (got "${cols}")`);
+  assert.match(cols, /minmax\(0/, 'and the class columns cannot be widened by their contents');
+
+  doc.getElementById('shopClose').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  assert.deepEqual(g.errors, [], 'the armory panel threw');
 });
 
 test('a fork and a mark both draw on a real board', async () => {
