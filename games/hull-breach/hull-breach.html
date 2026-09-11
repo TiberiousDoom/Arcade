@@ -111,6 +111,13 @@ import { makeMenu } from '../../shared/menu.js';
 import { maxLevel, recordLevel } from '../../shared/levels.js';
 import { buzz } from '../../shared/prefs.js';
 
+import { guardTaps } from '../../shared/tap.js';
+
+/* A press slid off a button is a cancel, on every button in this shell.
+   Touch gives the pointer implicit capture, so without this the click lands
+   wherever the press began however far the finger went — see shared/tap.js. */
+guardTaps();
+
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
 const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;

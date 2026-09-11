@@ -391,6 +391,13 @@ import { makeAudio } from '../../shared/audio.js';
 import { makeMenu } from '../../shared/menu.js';
 import { buzz } from '../../shared/prefs.js';
 
+import { guardTaps } from '../../shared/tap.js';
+
+/* A press slid off a button is a cancel, on every button in this shell.
+   Touch gives the pointer implicit capture, so without this the click lands
+   wherever the press began however far the finger went — see shared/tap.js. */
+guardTaps();
+
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const TAU = E.TAU;
 const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -1177,10 +1184,13 @@ function dragPoint(e) {
 for (const key of E.TOWER_KEYS) {
   pickBtns[key].addEventListener('pointerdown', e => {
     if (!world.running) return;
-    // Selecting always works, even when you cannot afford it yet — that is how
-    // you pick what to save for. Only the *drag* is gated on affording it,
-    // since a drag that cannot end in a build is a dead gesture.
-    selected = key; syncPalette();
+    /* Arming the drag only. The *selection* is committed by the button's own
+       `click` handler, so a press slid off the palette and released elsewhere
+       changes nothing — `shared/tap.js` guards clicks, and a press-time commit
+       is the one case it cannot help with, because it never reaches a click.
+       Selecting still works on a tower you cannot yet afford (that is how you
+       pick what to save for); only the drag is gated on affording it, since a
+       drag that cannot end in a build is a dead gesture. */
     if (!E.classUnlocked(progress, key)) return;
     if (world.components < E.buildCost(world, key)) return;
     dragType = key;

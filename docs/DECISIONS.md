@@ -2012,3 +2012,47 @@ two-by-two was written *above* `.pick` in the file and lost the cascade to it,
 so four 92px buttons plus gaps came to 392px against a 393px phone and wrapped
 3+1. Four across at `min-width:0`, with the name and price clipping rather than
 wrapping below 430px — furniture height is paid for out of the board.
+
+
+## 2026-09-11 — A press you slide off is a cancel
+
+Reported: tap a button, drag your finger off it, let go — and the action still
+happened.
+
+This is not a bug in any one shell, and the reason it survived this long is
+worth writing down: **a touch pointer gets implicit pointer capture** on the
+element it went down on, so every `pointermove` and `pointerup` is retargeted
+back to that element however far the finger has travelled, and the synthesized
+`click` lands on it too. A mouse does the right thing unaided — a mousedown on
+a button and a mouseup outside fire `click` on their *common ancestor*, not on
+the button — so at a desk everything looks correct. Another entry in the same
+column as the `:hover` one and the safe-area one: touch is not a mouse with a
+fatter cursor, and a desk check cannot see the difference.
+
+[shared/tap.js](../shared/tap.js) installs one capture-phase guard per shell.
+It remembers which control a press began on, asks `elementFromPoint` where the
+finger actually is on move and release, and swallows the click if the release
+was somewhere else. Two limits are deliberate:
+
+- **It only cancels what it is sure of.** `elementFromPoint` returns null
+  outside the viewport (and in jsdom, which lays nothing out); when it cannot
+  answer, the tap is allowed through. A guard that eats real taps when it is
+  confused is worse than the bug.
+- **It only governs `click`.** Anything that must answer on *press* — a
+  gameplay canvas, Feedline's d-pad, Flak Battery's trigger — is untouched,
+  because there the press *is* the action.
+
+That second limit left one hole, which was the actual offender in Choke Point:
+its palette committed the selection in a `pointerdown` handler, so the guard
+never saw a click to stop. The press now only arms the drag-to-build gesture;
+the selection is committed by the button's own `click`. **A control that acts on
+press cannot be guarded — so a control that does not need to should not.**
+
+The press styling had to let go as well: under implicit capture `:active` stays
+lit while the finger is elsewhere, telling the player the tap is still live at
+the exact moment it has been cancelled. The guard marks the control `.tapOff`
+and the theme neutralises the pressed look.
+
+Tested through a real shell rather than in isolation, by stubbing
+`elementFromPoint` to supply the geometry jsdom has not got — and checked the
+honest way, by switching `guardTaps()` off and watching the new test fail.

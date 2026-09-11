@@ -183,6 +183,11 @@ button:focus-visible{outline:2px solid var(--bone);outline-offset:2px}
    *delayed* acknowledgement is worse than none. */
 button{transition:transform .12s ease-out, filter .12s ease-out, background .12s ease-out}
 button:not(:disabled):active{transform:scale(.96);filter:brightness(1.12)}
+/* …unless the finger has slid off it. A touch pointer keeps implicit capture,
+   so `:active` stays lit while the finger is somewhere else entirely — telling
+   the player the tap is still live at the exact moment it has been cancelled.
+   `shared/tap.js` marks the control; this is what that mark is for. */
+button.tapOff:active,a.tapOff:active{transform:none;filter:none;opacity:.6}
 /* Disabled buttons must stay inert: a press animation on a button that will
    not act is a promise the UI does not keep. */
 button:disabled{transform:none}

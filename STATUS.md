@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-09-11 (v46 — round 17, Choke Point layout)
+Last updated: 2026-09-11 (v47 — round 18, tap-to-cancel)
 
 ## Read this first
 
@@ -20,7 +20,35 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**570 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **76 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**570 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Round 18 feedback — v47 (2026-09-11)
+
+One item, across all four games.
+
+- **A press you slide off is a cancel.** Tapping a button, dragging off it and
+  letting go still fired the action. Touch gives a pointer *implicit capture*,
+  so the release and the synthesized click are retargeted back to the button
+  the finger started on — a mouse fires the click on the common ancestor
+  instead, which is why nothing looked wrong at a desk.
+  [shared/tap.js](shared/tap.js) is one capture-phase guard, installed by every
+  shell: it asks `elementFromPoint` where the finger really is and swallows the
+  click if the release was elsewhere. The pressed styling lets go too.
+- Choke Point's palette committed its selection on `pointerdown`, where no
+  click guard can reach it. The press now only arms the drag-to-build gesture.
+
+### Still open after this round
+
+- **Controls that act on press are unguarded by design**, and that is the rule:
+  a gameplay canvas, Feedline's d-pad, Flak Battery's trigger. Choke Point also
+  still *builds* on press — tap a cell and slide off and the tower is placed,
+  which is the same shape of accident on a board where towers now get dearer
+  each time. Left alone deliberately: moving it to release would tangle with
+  the tap-to-open-popup and drag-to-move gestures that share that handler, and
+  it wants its own round.
+- Everything from rounds 16-17 is still open: the armory-total ratio has not
+  been re-derived for six tracks, the circuit picker is the panel most likely
+  to need its internal scroll, and no replay reward has been played yet.
 
 ## Round 17 feedback — v46 (2026-09-11)
 
