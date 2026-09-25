@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-09-11 (v48 — round 19, Sever's upgrades follow Sever)
+Last updated: 2026-09-25 (v49 — Flak Battery's five guns redrawn)
 
 ## Read this first
 
@@ -21,6 +21,36 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **571 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## v49 — the five guns, redrawn (2026-09-25)
+
+Flak Battery's gun art, shop portrait and board both, redrawn from a design
+canvas and ported coordinate for coordinate (DECISIONS 2026-09-25).
+
+- **Cannon** — the "field piece": tapered tube with a ported muzzle brake,
+  recoil cradle and cylinder, breech behind the trunnion, equilibrator.
+- **Autocannon** — six-barrel rotary on the sloped casemate, belt-fed.
+- **Railgun** — open rails on spacer rings, finned power unit, bolted deck.
+- **Mortar** — the cannon's carriage, a short fat tube, a screw jack. The drawn
+  trajectory from the design round was dropped: it read as a shot.
+- **Ion cannon** — an armoured ball behind a low lip (the back berm is gone),
+  an insulator stack ending in a sparking sphere. **Now purple (`#a56cff`)**,
+  which recolours its rounds and its shop tab too.
+- **Every gun pivots on a sphere**, on the board as in the shop.
+- **Board barrels are longer and the bases wider**, and extra barrels sit at the
+  engine's real offsets (they were squeezed to 55% before), joined to the pivot
+  by a crossbar.
+- **The portrait draws its second barrel above the main one**, the side that is
+  clear; the board draws the real side.
+
+### Check on the phone
+
+- **The purple.** Near the regen craft's `#8f5fb8` and the Ricochet crate's
+  `#b98de0` — different shapes and a different row, but judge it on glass.
+- **Three barrels.** At the real offsets the flanking barrels sit wide, most on
+  the mortar and the ion. Do they read as one gun?
+- **Six mounts in portrait.** The spacing is 84px and the towed legs now span
+  ~74px; the leftmost mount's pad reaches the board edge.
 
 ## Round 19 feedback — v48 (2026-09-11)
 
