@@ -1946,7 +1946,7 @@ export const GUN_TYPES = {
   // The one gun `shielded` can't deflect — the collision loop checks the
   // shot's `gun` field for the literal string 'ion' before ever calling
   // isDeflected, not a stat on this table.
-  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#7fe0ff', refitBase: 260,
+  ion:      { name: 'Ion Cannon', rate: 1.3,  dmg: 1.1, pierce: 0, spd: 1.3,  col: '#a56cff', refitBase: 260,
               blurb: 'Ignores shield plating.' },
 };
 export const GUN_KEYS = Object.keys(GUN_TYPES);

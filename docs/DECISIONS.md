@@ -2074,3 +2074,37 @@ What earns the column is said **once, under the table** — a column heading is 
 quarter of the table's width and cannot carry a sentence. That is the same
 mistake the v45 locked rows made in the row *heads*, where it dragged the whole
 grid sideways; the fix is the same shape, one rung out.
+
+
+## 2026-09-25 — The guns were designed on a canvas, then ported
+
+All five guns were redrawn, portrait and board, and this time the art was
+designed away from the code: a design canvas with three directions for the
+cannon, three variants for each of the others, a board-scale sheet at 1× and
+3×, and a barrels sheet at 1, 2 and 3. The picks were ported coordinate for
+coordinate into `PORTRAIT_ART` and the board's `drawBoardBarrel`. That extends
+2026-08-19's "draw it on the bench, then port it": a canvas can hold the
+alternatives side by side, which the bench, drawing only what the code draws,
+cannot.
+
+What was decided along the way:
+
+- **Mounts stay as they were** (towed, bunker, deck, mound). Every variant that
+  kept its gun's mount read as that gun; the one that did not (a baseplate
+  mortar) needed a fifth mount type and was not picked.
+- **The ion lost its back berm.** A ball behind a low lip still reads as dug in;
+  the full mound read as a hill with a gun on it. It moved from cyan to purple
+  (`#a56cff`), and its emitter is an insulator stack with a sphere terminal:
+  the gun with a different principle gets a silhouette with no tube in it.
+- **No drawn trajectory on the mortar.** A dashed arc was tried and read as a
+  shot in flight, not as part of the gun. Steepness says "lob" on its own.
+- **Every gun pivots on a sphere.** It is the defender rule applied to the one
+  part every gun has.
+- **The portrait's second barrel goes above the main one.** The engine offset
+  is positive (below), but there it runs through the cannon's recoil cylinder
+  and the mortar's screw jack, and a side view offers no side to check. The
+  board, where rounds actually leave, draws the real offsets, and no longer
+  squeezes them to 55%.
+- **Board barrels scale with `b.len`**, as before: the designs were drawn at
+  `b.len = 34` and every length along the barrel is multiplied by `b.len / 34`.
+
