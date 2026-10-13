@@ -2108,3 +2108,10 @@ What was decided along the way:
 - **Board barrels scale with `b.len`**, as before: the designs were drawn at
   `b.len = 34` and every length along the barrel is multiplied by `b.len / 34`.
 
+## 2026-10-13 — The v28 plan file was retired, eleven builds late
+
+`docs/v28-plan.md` shipped in v28 and v31 but was never deleted, while CLAUDE.md says a plan file that exists is live work — so the next session would have read thirteen finished items as open. Its reasoning was already in the 2026-08-06 entries above, and its three open questions were all settled since (Coil got a non-zero base splash, a move costs exactly `sellValue`, and Flak Battery shipped without a difficulty dial). Deleted; STATUS now points here, and the full text is `git show b0f4f89:docs/v28-plan.md`.
+
+## 2026-10-13 — Per-game design notes live beside the game, not in CLAUDE.md
+
+CLAUDE.md had grown to ~100 lines of per-game detail (balance ratios, decapitation timings, the snapshot rules) that loaded on every session, including ones that only touched Feedline. Each game now has a `games/<name>/NOTES.md` with that text moved verbatim, and CLAUDE.md keeps a short paragraph per game: what breaks things if you miss it (where numbers come from, what is never snapshotted, the step seam), plus the link. The split rule for future additions: if missing it breaks something in a session that never opens the notes, it belongs in CLAUDE.md; if it explains why, it belongs in NOTES.md.

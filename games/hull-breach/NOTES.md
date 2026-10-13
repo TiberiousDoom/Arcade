@@ -1,0 +1,18 @@
+# Hull Breach — architecture notes
+
+The detailed design notes for `games/hull-breach/`, moved out of [CLAUDE.md](../../CLAUDE.md) so they load when you work on this game rather than on every session. CLAUDE.md keeps the rules that break things; this file has the reasoning and the model. Read it before changing the engine or the shell here. Past decisions are in [docs/DECISIONS.md](../../docs/DECISIONS.md).
+
+- **[engine.js](engine.js)** — same rules as Flak Battery's engine: no DOM, no canvas, no timers, and here **no randomness at all** (level layouts come from pure arithmetic on row/col, so level N is byte-identical every run and in every test). `step(w, dt)` advances ball flight and its consequences; that's it.
+- **[hull-breach.html](hull-breach.html)** is the shell: rendering, pointer/keyboard input, particles, banners, and the `requestAnimationFrame` loop.
+- **Division of labour is deliberately different from Flak Battery's `step(w, dt, firing)`**: the paddle is moved by the shell calling `setPaddle`/`nudgePaddle` (both clamp to the walls), and the ball is served by the shell calling `launch(w)`. `step` never reads input. This keeps pointer-vs-keyboard control entirely in the shell.
+- **Two layouts**: `LAYOUT` (800×600 landscape) and `LAYOUT_TALL` (600×1200 portrait, with a `THUMB` band). The shell picks one at load via `matchMedia('(max-aspect-ratio: 4/5)')` and passes it as `createWorld({ layout })`.
+  - `FLOOR` (`H - THUMB`), **not `H`**, is the line a ball dies past. The thumb band is canvas below the floor where a finger can rest — the paddle tracks only horizontal position, so steering from down there works without a hand over the court. Draw code must use `FLOOR` for the court border and the loss strip.
+  - `levelSpeed(level, L)` scales by `L.FLOOR / REF_FLOOR` so a ball crosses either board in the **same time**. Absolute px/s would make the taller portrait board play slower and easier. Same principle as Flak Battery deriving wave speed from path length; there's a test asserting traversal time is layout-independent.
+- Simulation model:
+  - `w.balls` is an array (not a single ball) so multiball is a later addition rather than a rewrite. `w.held` means a ball is racked on the paddle awaiting `launch`; while held, `step` skips ball physics.
+  - **The paddle is a protractor, not a wall.** Where the ball lands across the paddle sets its outgoing angle (`PADDLE_MAX_ANGLE`, ~60° at the edges); speed is preserved on every bounce, so a ball's speed is fixed for its whole life at `levelSpeed(level)`. That mapping is the entire control scheme — don't "fix" it into a plain reflection.
+  - Collision runs in **sub-steps** no longer than the ball's radius, so a fast ball can't tunnel through a brick or the paddle in one frame. `rectHit` resolves against the Minkowski-expanded rectangle and picks the least-penetration face.
+  - `brickBounce` deliberately resolves **at most one brick per sub-step** (the deepest overlap) — resolving two at a corner reflects twice and sends the ball back into itself.
+  - An empty brick field means "level cleared," so a world built with no bricks will flag `levelClear` on its first step. Tests that want bare ball physics need a decoy brick (see `engine.test.js`).
+- **[engine.test.js](engine.test.js)** is organized by subsystem (brick field geometry → collision primitives → paddle → launch → ball dynamics → bricks → lives/level flow → full-run sanity), same convention as Flak Battery.
+- Hull Breach has a **render smoke test** ([render-test.mjs](render-test.mjs)) and, like every other game, **no standalone build** — the test inlines the shell in memory via `tools/inline.mjs`, so it gets the safety net without a checked-in artifact to keep in sync.

@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-09-25 (v49 — Flak Battery's five guns redrawn)
+Last updated: 2026-10-13 (v49 — docs only: per-game notes split out of CLAUDE.md; Flak Battery's five guns redrawn in v49)
 
 ## Read this first
 
@@ -810,9 +810,9 @@ one-line lore per game stayed — it was a deliberate call in the naming pass.
 
 ## Round 6 feedback — research, relocation, and a gentler opener (v28, 2026-08-06)
 
-All thirteen items are done. The plan they came from, with the reasoning and the
-build order, is [docs/v28-plan.md](docs/v28-plan.md); the notable calls are in
-[docs/DECISIONS.md](docs/DECISIONS.md).
+All thirteen items are done. The reasoning behind them is in the 2026-08-06
+entries of [docs/DECISIONS.md](docs/DECISIONS.md); the plan they came from was
+retired on 2026-10-13 and survives in git (`git show b0f4f89:docs/v28-plan.md`).
 
 **Three of the items were not what they looked like**, and that's the part worth
 carrying forward:
