@@ -1,6 +1,6 @@
 # Choke Point — architecture notes
 
-The detailed design notes for `games/choke-point/`, moved out of [CLAUDE.md](../../CLAUDE.md) so they load when you work on this game rather than on every session. CLAUDE.md keeps the rules that break things; this file has the reasoning and the model. Read it before changing the engine or the shell here. Past decisions are in [docs/DECISIONS.md](../../docs/DECISIONS.md).
+The detailed design notes for `games/choke-point/`, moved out of the root [CLAUDE.md](../../CLAUDE.md) so they load when you work in this directory rather than on every session (Claude Code picks up a `CLAUDE.md` in the directory it is working in). The root file keeps the rules that break things; this file has the reasoning and the model. Read it before changing the engine or the shell here. Past decisions are in [docs/DECISIONS.md](../../docs/DECISIONS.md).
 
 A grid tower-defense — placement + economy, not reflex. Reuses two patterns from
 earlier games rather than inventing anything.

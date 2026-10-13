@@ -1,6 +1,6 @@
 # Feedline — architecture notes
 
-The detailed design notes for `games/feedline/`, moved out of [CLAUDE.md](../../CLAUDE.md) so they load when you work on this game rather than on every session. CLAUDE.md keeps the rules that break things; this file has the reasoning and the model. Read it before changing the engine or the shell here. Past decisions are in [docs/DECISIONS.md](../../docs/DECISIONS.md).
+The detailed design notes for `games/feedline/`, moved out of the root [CLAUDE.md](../../CLAUDE.md) so they load when you work in this directory rather than on every session (Claude Code picks up a `CLAUDE.md` in the directory it is working in). The root file keeps the rules that break things; this file has the reasoning and the model. Read it before changing the engine or the shell here. Past decisions are in [docs/DECISIONS.md](../../docs/DECISIONS.md).
 
 - **[engine.js](engine.js)** — grid/tick model rather than continuous physics. The board is a 32×24 grid of 25px cells (800×600, same as Hull Breach, so the two could share a cabinet frame without rescaling), or `LAYOUT_TALL`'s 18×34 in portrait, picked by the shell the same way Hull Breach does it.
   - **No pace rescaling, unlike Hull Breach** — the tick rate is seconds *per cell*, so reaction time per move is already board-independent. A portrait grid is just a slightly shorter game to fill. There's a test asserting both layouts tick at the same rate.

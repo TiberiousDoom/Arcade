@@ -7,7 +7,7 @@ Each game lives in its own directory here, as `games/<name>/`, following the eng
 - **[feedline/](feedline/)** — grid/tick-based rather than continuous physics, so the engine owns its own tick clock. Also the first game with touch (swipe) controls.
 - **[choke-point/](choke-point/)** — a grid tower-defense, and the fullest example of the shared-module wiring (fit, fx, glow, help, scores, audio, plus a controls strip).
 
-Every game has `engine.js` + `engine.test.js`, a `<name>.html` shell, and a `NOTES.md` with its design notes (read it before changing the game); all four
+Every game has `engine.js` + `engine.test.js`, a `<name>.html` shell, and a `CLAUDE.md` with its design notes (Claude Code loads it in that directory; read it before changing the game); all four
 add a `render-test.mjs`, and the three with mid-run saves add a `resume-test.mjs`.
 **There are no build artifacts here** — Flak Battery's generated
 `flak-battery-standalone.html` was retired in v26 (a stale copy meant the render

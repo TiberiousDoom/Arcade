@@ -2115,3 +2115,7 @@ What was decided along the way:
 ## 2026-10-13 — Per-game design notes live beside the game, not in CLAUDE.md
 
 CLAUDE.md had grown to ~100 lines of per-game detail (balance ratios, decapitation timings, the snapshot rules) that loaded on every session, including ones that only touched Feedline. Each game now has a `games/<name>/NOTES.md` with that text moved verbatim, and CLAUDE.md keeps a short paragraph per game: what breaks things if you miss it (where numbers come from, what is never snapshotted, the step seam), plus the link. The split rule for future additions: if missing it breaks something in a session that never opens the notes, it belongs in CLAUDE.md; if it explains why, it belongs in NOTES.md.
+
+## 2026-10-13 — The per-game notes are named CLAUDE.md, not NOTES.md
+
+Same day as the split above. A `NOTES.md` is only read when a session thinks to open it; a `CLAUDE.md` in a subdirectory is loaded by Claude Code whenever it works there, which is exactly the trigger the split wanted. The cost is a less obvious name for a human reader, so the root CLAUDE.md and `games/README.md` both say what the files hold.

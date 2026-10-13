@@ -105,14 +105,14 @@ There is no lint config in the repo.
 
 ## Architecture: the four games
 
-Each game has a `NOTES.md` beside its code with the full design notes: the simulation model, the balance invariants tests pin, and why the odd-looking parts are that way. **Read that game's notes before changing its engine or shell.** What follows is only what breaks things if you miss it.
+Each game has its own `CLAUDE.md` beside its code with the full design notes (Claude Code loads it automatically when working in that directory): the simulation model, the balance invariants tests pin, and why the odd-looking parts are that way. **Read that game's notes before changing its engine or shell.** What follows is only what breaks things if you miss it.
 
 Every engine is pure: no DOM, no canvas, no timers, no `Date.now()`, no `Math.random()` (randomness is a seeded LCG, and Hull Breach has none at all). Game *rules* go in `engine.js`; pixels, DOM and timing go in the `.html` shell. Each `engine.test.js` is organized by subsystem, so put a new test in the matching section rather than at the end.
 
-- **Flak Battery** — [games/flak-battery/NOTES.md](games/flak-battery/NOTES.md). `step(w, dt, firing)` takes input. Numbers come only from `gunStats(w, type)` and `stats(w, gun)` (never `GUN_TYPES` or `UPGRADES` directly), and the shop prints them only through `statDisplay`. Upgrades, barrels and retrofits are per-emplacement, so their verbs take a mount index. Scrap is per-run and research points persist; `w.gunUnlocks` is derived from research and deliberately left out of the snapshot. The shell owns storage, not the engine.
-- **Hull Breach** — [games/hull-breach/NOTES.md](games/hull-breach/NOTES.md). `step(w, dt)` reads no input: the shell moves the paddle (`setPaddle`/`nudgePaddle`) and serves (`launch`). A ball dies past `FLOOR`, not `H`. The paddle sets the outgoing angle by where the ball lands, so don't "fix" it into a reflection.
-- **Feedline** — [games/feedline/NOTES.md](games/feedline/NOTES.md). The engine owns the tick clock (pace is the difficulty curve). Don't simplify the tail-vacating collision rule or the turn queue's check against the last *queued* direction; both are tested.
-- **Choke Point** — [games/choke-point/NOTES.md](games/choke-point/NOTES.md). Numbers come only from `stats(w, tower)` and prices only from `buildCost(w, type)`. The armory persists across runs and the shell stores it. `w.unlocked` is derived and never snapshotted. Players see "circuit", never "route".
+- **Flak Battery** — [games/flak-battery/CLAUDE.md](games/flak-battery/CLAUDE.md). `step(w, dt, firing)` takes input. Numbers come only from `gunStats(w, type)` and `stats(w, gun)` (never `GUN_TYPES` or `UPGRADES` directly), and the shop prints them only through `statDisplay`. Upgrades, barrels and retrofits are per-emplacement, so their verbs take a mount index. Scrap is per-run and research points persist; `w.gunUnlocks` is derived from research and deliberately left out of the snapshot. The shell owns storage, not the engine.
+- **Hull Breach** — [games/hull-breach/CLAUDE.md](games/hull-breach/CLAUDE.md). `step(w, dt)` reads no input: the shell moves the paddle (`setPaddle`/`nudgePaddle`) and serves (`launch`). A ball dies past `FLOOR`, not `H`. The paddle sets the outgoing angle by where the ball lands, so don't "fix" it into a reflection.
+- **Feedline** — [games/feedline/CLAUDE.md](games/feedline/CLAUDE.md). The engine owns the tick clock (pace is the difficulty curve). Don't simplify the tail-vacating collision rule or the turn queue's check against the last *queued* direction; both are tested.
+- **Choke Point** — [games/choke-point/CLAUDE.md](games/choke-point/CLAUDE.md). Numbers come only from `stats(w, tower)` and prices only from `buildCost(w, type)`. The armory persists across runs and the shell stores it. `w.unlocked` is derived and never snapshotted. Players see "circuit", never "route".
 
 ## Architecture: the PWA layer
 

@@ -1,6 +1,6 @@
 # Hull Breach — architecture notes
 
-The detailed design notes for `games/hull-breach/`, moved out of [CLAUDE.md](../../CLAUDE.md) so they load when you work on this game rather than on every session. CLAUDE.md keeps the rules that break things; this file has the reasoning and the model. Read it before changing the engine or the shell here. Past decisions are in [docs/DECISIONS.md](../../docs/DECISIONS.md).
+The detailed design notes for `games/hull-breach/`, moved out of the root [CLAUDE.md](../../CLAUDE.md) so they load when you work in this directory rather than on every session (Claude Code picks up a `CLAUDE.md` in the directory it is working in). The root file keeps the rules that break things; this file has the reasoning and the model. Read it before changing the engine or the shell here. Past decisions are in [docs/DECISIONS.md](../../docs/DECISIONS.md).
 
 - **[engine.js](engine.js)** — same rules as Flak Battery's engine: no DOM, no canvas, no timers, and here **no randomness at all** (level layouts come from pure arithmetic on row/col, so level N is byte-identical every run and in every test). `step(w, dt)` advances ball flight and its consequences; that's it.
 - **[hull-breach.html](hull-breach.html)** is the shell: rendering, pointer/keyboard input, particles, banners, and the `requestAnimationFrame` loop.
