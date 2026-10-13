@@ -2119,3 +2119,9 @@ CLAUDE.md had grown to ~100 lines of per-game detail (balance ratios, decapitati
 ## 2026-10-13 — The per-game notes are named CLAUDE.md, not NOTES.md
 
 Same day as the split above. A `NOTES.md` is only read when a session thinks to open it; a `CLAUDE.md` in a subdirectory is loaded by Claude Code whenever it works there, which is exactly the trigger the split wanted. The cost is a less obvious name for a human reader, so the root CLAUDE.md and `games/README.md` both say what the files hold.
+
+## 2026-10-13 — Asset Links need the host root, so the Play plan needs a hosting call first
+
+STATUS had said since 2026-07-27 that the Pages domain "satisfies the Digital Asset Links requirement, subpath included". It doesn't: a TWA verifies its site by fetching `/.well-known/assetlinks.json` from the root of the host, and a project site at `tiberiousdoom.github.io/Arcade/` cannot put a file there. The options are a separate `tiberiousdoom.github.io` repo serving just that file, or a custom domain; that choice is the owner's and is listed in STATUS. Recorded here because the wrong version had stood as settled for eleven weeks and would have surfaced only at the end of a Bubblewrap build, as an address bar across the app.
+
+Same pass: TESTING.md was still the v22 checklist 27 builds on. Rather than tick through items nobody could say were answered, it was rewritten from the v49 phone checks and the still-open phone questions in STATUS, and the old one survives in git.

@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-13 (v49 — docs only: per-game notes split out of CLAUDE.md; Flak Battery's five guns redrawn in v49)
+Last updated: 2026-10-13 (v49, docs only — see "Docs pass" below)
 
 ## Read this first
 
@@ -18,9 +18,18 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). **Six** emplacements, per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run — superlinear in the wave reached — buying gun types and the deepest two tiers of each branch). **No lives: one breach ends the run.** No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance), and played on a phone each round.
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
-- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, three tower types (node/breaker/coil) that level themselves from combat XP, a persistent per-class armory, three circuits and three difficulties both earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
+- **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, four tower classes (node/breaker/coil, plus Sever earned on Medium) that level themselves from combat XP, a persistent per-class armory of six tracks, five circuits and three difficulties all earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **571 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## Docs pass — no build change (2026-10-13)
+
+- Per-game design notes moved out of the root CLAUDE.md into `games/<name>/CLAUDE.md`, which Claude Code loads when working in that folder.
+- `docs/v28-plan.md` deleted (shipped in v28/v31); its reasoning was already in DECISIONS.
+- [docs/TESTING.md](docs/TESTING.md) rewritten for v49 — it was still the v22 checklist, with the old game names.
+- **The Play plan had a wrong assumption**: Asset Links must be served from the root of the host, which this project site cannot do. "Immediate next step" now spells out the Play path with that as step 1.
+- Stale claims corrected: manifest orientation in CLAUDE.md, the armory ratio (now ~24x an Easy run), the Choke Point roster in "What's playable", and three false open decisions.
+- A single list of **[decisions waiting on the owner](#decisions-waiting-on-the-owner-collected-2026-10-13)**.
 
 ## v49 — the five guns, redrawn (2026-09-25)
 
@@ -892,21 +901,35 @@ the shop's tab strip rather than a card buried on another tab.
 
 ## Immediate next step
 
-**The road to a shippable phone app, in agreed order** (see DECISIONS.md for why this sequence):
+**The PWA is finished** (2026-07-27: `shared/`, self-hosted fonts, portrait layouts, the cabinet, manifest + service worker — all done, verified offline). Since then 22 feedback rounds (v28–v49) have gone into the games, and the store path below has not moved. Rewritten 2026-10-13 so the next step is written down rather than implied.
 
-1. ~~**Extract `shared/`**~~ — **done.** `shared/theme.css`, `shared/fit.js`, `shared/fx.js`, all three shells rewired. See [shared/README.md](shared/README.md).
-2. ~~**Self-host the fonts**~~ — **done.** `shared/fonts/` holds Chivo Mono (variable 300–700) and Archivo Black, latin subset, both OFL-1.1 with licenses shipped. Verified: the served games now make **zero** external requests, and the standalone makes zero subresource requests of any kind.
-3. ~~**Portrait layouts for Hull Breach and Feedline**~~ — **done.** Both have `LAYOUT_TALL`, picked at load by aspect ratio. Hull Breach gained a `FLOOR`/`THUMB` split and height-scaled ball speed; Feedline needed neither (per-cell pacing). Safe-area insets added to `shared/theme.css`. All three games now handle portrait.
-4. ~~**The cabinet**~~ — **done.** `index.html` at the repo root lists the three games; each game header has a `← Arcade` link back. The standalone build strips that link, since it travels alone.
-5. ~~**PWA manifest + service worker**~~ — **done.** Installable, and verified genuinely offline: with the server stopped, every page still loads, renders with the right fonts, and plays.
+**Next: a decision, then the Google Play path.** Whether to keep polishing or to ship is open — see "Decisions waiting on the owner" below. If shipping, the steps, in order:
 
-**All five steps are complete. The PWA is finished.** What remains before a store submission is game depth, not plumbing — see the store section below.
+1. **Digital Asset Links — blocked on a hosting choice.** A TWA verifies the site by fetching `https://<host>/.well-known/assetlinks.json` from the **root of the host**. This app lives at `tiberiousdoom.github.io/Arcade/`, and this repo cannot serve the host root. Either create a separate `tiberiousdoom.github.io` user-site repo that serves only that file, or move to a custom domain. Without it the app still runs, but with a browser address bar across the top.
+2. **Bubblewrap** — `bubblewrap init --manifest <Pages URL>/manifest.webmanifest`, then build a signed `.aab`. The manifest already has the 512px and maskable icons it wants. **The signing keystore is the one thing that cannot be lost**; enrol in Play App Signing so Google holds the release key.
+3. **Play Console** — $25 one-time. Expect to need a privacy-policy URL even for an app that collects nothing (a one-page `privacy.html` in this repo would do), a Data Safety form (everything "not collected"), a 512px icon, a 1024×500 feature graphic and phone screenshots (`tools/screenshot.mjs` can produce real frames).
+4. **Testing track** — a new *personal* developer account has had to run a closed test with a minimum number of testers for two weeks before production access. Check the current terms when the account is made; it is the longest single wait on this path.
 
 Do **not** try to unify the engine `step()` signatures — those differ per game on purpose (see DECISIONS.md).
 
+## Decisions waiting on the owner (collected 2026-10-13)
+
+Gathered from every "Still open after this round" list and checked against the code. Balance numbers that only play can answer are in [docs/TESTING.md](docs/TESTING.md), not here; these are the calls nobody but the owner can make.
+
+1. **Ship or polish.** Start the Play path above now, or run more feedback rounds first?
+2. **Asset Links hosting.** A `tiberiousdoom.github.io` user-site repo (free, one file) or a custom domain (costs money, cleaner URL, and moves the PWA's origin — installed copies and local saves would not follow)?
+3. **Portrait-only: delete landscape, or keep the flag?** Open since 2026-07-27. Deleting removes the transpose code and its tests in all four games; keeping it costs a second layout on every change.
+4. **Choke Point builds on press.** Move building to release so a slide-off cancels, as every button now does, at the cost of untangling the build/popup/drag-to-move handler? Parked since round 18 "for its own round".
+5. **The armory's size.** Filling it costs ~24 Easy runs of kill income (~15 for the four open tracks); the test only requires more than 8. Accept, cut prices, or add a ceiling to the test?
+6. **Flak Battery difficulty selector.** Still none, while research makes every run stronger than the last. Add one like Choke Point's, or keep one curve?
+7. **Choke Point's opening.** Three tower classes (plus a locked fourth), four armory tracks and a difficulty choice on the first runs — the problem Flak Battery's branch ramp solved in v34. Apply the same ramp here?
+8. **Flak Battery's first shop** still lists four locked gun types under Refit. Keep them as advertising, or hide them until a rung is near?
+9. **The next game.** The classics cabinet has two of the five originals (Breakout, Snake). Missile Command, Tetris or Invaders next — and before or after a store release?
+10. **Apple.** Still deferred?
+
 ## Store readiness (decided 2026-07-27: Google Play first, Apple deferred)
 
-Neither store takes a PWA directly — both need a native binary. **Google Play is the real near-term target**: a TWA built with Bubblewrap, $25 one-time, far more permissive review, and no Mac required. The Pages HTTPS domain satisfies the Digital Asset Links requirement, subpath included.
+Neither store takes a PWA directly — both need a native binary. **Google Play is the real near-term target**: a TWA built with Bubblewrap, $25 one-time, far more permissive review, and no Mac required. ~~The Pages HTTPS domain satisfies the Digital Asset Links requirement, subpath included.~~ **Wrong** — corrected 2026-10-13: Asset Links are read from the root of the host, which a project site at `/Arcade/` cannot serve. See step 1 under Immediate next step.
 
 **Apple is deferred, not cancelled** — $99/yr plus a Mac plus stricter review isn't worth scheduling against yet. The Guideline 4.2 work below already landed and isn't wasted: scores, audio, and depth make the Play listing better too. Treat the 4.2 checklist as done-and-banked rather than as the thing currently driving priorities.
 
@@ -1158,11 +1181,11 @@ Everything in the two queued lists below was acted on. Notable outcomes:
 ## Open decisions (not yet settled)
 
 - ~~Flak Battery's aim rework is untested on a device~~ — **settled 2026-07-29.** Confirmed good on a real phone. `AIM_ASSIST_R` (9) and `TRAVERSE_MAX` (5.6) stand; treat them as tuned unless something later disagrees.
-- **Choke Point difficulty was not tuned**, deliberately: `wavePlan`/`hpScale`/`START_CHARGE` are untouched. But the smaller grid shortened the path (41 → 31 cells of travel) and cut the number of build sites, which raises difficulty on its own. Play it before turning any economy dial, or the two changes will be impossible to tell apart.
+- ~~**Choke Point difficulty was not tuned**~~ — **superseded 2026-10-13.** It has since been tuned in nearly every round (difficulties, surges, win waves, crowding prices). Original note: `wavePlan`/`hpScale`/`START_CHARGE` are untouched. But the smaller grid shortened the path (41 → 31 cells of travel) and cut the number of build sites, which raises difficulty on its own. Play it before turning any economy dial, or the two changes will be impossible to tell apart.
 - Whether portrait-only becomes a real deletion, or the flag stays. Don't delete until it's had device time.
-- Choke Point has still never been checked on a real device.
+- ~~Choke Point has still never been checked on a real device.~~ **Wrong** — corrected 2026-10-13; it has been played on a phone every round (see DECISIONS 2026-08-14).
 - ~~Hull Breach has no powerups~~ — **done 2026-07-27** (see below). Laser is deliberately still out.
-- Choke Point towers are **hitscan** (instant zap). Projectiles (travelling shots) were deferred — a visual/feel upgrade, not a mechanics one.
+- ~~Choke Point towers are **hitscan** (instant zap). Projectiles (travelling shots) were deferred~~ — **partly done.** Breaker fires a homing round (`SLUG_SPEED`, round 14); Node and Coil stay hitscan on purpose, since a bolt of light arriving late reads as broken.
 - ~~No render smoke test for Hull Breach, Feedline, or Choke Point~~ — **done 2026-07-29.** All four games now have one, sharing `tools/inline.mjs` (recursive module inlining) and `tools/render-harness.mjs` (jsdom + node-canvas boot). 19 render tests. Building this immediately found a live bug: the standalone build had been throwing at boot since v9, because the old hand-written inliner deleted `help.js`'s new nested import of `version.js`.
 - ~~"Continue where you left off"~~ — **done 2026-07-29** for Choke Point, Flak Battery and Hull Breach. `shared/resume.js` (storage, build-stamping, defensive reads) plus engine-side `snapshot()`/`hydrate()` in each. **Feedline is deliberately excluded**: it is one-life score-attack, where resuming a run is contrary to the genre.
   - Saves are guarded on a shell-level `started` flag, **not** `world.running` — the states most worth saving (shop open, level cleared) are exactly the ones where the game is paused, and checking `running` there deleted the save instead of writing it.
