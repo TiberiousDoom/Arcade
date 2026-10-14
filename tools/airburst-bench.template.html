@@ -1,7 +1,7 @@
-<!DOCTYPE html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Airburst Art Bench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Chivo+Mono:wght@300;400;600;700&display=swap">
@@ -12,11 +12,15 @@
     --board:#0b1418; --panel:#0b1a20; --panel-hi:#10242c;
     --line:#16303a; --bone:#e6e9e2; --dim:#5d7681;
     --accent:#7fd0e6; --ink:#06161c;
+    color-scheme:dark;
   }
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
   body{margin:0;background:var(--board);color:var(--bone);
-    font:400 14px/1.6 'Chivo Mono',ui-monospace,monospace;padding:32px 16px 64px}
+    font:400 14px/1.6 'Chivo Mono',ui-monospace,monospace;
+    padding-block:32px 64px;
+    padding-left:max(16px, env(safe-area-inset-left, 0px));
+    padding-right:max(16px, env(safe-area-inset-right, 0px))}
   .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
   header{display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line);padding-bottom:20px}
   h1{font:400 clamp(26px,4.4vw,42px)/1.05 'Archivo Black',system-ui,sans-serif;margin:0}
