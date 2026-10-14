@@ -2136,3 +2136,9 @@ Ten calls had collected across nineteen rounds of "still open" lists; they were 
 - **Flak Battery's Refit block hides locked guns.** The research screen still draws locked rungs, deliberately — that is where progression is advertised. The shop is where you spend, and a chip you cannot press is noise there.
 - **Choke Point unlocks gradually**, on Flak Battery's model (best wave ever, never per run). The wave numbers are proposed in the plan, not yet agreed.
 - **Left as they are for now**: no Flak Battery difficulty selector; Apple deferred. **Undecided**: Asset Links hosting (not needed until shipping), and the armory's size (the test pins a floor of 8 Easy runs and no ceiling; it measures ~24).
+
+## 2026-10-14 — The armory gets a ceiling; new-game saves settled
+
+- **Choke Point's full-armory test now has a ceiling as well as a floor**: more than 8 and fewer than 30 Easy runs of kill income (it measures ~24.4). With only a floor, prices could rise without limit and the test would stay green; the owner kept the current size and asked for it to be fenced. Raising the ceiling is a balance call to make on purpose.
+- **Saves for the three new games follow the genre**, as with Feedline: the two wave games (Missile Command, Invaders) get mid-run saves through `shared/resume.js`; the falling-block game is one-life score-attack and gets none.
+- Names, the falling-block game's art direction (single-outline plates in one colour, colour for state only, an 11×22 well — chosen to differ from Tetris's protected look on every point), and an unlock chain are **proposals** in the pre-release plan, not decisions yet.

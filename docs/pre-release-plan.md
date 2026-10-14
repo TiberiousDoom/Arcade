@@ -93,23 +93,56 @@ that keeps the absolute: **invaders are cubes, defenders are spheres**.
 
 Suggested order, by how much each reuses what exists:
 
-1. **Missile Command** — continuous physics like Flak Battery, defend-the-base
+1. **Missile Command (Airburst)** — continuous physics like Flak Battery, defend-the-base
    theme that fits the setting. The obvious first.
-2. **Invaders** — a formation of cubes, a sphere at the bottom. Closest to the
+2. **Invaders (Shield Wall)** — a formation of cubes, a sphere at the bottom. Closest to the
    art rules already written.
-3. **Tetris** — grid/tick like Feedline (the engine owns the clock). Touch
+3. **Tetris (Bulkhead)** — grid/tick like Feedline (the engine owns the clock). Touch
    control is the real design problem: tap to rotate, drag to move, flick down
    to drop all compete for one finger.
 
-**Open questions for the owner:**
+**Settled 2026-10-14: saves.** Missile Command and Invaders run in waves and get mid-run saves through `shared/resume.js`, with a resume test each. The falling-block game is one-life score-attack like Feedline: no save.
 
-- **Names.** Every game here has its own name rather than the classic's (Hull
-  Breach, Feedline). Pick names, or have them proposed?
-- **Gating.** `shared/unlocks.js` chains each cabinet from one ungated opener
-  (Feedline opens Hull Breach). Where do three new games go in that chain?
-- **Mid-run saves.** Feedline is excluded as one-life score-attack. Missile
-  Command and Invaders run in waves and fit `shared/resume.js`; Tetris is
-  score-attack like Feedline. Same split?
-- **Tetris and the trademark.** The name, and closely copying the look, are
-  protected; the falling-block mechanic is not. Worth deciding the name and the
-  piece art with that in mind before the store listing does it for you.
+### Proposed names (owner to pick)
+
+Every game here is named for its fiction in two plain words, not for the classic it echoes. Each name below is a common phrase, which helps the store listing and hurts trademark exclusivity in the same way; search the Play store for each before committing.
+
+| Classic | Proposal | Why | Alternates |
+|---|---|---|---|
+| Missile Command | **Airburst** | Interceptors detonate in the air and the blast does the work — the name is the mechanic. | Last Light, Ground Zero |
+| Space Invaders | **Shield Wall** | The bunkers you hide behind and watch erode are the part everyone remembers. | Firing Line, Holdfast |
+| Tetris | **Bulkhead** | A hull is sealed one section at a time; a full row is a compartment closed. Sits next to Hull Breach. | Ballast, Dry Dock |
+
+### Bulkhead's piece art — keeping clear of Tetris's look
+
+The falling-block mechanic is free to use; Tetris's *look* is protected trade dress (Tetris Holding v. Xio, 2012, turned largely on the visual expression: the 10×20 well, one bright colour per piece, pieces drawn as bevelled square tiles). Not legal advice, but the safe design is the one that is different on every one of those points, and the house style already points there:
+
+- **One outline per piece, not tiles.** Each piece is drawn as a single glowing contour around its whole shape (`glowStroke`), with no lines between its cells. A placed piece reads as a riveted hull plate, which is the fiction.
+- **Colour means state, not shape.** Every piece is the game's accent colour. Colour changes only to say something: dim when locked in, bright when falling, hot (white) on a row about to clear. No seven-colour palette.
+- **The well is not 10×20.** 11 wide × 22 tall fits a portrait phone at a similar aspect ratio, and is a different board. Play-test the width; 11 also changes how the long piece clears.
+- **Clearing is welding**, not flashing: a seam of sparks runs along a full row before it goes. Uses the existing particle module (`shared/fx.js`).
+- **The pieces are never called tetrominoes or tetriminos** (the second is a trademark) — they are plates.
+- Plates are neither invaders nor defenders, so the cubes/spheres rule does not apply; no plate is drawn as a cube.
+
+### Unlocking — a proposal
+
+The rules already set: **one chain per cabinet, never across cabinets**, enforced on the cabinet only (direct links still open everything), recorded through `recordProgress`. Each gate should be a moment a new player reaches in one or two sittings, and ideally one that teaches something the next game uses.
+
+**Recommended: extend the classics chain, one game at a time.**
+
+| Game | Opens when | Teaches |
+|---|---|---|
+| Feedline | always (the opener) | steering on glass |
+| Hull Breach | a Feedline run finished (as now) | angles |
+| Airburst | Hull Breach level 3 cleared | leading a moving target |
+| Shield Wall | Airburst wave 5 survived | holding a position under fire |
+| Bulkhead | Shield Wall wave 5 survived | — the capstone; the one nobody needs teaching |
+
+Hull Breach records no progress today, so it needs one `recordProgress(GAME_ID, level)` call where a level clears — small, and a version bump it would share with Airburst's arrival.
+
+**Alternatives considered:**
+
+- **Any N runs anywhere in the cabinet opens the next game.** Kinder to someone who only likes one game, but a gate you can pass by losing quickly teaches nothing.
+- **Airburst and Shield Wall in the invasion cabinet instead.** Both are defend-the-planet games and would fit the invasion story as chapters (descending missiles, a descending formation), leaving the classics as Feedline, Hull Breach and Bulkhead. Worth deciding before Airburst's lore line is written — the classics cards carry no story, the invasion cards do.
+
+**Still open for the owner:** names; the chain (or one of the alternatives); which cabinet Airburst and Shield Wall belong in.

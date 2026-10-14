@@ -925,11 +925,11 @@ Do **not** try to unify the engine `step()` signatures — those differ per game
 2. **Asset Links hosting** — undecided; not needed until shipping. A free `tiberiousdoom.github.io` repo holding one file is the cheap answer; a custom domain changes the app's origin, so installed copies and local saves would not carry over.
 3. **Portrait-only** — delete landscape. Planned, item 1.
 4. **Choke Point builds on press** — cancel on slide-off. **Shipped in v50.**
-5. **The armory's size** — open, pending the explanation below. Filling every Choke Point armory track costs about 24 Easy runs of kill income. The test that guards it only fails if that drops *below* 8, so prices could rise without limit and nothing would notice. Options: leave as is, cut prices, or also fail the test above some ceiling.
+5. **The armory's size** — keep it, and fence it: the Choke Point test now fails if a full armory costs fewer than 8 or more than 30 Easy runs (measures ~24.4). Done 2026-10-14.
 6. **Flak Battery difficulty selector** — leave it for now.
 7. **Choke Point's opening** — unlock gradually. Planned, item 2, with one open question on timing.
 8. **Flak Battery's locked guns in Refit** — hide them. **Shipped in v50.**
-9. **The next game** — all three (Missile Command, Invaders, Tetris), before release. Planned, item 3, with open questions on names, gating, saves and the Tetris trademark.
+9. **The next game** — all three, before release. Saves settled (Missile Command and Invaders save mid-run; the falling-block game is one-life). Names (Airburst / Shield Wall / Bulkhead proposed), Bulkhead's piece art and an unlock chain are proposed in the plan, awaiting the owner.
 10. **Apple** — deferred.
 
 ## Store readiness (decided 2026-07-27: Google Play first, Apple deferred)

@@ -584,6 +584,11 @@ test('the armory is a running choice, not a checklist that completes', () => {
   }
   const runs = full / income;
   assert.ok(runs > 8, `a full armory costs ${runs.toFixed(1)} Easy runs, still too few`);
+  /* And a ceiling, added 2026-10-14 when it measured ~24.4: with only a floor,
+     prices could climb without limit and nothing would notice. A full armory
+     is meant to be a long goal, not an unreachable one. Raising this is a
+     balance decision — make it on purpose, and say so in DECISIONS. */
+  assert.ok(runs < 30, `a full armory costs ${runs.toFixed(1)} Easy runs, out of reach`);
 
   // and the top of a track has to be a real decision, not a rounding error
   const first = E.classCost('node', 'dmg', 0), last = E.classCost('node', 'dmg', E.CLASS_MAX - 1);
