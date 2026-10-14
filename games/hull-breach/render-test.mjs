@@ -85,3 +85,22 @@ test('the game-over banner renders', async () => {
   g.frame(1000);
   assert.deepEqual(g.errors, [], 'drawing a finished game threw');
 });
+
+/* The classics chain (v53): clearing level 3 here opens Airburst. */
+test('clearing a level records it for the cabinet', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world } = g;
+  world.level = 3;
+  world.levelClear = true;
+  g.frame(1000);
+  assert.equal(g.window.localStorage.getItem('arcade:progress:hull-breach'), '3');
+  assert.deepEqual(g.errors, []);
+});
+
+test('a player from before v53 is credited with the levels they already cleared', async () => {
+  // the level select has stored the highest level reached all along
+  const g = await bootAndStart(SHELL, { storage: { 'arcade:maxlevel:hull-breach': '9' } });
+  assert.equal(g.window.localStorage.getItem('arcade:progress:hull-breach'), '8',
+    'reaching level 9 means eight were cleared');
+  assert.deepEqual(g.errors, []);
+});

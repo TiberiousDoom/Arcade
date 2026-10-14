@@ -110,6 +110,7 @@ import { makeAudio } from '../../shared/audio.js';
 import { makeMenu } from '../../shared/menu.js';
 import { maxLevel, recordLevel } from '../../shared/levels.js';
 import { buzz } from '../../shared/prefs.js';
+import { recordProgress } from '../../shared/unlocks.js';
 
 import { guardTaps } from '../../shared/tap.js';
 
@@ -297,6 +298,8 @@ function frame(now) {
     }
     else if (world.levelClear) {
       world.running = false;
+      // levels cleared, for the classics cabinet's chain: level 3 opens Airburst
+      recordProgress(GAME_ID, world.level);
       saveNow();                  // a cleared board is the natural place to keep
       openShop();
     }
@@ -631,6 +634,13 @@ addEventListener('pagehide', saveNow);
     sync();
   }, { capture: true });
 })();
+
+/* Levels cleared only started being recorded for the unlock chain in v53, but
+   the level select has kept the highest level *reached* all along — reaching
+   level n means n-1 were cleared. Seeding from it means a player from before
+   v53 finds Airburst open the next time they visit the cabinet, rather than
+   having to clear three levels they cleared long ago. */
+recordProgress(GAME_ID, maxLevel(GAME_ID) - 1);
 
 syncBest();
 sync();                      // makeFit already performed the first fit

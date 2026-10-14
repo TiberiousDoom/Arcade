@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-14 (v52 — Choke Point's gradual unlock; next are the three new classics, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
+Last updated: 2026-10-14 (v53 — Airburst, the first new classic; next is Shield Wall, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -13,14 +13,27 @@ This is the "pick back up" file — check here before touching code. See [CLAUDE
 Serve the repo first — the shells use ES modules, so `file://` won't work:
 `python -m http.server 8123`, then open `http://localhost:8123/`.
 
-- **Two cabinets** — [index.html](index.html) is the invasion (Flak Battery, Choke Point), [classics.html](classics.html) is the classics (Feedline, Hull Breach). Each links to the other, and each game links back to its own. Split in v34; see DECISIONS.
+- **Two cabinets** — [index.html](index.html) is the invasion (Flak Battery, Choke Point), [classics.html](classics.html) is the classics (Feedline, Hull Breach, Airburst). Each links to the other, and each game links back to its own. Split in v34; see DECISIONS.
 
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). **Six** emplacements, per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run — superlinear in the wave reached — buying gun types and the deepest two tiers of each branch). **No lives: one breach ends the run.** No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance), and played on a phone each round.
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
+- **Airburst** ([games/airburst/airburst.html](games/airburst/airburst.html)) — new in v53: Missile Command on the engine/shell pattern, with saves, a render test and a resume test. Not yet played on a phone.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, four tower classes (node/breaker/coil, plus Sever earned on Medium) that level themselves from combat XP, a persistent per-class armory of six tracks, five circuits and three difficulties all earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
-**571 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+**All tests pass** — run them with `node --test games/*/engine.test.js shared/*.test.js` (logic) and `node --test games/*/render-test.mjs games/*/resume-test.mjs` (shells, after `npm install --no-save jsdom canvas`). The counts move every build, so they are in each build's notes rather than here.
+
+## v53 — Airburst (2026-10-14)
+
+The first of the three classics in the [pre-release plan](docs/pre-release-plan.md): Missile Command, in the classics cabinet as card 3 / 3. [games/airburst/airburst.html](games/airburst/airburst.html).
+
+- **Play:** tap the sky; the nearest battery with ammunition fires an interceptor that bursts there, and anything falling through the burst is destroyed. Three batteries of 10, rebuilt every wave; six cities, not rebuilt — but one comes back every 10,000 points. Lose them all and it is over.
+- **Escalation:** more and faster warheads each wave, and from wave 4 some split in the air (into three from wave 8). Spare ammunition and standing cities pay at the end of each wave.
+- **Art:** warheads are red cubes trailing their line of fall; cities, batteries and bursts are round. Ice-blue accent.
+- **Saves** on a held wave and when the phone backgrounds the app, like Hull Breach.
+- **Unlock:** the cabinet opens it at Hull Breach level 3 cleared. Hull Breach now records levels cleared, and credits a returning player with the levels its level select already remembers, so nobody has to repeat them.
+- A simulated player that leads its shots properly holds about 8-9 waves; one that aims a fixed distance ahead loses on wave 2. Whether the human curve matches is the first phone question.
+- 47 new tests (32 engine, 6 render, 7 resume, 2 for Hull Breach's new record).
 
 ## v52 — Choke Point's opening ramp (2026-10-14)
 

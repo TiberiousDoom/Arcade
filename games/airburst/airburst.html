@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Airburst</title>
+<link rel="manifest" href="../../manifest.webmanifest">
+<meta name="theme-color" content="#0b1418">
+<link rel="icon" href="../../shared/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../../shared/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Arcade">
+<link rel="stylesheet" href="../../shared/theme.css">
+<script type="module" src="../../shared/pwa.js"></script>
+<style>
+  /* An ice-blue accent: the colour of the bursts, which are the game. */
+  :root{
+    --accent:#7fd0e6;
+    --accent-hot:#a8e4f2;
+    --accent-ink:#06161c;
+    --board-max:600px;
+  }
+</style>
+
+<div id="shell">
+  <header>
+    <div class="titles">
+      <a class="back" href="../../classics.html">&larr; Classics</a>
+      <h1>Air<span>burst</span></h1>
+    </div>
+    <div class="meta">
+      <div>Wave <b id="uiWave">1</b></div>
+      <div>Score <b id="uiScore">0</b></div>
+      <div>Cities <b id="uiCities">6</b></div>
+      <div>Ammo <b id="uiAmmo">30</b></div>
+      <div>Best <b id="uiBest">—</b></div>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="cv" width="600" height="1100"></canvas>
+    <div id="banner">
+      <h2>Airburst</h2>
+      <p id="hint">Tap the sky ahead of what is falling.</p>
+      <button id="go">Begin</button>
+    </div>
+  </div>
+
+  <footer>
+    <span>Tap where the burst should be</span>
+    <span>Lead what is falling</span>
+    <span>The nearest battery fires</span>
+    <span>Lose every city and it is over</span>
+  </footer>
+</div>
+
+<script type="module">
+import * as E from './engine.js';
+import { makeFit } from '../../shared/fit.js';
+import { makeFx } from '../../shared/fx.js';
+import { glowStroke, glowDot, inkDot, cube, GLOW_PASSES_CHEAP, DOT_PASSES_CHEAP } from '../../shared/glow.js';
+import { best, submit } from '../../shared/scores.js';
+import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
+import { makeAudio } from '../../shared/audio.js';
+import { makeMenu } from '../../shared/menu.js';
+import { buzz, prefs } from '../../shared/prefs.js';
+import { recordProgress } from '../../shared/unlocks.js';
+import { guardTaps } from '../../shared/tap.js';
+
+/* A press slid off a button is a cancel — see shared/tap.js. The board itself
+   fires on press, so it is untouched by this, as every gameplay canvas is. */
+guardTaps();
+
+const GAME_ID = 'airburst';
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const TAU = E.TAU;
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+const $ = id => document.getElementById(id);
+
+const gfx = makeFx({ reduce });
+const audio = makeAudio();
+
+const COL = {
+  warhead: '#e0503c',       // the invaders' red, as in the other games
+  burst: '#a8e4f2',
+  trail: '#7fd0e6',
+  city: '#c9a227',
+  base: '#3fae8f',
+  ground: '#2c4a52',
+};
+
+/* the engine never sees these — cosmetic particles, plus sound */
+const fx = {
+  launch() { audio.fire(); },
+  burst(x, y) { audio.bounce(); },
+  kill(x, y) { gfx.burst(x, y, COL.warhead, 10, 120); audio.hit(); },
+  // a city lost is the one moment worth a buzz: rare, and final
+  cityLost(x, y) { gfx.burst(x, y - 8, COL.city, 24, 170); gfx.hit(.7); audio.breach(); buzz([25, 40, 25]); },
+  baseLost(x, y) { gfx.burst(x, y - 8, COL.base, 18, 150); gfx.hit(.4); audio.lose(); },
+  empty() { audio.overheat(); },
+};
+
+const world = E.createWorld({ fx, seed: Date.now() & 0x7fffffff });
+const L = world.L;
+const W = L.W, H = L.H;
+const board = { w: W, h: H };          // makeFit re-reads this on every fit
+cv.width = W; cv.height = H;
+document.documentElement.style.setProperty('--board-max', W + 'px');
+
+/* ---------- input ----------
+   A tap in the sky fires from the nearest battery with ammunition. On press,
+   not release: this is a gameplay surface, where a beat of latency is the
+   difference between a hit and a miss (shared/tap.js leaves canvases alone for
+   the same reason). */
+function boardPoint(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+}
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (pause.paused) return;
+  const p = boardPoint(e);
+  if (E.fire(world, p.x, p.y)) sync();
+});
+for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
+  cv.addEventListener(ev, e => e.preventDefault());
+}
+
+makeFit({ canvas: cv, stage: $('stage'), board });
+
+const pause = makeMenu({
+  stage: $('stage'),
+  host: document.querySelector('header'),
+  audio,
+  title: 'Airburst',
+  lore: 'They are falling on six cities, and you have three batteries.',
+  rows: [
+    ['Fire', 'Tap the sky. The nearest battery with ammunition answers.'],
+    ['Aim', 'Tap ahead of what is falling — the burst takes a moment to grow.'],
+    ['Ammo', 'Each battery holds 10 a wave, and is rebuilt between waves.'],
+  ],
+  notes: [
+    'From wave 4 some warheads split in the air. Catch them high.',
+    'Spare ammunition and standing cities pay at the end of each wave.',
+    `A lost city comes back every ${E.BONUS_CITY_EVERY.toLocaleString()} points.`,
+  ],
+});
+
+/* ---------- banner ---------- */
+function showBanner(h, p, btn) {
+  $('banner').classList.remove('hide');
+  $('banner').querySelector('h2').textContent = h;
+  $('hint').innerHTML = p;
+  const b = $('go'); b.textContent = btn; b.style.display = '';
+}
+function hideBanner() { $('banner').classList.add('hide'); }
+
+/* Set once the player has begun; `saveNow` uses it rather than
+   `world.running`, which goes false behind every banner. */
+let started = false;
+
+$('go').addEventListener('click', () => {
+  if (world.over) E.resetGame(world);
+  else if (world.waveClear) E.nextWave(world);
+  world.running = true;
+  started = true;
+  gfx.clear();
+  hideBanner();
+  sync();
+});
+
+/* ---------- loop ---------- */
+let last = performance.now();
+let wasClear = false, wasOver = false;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+
+  if (world.running && !pause.paused) {
+    E.step(world, dt);
+    sync();
+  }
+
+  // edges, not states: each banner is raised once, on the frame it happens
+  if (world.over && !wasOver) onGameOver();
+  if (world.waveClear && !wasClear) onWaveClear();
+  wasOver = world.over; wasClear = world.waveClear;
+
+  gfx.step(dt, 1.5);
+  draw(now);
+  requestAnimationFrame(frame);
+}
+
+function onWaveClear() {
+  // how far this player has got, for the cabinet's unlock chain
+  recordProgress(GAME_ID, world.wavesCleared);
+  saveNow();                     // a held wave is the natural place to keep
+  const b = world.lastBonus;
+  const bits = [`${b.cities} cities × ${E.CITY_BONUS}`, `${b.ammo} spare × ${E.AMMO_BONUS}`];
+  const mult = b.mult > 1 ? ` × ${b.mult}` : '';
+  showBanner(`Wave ${world.wave} held`,
+    `${bits.join(' · ')}${mult} = <b style="color:var(--accent)">+${b.total}</b>` +
+    (b.city ? '<br>A city is rebuilt.' : ''),
+    'Next wave');
+  syncBest();
+}
+
+function onGameOver() {
+  clearRun(GAME_ID);             // a finished run is not one to come back to
+  const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
+  syncBest();
+  showBanner('The cities are gone',
+    r.record
+      ? `New best — <b style="color:var(--accent)">${world.score}</b>`
+      : `Score <b style="color:var(--accent)">${world.score}</b> · best ${r.best}`,
+    'Play again');
+}
+
+function syncBest() {
+  const b = best(GAME_ID);
+  $('uiBest').textContent = b ? b.score : '—';
+}
+
+function sync() {
+  $('uiWave').textContent = world.wave;
+  $('uiScore').textContent = world.score;
+  $('uiCities').textContent = E.citiesLeft(world);
+  $('uiAmmo').textContent = E.ammoLeft(world);
+}
+
+/* ---------- draw ---------- */
+function draw(now) {
+  ctx.clearRect(0, 0, W, H);
+  const shake = reduce ? 0 : prefs.shake * gfx.flash * 6;
+  ctx.save();
+  if (shake) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+
+  // the ground, and a red wash when something on it is hit
+  ctx.fillStyle = 'rgba(14,30,35,.9)';
+  ctx.fillRect(0, L.GROUND_Y, W, H - L.GROUND_Y);
+  glowStroke(ctx, c => { c.moveTo(0, L.GROUND_Y); c.lineTo(W, L.GROUND_Y); }, COL.ground, 1.4, GLOW_PASSES_CHEAP);
+  if (gfx.flash > 0) {
+    ctx.fillStyle = `rgba(224,80,60,${gfx.flash * 0.35})`;
+    ctx.fillRect(0, L.GROUND_Y - 80, W, H - L.GROUND_Y + 80);
+  }
+
+  for (const c of world.cities) drawCity(c);
+  world.bases.forEach(drawBase);
+
+  /* Warheads: a cube at the head of a fading trail back to where it entered.
+     Invaders are cubes, everywhere; the trail is what makes its line readable,
+     and reading its line is the whole skill. */
+  for (const h of world.warheads) {
+    glowStroke(ctx, c => { c.moveTo(h.x0, h.y0); c.lineTo(h.x, h.y); }, COL.warhead, 1, GLOW_PASSES_CHEAP, .45);
+    cube(ctx, h.x, h.y, 9, COL.warhead, { rot: Math.atan2(h.ty - h.y0, h.tx - h.x0) - Math.PI / 4, width: 1.4 });
+  }
+
+  // interceptors: a bright line from the battery, and a mark where it will burst
+  for (const m of world.interceptors) {
+    glowStroke(ctx, c => { c.moveTo(m.sx, m.sy); c.lineTo(m.x, m.y); }, COL.trail, 1.2, GLOW_PASSES_CHEAP, .7);
+    glowDot(ctx, m.x, m.y, 2.5, '#ffffff', 1, DOT_PASSES_CHEAP);
+    glowStroke(ctx, c => {
+      c.moveTo(m.tx - 6, m.ty - 6); c.lineTo(m.tx + 6, m.ty + 6);
+      c.moveTo(m.tx + 6, m.ty - 6); c.lineTo(m.tx - 6, m.ty + 6);
+    }, COL.trail, 1.2, GLOW_PASSES_CHEAP, .8);
+  }
+
+  /* Bursts are spheres — the defenders' shape — drawn as a lit disc with a
+     bright rim, fading as they shrink. */
+  for (const b of world.blasts) {
+    const r = E.blastRadius(b.t);
+    if (r <= 0) continue;
+    const fade = b.t > E.BLAST_GROW + E.BLAST_HOLD ? r / E.BLAST_R : 1;
+    glowDot(ctx, b.x, b.y, r, COL.burst, .35 * fade, DOT_PASSES_CHEAP);
+    glowStroke(ctx, c => c.arc(b.x, b.y, r, 0, TAU), '#ffffff', 1.4, GLOW_PASSES_CHEAP, .8 * fade);
+  }
+
+  gfx.draw(ctx);
+  ctx.restore();
+}
+
+/* A city: three domes on the ground line. Domes, not blocks — what is being
+   defended is drawn round. A lost one is low rubble, so the gap stays visible. */
+function drawCity(c) {
+  const y = L.GROUND_Y;
+  if (!c.alive) {
+    glowStroke(ctx, g => {
+      g.moveTo(c.x - 14, y - 2); g.lineTo(c.x - 6, y - 5); g.lineTo(c.x + 2, y - 2);
+      g.lineTo(c.x + 9, y - 4); g.lineTo(c.x + 14, y - 1);
+    }, '#5a4a2a', 1, GLOW_PASSES_CHEAP, .6);
+    return;
+  }
+  for (const [dx, r] of [[-9, 6], [0, 9], [9, 6]]) {
+    ctx.fillStyle = 'rgba(12,22,18,.95)';
+    ctx.beginPath(); ctx.arc(c.x + dx, y, r, Math.PI, 0); ctx.fill();
+    glowStroke(ctx, g => g.arc(c.x + dx, y, r, Math.PI, 0), COL.city, 1.3, GLOW_PASSES_CHEAP);
+  }
+}
+
+/* A battery: a dome with its remaining interceptors as pips beneath it. */
+function drawBase(b, i) {
+  const y = L.GROUND_Y;
+  const col = b.alive ? COL.base : '#3a4a4e';
+  inkDot(ctx, b.x, y, 18);
+  glowStroke(ctx, g => g.arc(b.x, y, 18, Math.PI, 0), col, 1.6, GLOW_PASSES_CHEAP, b.alive ? 1 : .5);
+  if (!b.alive) return;
+  // ammunition: two rows of five, spent ones dark
+  for (let k = 0; k < E.BASE_AMMO; k++) {
+    const row = Math.floor(k / 5), colN = k % 5;
+    const px = b.x - 16 + colN * 8, py = y + 18 + row * 9;
+    if (k < b.ammo) glowDot(ctx, px, py, 2.3, COL.trail, 1, DOT_PASSES_CHEAP);
+    else inkDot(ctx, px, py, 2.3, '#1b3038');
+  }
+}
+
+/* ---------- resuming an interrupted run ----------
+   Saved when a wave is held (already paused behind a banner) and when the page
+   is hidden. Same shape as Hull Breach's, including the v45 lesson: a page
+   where nothing has started must leave a stored run alone. */
+let resumeOffered = false;
+
+function saveNow() {
+  if (world.over) { clearRun(GAME_ID); return; }
+  if (!started) return;
+  saveRun(GAME_ID, E.snapshot(world), `Wave ${world.wave} · ${world.score}`);
+}
+
+addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+addEventListener('pagehide', saveNow);
+
+(function offerResume() {
+  const stored = loadRun(GAME_ID);
+  if (!stored) return;
+  resumeOffered = true;
+  showBanner('Resume run?', `You left off at <b style="color:var(--accent)">${stored.label}</b>.`, 'Continue');
+
+  const fresh = document.createElement('button');
+  fresh.type = 'button';
+  fresh.textContent = 'New run';
+  fresh.style.cssText = 'margin-left:8px;background:#1b3038;color:var(--bone)';
+  fresh.addEventListener('click', () => {
+    clearRun(GAME_ID);
+    fresh.remove();
+    resumeOffered = false;
+    showBanner('Airburst', 'Tap the sky ahead of what is falling.', 'Begin');
+  });
+  $('go').after(fresh);
+
+  // capture, so this runs before the main handler decides to reset or advance
+  $('go').addEventListener('click', function once() {
+    $('go').removeEventListener('click', once, { capture: true });
+    if (!resumeOffered) return;
+    resumeOffered = false;
+    fresh.remove();
+    if (!E.hydrate(world, stored.snap)) E.resetGame(world);
+    // a run saved on a held wave resumes into the next one, not back onto the
+    // banner it was saved behind
+    wasClear = world.waveClear;
+    clearRun(GAME_ID);
+    sync();
+  }, { capture: true });
+})();
+
+syncBest();
+sync();                      // makeFit already performed the first fit
+requestAnimationFrame(frame);
+</script>

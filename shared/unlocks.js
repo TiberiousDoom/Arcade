@@ -58,6 +58,7 @@ export function recordProgress(game, value) {
 export const GATES = {
   'choke-point':  { needs: 'flak-battery', at: 10, label: 'Reach wave 10 in Flak Battery' },
   'hull-breach':  { needs: 'feedline',     at: 1,  label: 'Finish a run of Feedline' },
+  'airburst':     { needs: 'hull-breach',  at: 3,  label: 'Clear level 3 in Hull Breach' },
 };
 
 /** Is this game playable yet? Ungated games are always true. */

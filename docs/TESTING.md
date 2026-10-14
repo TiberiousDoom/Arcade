@@ -1,24 +1,24 @@
-# Device test checklist — build v52
+# Device test checklist — build v53
 
 For a real phone, via **https://tiberiousdoom.github.io/Arcade/**. These are the
 questions a desk cannot answer — thumb reach, legibility at real size, frame
 rate, and whether the balance numbers are any good. Every item here was
 reviewed only at a desk, through node-canvas or a desktop browser.
 
-Rewritten 2026-10-13 for v49, updated for v52. The v22 checklist it replaces had sat for 27
+Rewritten 2026-10-13 for v49, updated for v53. The v22 checklist it replaces had sat for 27
 builds; the items it asked about have since been answered in feedback rounds,
 superseded by later builds, or carried forward below. When a section is
 settled, record the outcome in STATUS.md and delete the section.
 
 ---
 
-## 0. First: confirm you're on v52
+## 0. First: confirm you're on v53
 
 The service worker serves cache-first, so a phone keeps running an old build
 until the new worker takes over, and every observation below would then be
 about the wrong code.
 
-- [ ] Open any game's menu and check the bottom line reads **Arcade v52**.
+- [ ] Open any game's menu and check the bottom line reads **Arcade v53**.
 - [ ] If it doesn't: fully close the app, reopen, and reload once more. The
       first load installs the new worker, the second reads from it.
 
@@ -71,6 +71,24 @@ Nobody has reported from these waves on glass.
       wait for the release ever feel laggy?
 - [ ] **The armory** now costs ~24 Easy runs of kill income to fill (~15 for the
       four tracks anyone can buy). Does progress feel steady or grindy?
+
+## 3a. Airburst — new in v53
+
+Never played on glass. Classics cabinet, card 3 (opens at Hull Breach level 3).
+
+- [ ] **The tap.** Does the burst land where your finger was? Is a finger in
+      the way of the warhead you are aiming at?
+- [ ] **Leading.** The burst takes a moment to grow, so you have to tap ahead.
+      Learnable within a wave or two, or frustrating?
+- [ ] **The curve.** Wave 1 should be gentle. Roughly where does it get hard,
+      and is wave 5 (which will open Shield Wall) a fair target?
+- [ ] **Splitting** from wave 4: can you see a warhead is about to split, and
+      does catching it high feel like the answer?
+- [ ] **Ammunition.** Ten per battery per wave — do you run dry, and does the
+      HUD's Ammo count and the pips under each battery make that clear?
+- [ ] **Legibility.** Warheads (small red cubes) against the dark sky at real
+      size; cities (gold domes) and lost-city rubble.
+- [ ] **Frame rate** on a late wave with many trails and bursts.
 
 ## 3b. Choke Point — the opening ramp (v52)
 

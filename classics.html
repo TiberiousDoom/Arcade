@@ -91,6 +91,7 @@
   /* each card tints itself with the accent of the game it opens */
   .card.hull-breach{--pip:#3fae8f}
   .card.feedline{--pip:#5fc9a4}
+  .card.airburst{--pip:#7fd0e6}
 
   footer{display:flex;flex-direction:column;gap:6px;text-transform:none;letter-spacing:.04em}
   footer b{color:var(--dim);font-weight:400}
@@ -115,7 +116,7 @@
           </svg>
           <h2>Feedline</h2>
           <p class="lore">One line, one life, and it only ever gets longer.</p>
-          <span class="how"><span class="step">1 / 2</span>Swipe or arrows</span>
+          <span class="how"><span class="step">1 / 3</span>Swipe or arrows</span>
         </a>
       </li>
       <li>
@@ -130,7 +131,21 @@
           </svg>
           <h2>Hull Breach</h2>
           <p class="lore">The wall is layered, the ball is fast, and the angle is entirely yours.</p>
-          <span class="how"><span class="step">2 / 2</span>Slide to steer</span>
+          <span class="how"><span class="step">2 / 3</span>Slide to steer</span>
+        </a>
+      </li>
+      <li>
+        <a class="card airburst" href="games/airburst/airburst.html">
+          <svg viewBox="0 0 120 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M30 2L52 24M92 2L74 20" stroke-linecap="round" stroke-width="1.5"/>
+            <rect x="49" y="21" width="6" height="6" fill="currentColor" stroke="none"/>
+            <circle cx="72" cy="18" r="7"/>
+            <path d="M8 37h104" stroke-linecap="round"/>
+            <path d="M22 37a6 6 0 0 1 12 0M54 37a6 6 0 0 1 12 0M86 37a6 6 0 0 1 12 0"/>
+          </svg>
+          <h2>Airburst</h2>
+          <p class="lore">Six cities, three batteries, and whatever you can catch before it lands.</p>
+          <span class="how"><span class="step">3 / 3</span>Tap the sky</span>
         </a>
       </li>
     </ul>

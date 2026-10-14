@@ -46,6 +46,10 @@
     {
       "name": "Choke Point",
       "url": "games/choke-point/choke-point.html"
+    },
+    {
+      "name": "Airburst",
+      "url": "games/airburst/airburst.html"
     }
   ]
 }

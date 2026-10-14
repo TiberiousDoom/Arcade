@@ -11,7 +11,7 @@ Build order, cheapest and most foundational first:
 1. ~~**Delete landscape**~~ — **shipped in v51.** First, because every later item (and all three new
    games) would otherwise be built for two layouts.
 2. ~~**Choke Point's gradual unlock**~~ — **shipped in v52.**
-3. **Three new classics**: Airburst, Shield Wall, then Bulkhead.
+3. **Three new classics**: ~~Airburst~~ (shipped in v53), Shield Wall, then Bulkhead.
 
 Every item touches files the app loads, so each ships as its own build with
 the usual `CACHE_VERSION`/`BUILD` bump; new games also go into `PRECACHE`.
@@ -92,7 +92,7 @@ that keeps the absolute: **invaders are cubes, defenders are spheres**.
 
 Suggested order, by how much each reuses what exists:
 
-1. **Missile Command (Airburst)** — continuous physics like Flak Battery, defend-the-base
+1. ~~**Missile Command (Airburst)**~~ — **shipped in v53.** Continuous physics like Flak Battery, defend-the-base
    theme that fits the setting. The obvious first.
 2. **Invaders (Shield Wall)** — a formation of cubes, a sphere at the bottom. Closest to the
    art rules already written.

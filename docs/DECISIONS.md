@@ -2164,3 +2164,14 @@ Ten calls had collected across nineteen rounds of "still open" lists; they were 
 - **Unlocks land mid-run, not between runs.** A class whose wave arrives during the run is buildable straight away, with a passing notice instead of a banner. Holding it back to the next run would make "a wave before the enemy it answers" a run late for every first-time player.
 - **Veterans are seeded, not migrated by guesswork.** The cabinet's unlock gate has recorded Choke Point's best wave since v26, so a pre-v52 player's `best` comes from there; anyone with a wave on record and no runs counted is treated as past the second run. The alternative — reading old armory purchases as evidence — was rejected as indirect: the best wave is the thing the gate is about.
 - **Range and Splash wait for the second run, not for a wave.** The point is that the first run's armory is two rows to read rather than four. A wave threshold would open them mid-first-run, which is the moment that choice was meant to be kept short.
+
+## 2026-10-14 — Airburst: how the first new classic plays
+
+- **Tap where the burst should be; the game picks the battery.** The nearest battery still standing with ammunition fires. The classic gave each battery its own button, which on a phone is three more controls over the board for a choice that is nearly always "the nearest one". Aiming is the skill; gun selection was bookkeeping.
+- **Fires on press**, like every gameplay canvas here. A beat of latency is a miss.
+- **No chain reactions.** A destroyed warhead does not burst in turn. Chains make a crowded sky easier the more crowded it gets, which inverts the difficulty curve exactly where it should be steepest.
+- **Batteries are rebuilt every wave; cities are not**, with one city back per 10,000 points. Ammunition is the per-wave budget and cities are the run's lives — the classic's split, and it keeps both decisions alive: spend ammo freely this wave, but every city lost is permanent unless earned back.
+- **Losing the last city ends the run at once**, not at the end of the wave — there is nothing left to defend, and a wave played out over rubble is waiting rather than playing.
+- **The split roll is taken for every warhead, split or not**, the same principle as Flak Battery's `rollDrop`: the number of LCG advances must not depend on the outcome, or a seeded run stops replaying.
+- **Difficulty was set by a simulated player, then left for the phone.** A bot that leads by the interceptor's real flight time holds about 8-9 waves; one that aims a fixed distance ahead loses on wave 2. The test pins five waves, the wave that will open Shield Wall, so that gate stays reachable by someone who has learned to lead.
+- **Hull Breach now records levels cleared**, for Airburst's gate, and seeds that record from its level-select history so a returning player is credited with what they already did — the same move as Choke Point's ramp seeding from the cabinet's wave record.
