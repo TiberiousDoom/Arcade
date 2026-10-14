@@ -111,123 +111,52 @@ test('every brick sits inside the playfield', () => {
   }
 });
 
-/* ---------- portrait layout ---------- */
+/* ---------- the board ---------- */
 
-const TALL = E.LAYOUT_TALL;
-
-test('the portrait board is actually portrait, and the landscape one is not', () => {
-  assert.ok(TALL.H > TALL.W, 'taller than wide');
-  assert.ok(L.W > L.H, 'landscape stays landscape');
+test('the board is portrait', () => {
+  // portrait only since 2026-10-14 — there is no landscape board any more
+  assert.ok(L.H > L.W, 'taller than wide');
 });
 
-test('the landscape board is unchanged by the addition of FLOOR', () => {
-  // regression: THUMB/FLOOR were introduced for portrait and must not move
-  // anything on the original board
-  assert.equal(L.THUMB, 0);
-  assert.equal(L.FLOOR, L.H);
-  assert.equal(L.PADDLE_Y, 554, 'paddle sits exactly where it always did');
+test('the board reserves a thumb rest below the floor', () => {
+  assert.ok(L.THUMB > 0);
+  assert.equal(L.FLOOR, L.H - L.THUMB);
+  assert.ok(L.PADDLE_Y < L.FLOOR, 'paddle sits above the floor line');
+  assert.ok(L.FLOOR < L.H, 'and there is empty canvas below it to hold');
 });
 
-test('the portrait board reserves a thumb rest below the floor', () => {
-  assert.ok(TALL.THUMB > 0);
-  assert.equal(TALL.FLOOR, TALL.H - TALL.THUMB);
-  assert.ok(TALL.PADDLE_Y < TALL.FLOOR, 'paddle sits above the floor line');
-  assert.ok(TALL.FLOOR < TALL.H, 'and there is empty canvas below it to hold');
+test('deleting landscape left the pace exactly where it was', () => {
+  /* The speeds were tuned on the old 600px-high board and scale by playable
+     height, so a ball crosses this board in the time it always took to cross
+     that one. REF_FLOOR stayed a number for exactly this reason. */
+  assert.equal(E.REF_FLOOR, 600);
+  const crossing = L.FLOOR / E.levelSpeed(1, L);
+  assert.ok(Math.abs(crossing - 600 / E.BALL_SPEED) < 1e-9, 'same crossing time as before');
 });
 
-test('a ball crosses either board in the same time', () => {
-  // the point of scaling speed by playable height: portrait must not play
-  // slower and easier just because the board is taller
-  const t = (LAY) => LAY.FLOOR / E.levelSpeed(1, LAY);
-  assert.ok(Math.abs(t(L) - t(TALL)) < 1e-9, 'traversal time is layout-independent');
-});
-
-test('portrait speed is faster in absolute terms, since the board is taller', () => {
-  assert.ok(E.levelSpeed(1, TALL) > E.levelSpeed(1, L));
-});
-
-test('a world built on the portrait layout is internally consistent', () => {
-  const w = E.createWorld({ layout: TALL });
-  assert.equal(w.L.W, TALL.W);
+test('a world on the board is internally consistent', () => {
+  const w = E.createWorld();
+  assert.equal(w.L.W, L.W);
   assert.ok(w.bricks.length > 0);
   for (const b of w.bricks) {
-    assert.ok(b.x >= TALL.MARGIN - 1e-6, 'brick within the left margin');
-    assert.ok(b.x + b.w <= TALL.W - TALL.MARGIN + 1e-6, 'and the right');
-    assert.ok(b.y + b.h < TALL.PADDLE_Y, 'no brick reaches the paddle');
+    assert.ok(b.x >= L.MARGIN - 1e-6, 'brick within the left margin');
+    assert.ok(b.x + b.w <= L.W - L.MARGIN + 1e-6, 'and the right');
+    assert.ok(b.y + b.h < L.PADDLE_Y, 'no brick reaches the paddle');
   }
-  const lim = TALL.WALL + w.paddle.w / 2;
+  const lim = L.WALL + w.paddle.w / 2;
   E.setPaddle(w, 99999);
-  assert.ok(w.paddle.x <= TALL.W - lim, 'paddle clamps to the narrower board');
+  assert.ok(w.paddle.x <= L.W - lim, 'paddle clamps to the walls');
 });
 
-test('a portrait ball dies at the floor line, not the bottom of the canvas', () => {
-  const w = E.createWorld({ layout: TALL });
+test('a ball dies at the floor line, not the bottom of the canvas', () => {
+  const w = E.createWorld();
   w.running = true; w.held = false;
   w.bricks = [{ x: 40, y: 100, w: 20, h: 20, row: 0, col: 0, hp: 9, maxhp: 9, alive: true, flash: 0 }];
   // sitting in the thumb band: past the floor, but still inside the canvas
-  w.balls = [{ x: 300, y: TALL.FLOOR + 40, vx: 0, vy: 300, r: TALL.BALL_R }];
-  assert.ok(TALL.FLOOR + 40 < TALL.H, 'setup: still on the canvas');
+  w.balls = [{ x: 300, y: L.FLOOR + 40, vx: 0, vy: 300, r: L.BALL_R }];
+  assert.ok(L.FLOOR + 40 < L.H, 'setup: still on the canvas');
   E.step(w, 1 / 60);
   assert.equal(w.balls.length, 0, 'the ball was lost at the floor');
-});
-
-/* ---------- rotating the phone ---------- */
-
-test('both layouts share one brick grid, which is what makes rotation lossless', () => {
-  assert.equal(L.BRICK_ROWS, TALL.BRICK_ROWS);
-  assert.equal(L.BRICK_COLS, TALL.BRICK_COLS);
-  assert.equal(E.buildBricks(1, L).length, E.buildBricks(1, TALL).length);
-});
-
-test('relayout carries every brick\'s damage across, index for index', () => {
-  const w = E.createWorld();
-  E.nextLevel(w);              // reach level 2 properly, so bricks match the level
-  w.score = 1234; w.lives = 2;
-  // chew up the field: kill some outright, wound others
-  w.bricks[0].alive = false;
-  w.bricks[1].hp = 1;
-  w.bricks[5].alive = false;
-  const before = w.bricks.map(b => `${b.row},${b.col}:${b.hp}:${b.alive}`);
-
-  E.relayout(w, TALL);
-
-  assert.equal(w.L.W, TALL.W, 'moved onto the portrait board');
-  assert.deepEqual(w.bricks.map(b => `${b.row},${b.col}:${b.hp}:${b.alive}`), before,
-    'every brick kept its damage');
-  assert.equal(w.score, 1234, 'score survives');
-  assert.equal(w.lives, 2, 'lives survive');
-  assert.equal(w.level, 2, 'level survives');
-});
-
-test('relayout re-racks the ball and refits the paddle', () => {
-  const w = E.createWorld();
-  E.launch(w);
-  assert.equal(w.balls.length, 1);
-  E.relayout(w, TALL);
-  assert.equal(w.held, true, 'ball is racked, since its flight means nothing on a new board');
-  assert.equal(w.balls.length, 0);
-  assert.equal(w.paddle.w, TALL.PADDLE_W, 'paddle takes the new board\'s width');
-  const lim = TALL.WALL + w.paddle.w / 2;
-  assert.ok(w.paddle.x >= lim && w.paddle.x <= TALL.W - lim, 'and sits inside the new walls');
-});
-
-test('rotating out and back is a round trip', () => {
-  const w = E.createWorld();
-  w.bricks[3].alive = false;
-  w.bricks[7].hp = 1;
-  const before = w.bricks.map(b => `${b.hp}:${b.alive}`);
-  E.relayout(w, TALL);
-  E.relayout(w, L);
-  assert.deepEqual(w.bricks.map(b => `${b.hp}:${b.alive}`), before);
-  assert.equal(w.L.W, L.W);
-});
-
-test('the ball is still speed-correct after a relayout', () => {
-  const w = E.createWorld();
-  E.relayout(w, TALL);
-  E.launch(w);
-  const b = w.balls[0];
-  assert.ok(Math.abs(Math.hypot(b.vx, b.vy) - E.levelSpeed(w.level, TALL)) < 1e-6);
 });
 
 /* ---------- collision primitives ---------- */
@@ -515,7 +444,9 @@ test('a wide paddle at the wall is pushed back inside it', () => {
 test('slow scales live balls and the next launch, and restores full pace', () => {
   const w = decoy(emptyWorld());
   const full = E.levelSpeed(w.level, w.L);
-  w.balls = [{ x: 400, y: 300, vx: 0, vy: -full, r: L.BALL_R }];
+  // over the paddle, so a ball bouncing straight up and down for the whole
+  // effect is caught every time rather than lost
+  w.balls = [{ x: w.paddle.x, y: 300, vx: 0, vy: -full, r: L.BALL_R }];
   E.applyPowerup(w, 'slow');
   assert.ok(Math.abs(Math.hypot(w.balls[0].vx, w.balls[0].vy) - full * E.SLOW_MULT) < 1e-6, 'ball slowed');
   assert.ok(Math.abs(E.effectiveSpeed(w) - full * E.SLOW_MULT) < 1e-6, 'and so is a new launch');
@@ -556,18 +487,6 @@ test('nextLevel and resetGame both start clean', () => {
     assert.equal(w.drops.length, 0);
     assert.equal(w.paddle.w, L.PADDLE_W);
   }
-});
-
-test('a relayout keeps earned effects but drops capsules in flight', () => {
-  const w = E.createWorld();
-  w.running = true;
-  E.applyPowerup(w, 'wide');
-  w.drops = [{ kind: 'multi', x: 400, y: 300, vy: E.DROP_SPEED }];
-  E.relayout(w, E.LAYOUT_TALL);
-  assert.equal(w.drops.length, 0, 'in-flight capsules do not survive a board change');
-  assert.ok(w.effects.wide > 0, 'but the effect was earned, so it carries');
-  assert.ok(Math.abs(w.paddle.w - E.LAYOUT_TALL.PADDLE_W * E.WIDE_MULT) < 1e-6,
-    'and is re-applied against the new board\'s base width');
 });
 
 test('the fx.power hook fires on a pickup, and its absence is safe', () => {
@@ -859,24 +778,6 @@ test('a restored run keeps playing identically', () => {
   assert.equal(resumed.score, w.score, 'same score after playing on');
   assert.equal(resumed.lives, w.lives, 'same lives');
   assert.equal(E.aliveBricks(resumed), E.aliveBricks(w), 'same bricks standing');
-});
-
-test('a save restores onto the other board shape', () => {
-  // the reason bricks are stored by cell and the paddle as a fraction: a run
-  // saved on one layout has to come back on whatever the device is now
-  const w = E.createWorld();
-  w.running = true;
-  w.score = 900;
-  w.bricks[4].alive = false;
-  E.setPaddle(w, w.L.W * 0.25);
-
-  const tall = E.createWorld({ layout: E.LAYOUT_TALL });
-  assert.equal(E.hydrate(tall, JSON.parse(JSON.stringify(E.snapshot(w)))), true);
-  assert.equal(tall.score, 900);
-  assert.equal(tall.bricks[4].alive, false, 'damage landed on the right cell');
-  assert.ok(Math.abs(tall.paddle.x / tall.L.W - 0.25) < 0.05, 'paddle kept its position');
-  const lim = tall.L.WALL + tall.paddle.w / 2;
-  assert.ok(tall.paddle.x >= lim && tall.paddle.x <= tall.L.W - lim, 'and stayed inside the walls');
 });
 
 test('a corrupt or foreign snapshot is refused rather than half-applied', () => {

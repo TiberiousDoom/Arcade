@@ -9,20 +9,15 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /* ---------- board ---------- */
 
-/** Square cells, so the portrait layout can be an exact transpose of landscape.
- *  That is what makes rotation lossless: turning the phone maps every cell
- *  (c, r) -> (r, c), and because cells are square the transposed path has the
- *  *same total length*, so an enemy's distance along it carries straight over
- *  with no rescaling. See `relayout`, and Feedline for the same trick. */
 /*  Note CELL is a *resolution* knob, not an on-screen size one: the shell's
  *  makeFit scales the whole canvas to the stage, so a cell's physical size is
  *  screen-width / COLS. Bigger squares on a phone therefore means *fewer*
- *  columns, which is why the grid went 15x10 -> 12x8 (2026-07-27); CELL rose
- *  alongside only to keep the backing canvas sharp. */
+ *  columns, which is why the grid went 15x10 -> 12x8 (2026-07-27, then stood on
+ *  its end as 8x12); CELL rose alongside only to keep the backing canvas sharp. */
 export const CELL = 64;
 
-/** The circuits, each a list of [col, row] waypoints in landscape space, within
- *  a 12x8 grid. Consecutive waypoints must be axis-aligned (only one coordinate
+/** The circuits, each a list of [col, row] waypoints on the 8x12 portrait
+ *  grid. Consecutive waypoints must be axis-aligned (only one coordinate
  *  changes) — `pathCells` walks between them a cell at a time and relies on it.
  *
  *  Several of them because a single fixed circuit meant every run was the same
@@ -30,64 +25,53 @@ export const CELL = 64;
  *  (not per wave — swapping the path mid-run would strand towers), so replaying
  *  is a different defense problem rather than the same one faster.
  *
- *  Transposing each (swap every pair) yields a valid portrait route by
- *  construction, since the grid dimensions swap too, and because cells are
- *  square the transposed path has an identical length. That is what keeps
- *  rotation lossless — see `relayout`. */
-/*  Ordered by difficulty now, easiest first, and a run always starts on the
+ *  They were authored on the old 12x8 landscape grid and stood on their end
+ *  when landscape was deleted (2026-10-14): every pair swapped, so each path is
+ *  exactly the shape and length players have been playing since portrait-only
+ *  began in July. */
+/*  Ordered by difficulty, easiest first, and a run always starts on the
  *  first — it used to be picked from the seed, which made the opening board a
  *  coin toss. Length *is* the difficulty here: a longer route is more seconds
  *  under fire before anything reaches the core, so route 1 is the most
  *  forgiving and route 3 the least. Roughly 36 / 31 / 14 cells. */
 const ROUTES = [
-  // 1 — enters low and climbs, then descends in steps. The longest and most
-  // wound: plenty of time on the board, though the lanes sit further apart so
-  // a single tower covers less of it.
-  [[0, 6], [10, 6], [10, 1], [3, 1], [3, 4], [7, 4], [7, 7], [11, 7]],
+  // 1 — enters at the top and winds down the board in steps. The longest and
+  // most wound: plenty of time on the board, though the lanes sit further
+  // apart so a single tower covers less of it.
+  [[6, 0], [6, 10], [1, 10], [1, 3], [4, 3], [4, 7], [7, 7], [7, 11]],
   // 2 — three long sweeps, doubling back. Plenty of cells that cover two lanes
   // at once, so it rewards finding the pinch points.
-  [[0, 1], [9, 1], [9, 3], [2, 3], [2, 5], [11, 5], [11, 7]],
+  [[1, 0], [1, 9], [3, 9], [3, 2], [5, 2], [5, 11], [7, 11]],
   // 3 — two turns and out. Less than half the length of the first, so there is
   // barely any time to kill; the compensation is that everything funnels
   // through one short corridor, and towers there all fire at once.
-  [[0, 3], [7, 3], [7, 6], [11, 6]],
+  [[3, 0], [3, 7], [6, 7], [6, 11]],
   /* 4 and 5 are earned by holding a circuit on all three difficulties (see
      `SWEPT_ROUTES`), and they continue the ordering: shorter than everything
      above them, which here means barely any time at all.
 
-     4 — the dash. A straight line across the middle: the shortest crossing the
-     board allows, since a route entering at the left edge cannot be under
+     4 — the dash. A straight line down the middle: the shortest crossing the
+     board allows, since a route entering at the top edge cannot be under
      eleven cells. Every tower can reach it and none of them get long. */
-  [[0, 4], [11, 4]],
-  /* 5 — the drop. Enters from the *top* edge rather than the left, which is
-     the only way left to make a route shorter still — and it changes the shape
-     of the problem rather than only its length: the whole left half of the
-     board is behind the spawn and buys nothing, so the same money has to fit
-     into a third of the usual space. */
-  [[5, 0], [5, 4], [11, 4]],
+  [[4, 0], [4, 11]],
+  /* 5 — the drop. Enters from the *side* rather than the top, which is the
+     only way left to make a route shorter still — and it changes the shape of
+     the problem rather than only its length: the whole top half of the board
+     is behind the spawn and buys nothing, so the same money has to fit into a
+     third of the usual space. */
+  [[0, 5], [4, 5], [4, 11]],
 ];
 /** Circuits from this index on are earned by a *sweep* — one circuit held on
  *  all three difficulties — on top of the usual per-difficulty ladder. */
 export const SWEPT_ROUTES = 3;
 export const ROUTE_COUNT = ROUTES.length;
 
-const transpose = (route) => route.map(([c, r]) => [r, c]);
-
+/** The board: portrait only since 2026-10-14 (DECISIONS). */
 export const LAYOUT = {
-  COLS: 12, ROWS: 8, CELL,
+  COLS: 8, ROWS: 12, CELL,
   routes: ROUTES,
   /** The default circuit. Kept so callers that predate multiple routes, and
    *  anything that only needs "a" route, still work. */
-  get route() { return this.routes[0]; },
-  get W() { return this.COLS * this.CELL; },
-  get H() { return this.ROWS * this.CELL; },
-};
-
-/** Portrait phones get the exact transpose — same cells, same routes, stood on
- *  their end. Keep these mirrored; `relayout` and a test both rely on it. */
-export const LAYOUT_TALL = {
-  COLS: LAYOUT.ROWS, ROWS: LAYOUT.COLS, CELL,
-  routes: ROUTES.map(transpose),
   get route() { return this.routes[0]; },
   get W() { return this.COLS * this.CELL; },
   get H() { return this.ROWS * this.CELL; },
@@ -1646,25 +1630,3 @@ export function hydrate(w, snap) {
   return true;
 }
 
-/* ---------- rotation ---------- */
-
-/** Move an in-progress game onto the other layout, as when the phone is turned.
- *
- *  Lossless: the layouts are exact transposes, so towers map (c, r) -> (r, c)
- *  and the path is the same length, so every enemy's `dist` carries over
- *  untouched — as do components, integrity, wave and score. Turning the phone turns
- *  the board, which is also the least surprising thing that could happen. Same
- *  approach as Feedline. */
-export function relayout(w, L2) {
-  // the run's own circuit has to come across too — rebuilding at route 0 would
-  // silently swap the board mid-run and strand every tower off the new path
-  const { path, pathLen } = buildPath(L2, w.routeIndex);
-  w.L = L2;
-  w.path = path; w.pathLen = pathLen;
-  w.blocked = pathCells(L2, w.routeIndex);
-  for (const t of w.towers) { const c = t.c, r = t.r; t.c = r; t.r = c; }
-  // pixel coordinates, and the board they were measured on has just been
-  // transposed — a round mid-flight is the one thing rotation cannot carry
-  w.slugs = [];
-  return w;
-}

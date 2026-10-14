@@ -145,30 +145,13 @@ const fx = {
   },
 };
 
-/* Portrait phones get the narrower, taller board with a thumb rest below the
-   floor line; landscape gets the wide one and rests thumbs in the side
-   gutters instead. Re-picked whenever the phone turns — see applyLayout. */
-/* Portrait-only since 2026-07-27: landscape didn't feel right on a real phone.
-   Every board uses the tall layout regardless of orientation. The rotation
-   machinery below is left intact but inert (applyLayout early-returns because
-   the layout never changes) — flip this flag back to false to restore
-   landscape without re-deriving anything. */
-const PORTRAIT_ONLY = true;
-const pickLayout = () =>
-  (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
+// one board, portrait, with a thumb rest below the floor (DECISIONS 2026-10-14)
+const world = E.createWorld({ fx });
 
-const world = E.createWorld({ fx, layout: pickLayout() });
-
-let W = world.L.W, H = world.L.H;
+const W = world.L.W, H = world.L.H;
 const board = { w: W, h: H };          // makeFit re-reads this on every fit
-
-function adoptLayout() {
-  W = world.L.W; H = world.L.H;
-  board.w = W; board.h = H;
-  cv.width = W; cv.height = H;
-  document.documentElement.style.setProperty('--board-max', W + 'px');
-}
-adoptLayout();
+cv.width = W; cv.height = H;
+document.documentElement.style.setProperty('--board-max', W + 'px');
 
 /* brick color by grid row: back rows (tougher) skew brass, front rows green */
 /* Color says how many hits, and nothing else.
@@ -191,7 +174,7 @@ function stageX(e) {
 
 /* Two ways to steer, picked by where the finger lands.
    On the board: the paddle jumps to your finger — direct and precise.
-   In the side gutters (landscape, where the board can't fill the width): a
+   In the side gutters (wherever the board can't fill the width): a
    relative drag, so a thumb parked off to the side still steers without any
    part of your hand crossing the play area. */
 let drag = null;
@@ -240,28 +223,8 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
-const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
+makeFit({ canvas: cv, stage: $('stage'), board });
 
-/* Rotating the phone moves the game onto the other board. Nothing is lost:
-   both layouts share a brick grid, so damage carries across index-for-index,
-   along with level, score and lives. Only the ball is re-racked. */
-function applyLayout() {
-  const L2 = pickLayout();
-  if (L2 === world.L) return;
-  const wasRunning = world.running;
-  E.relayout(world, L2);
-  adoptLayout();
-  fitStage();
-  sync();
-  // Pause rather than drop the player straight back in mid-flight on a board
-  // that just changed shape under them.
-  if (wasRunning) {
-    world.running = false;
-    showBanner('Turned', 'Your game is where you left it.', 'Resume');
-  }
-}
-addEventListener('resize', applyLayout);
-addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 const pause = makeMenu({
   stage: $('stage'),

@@ -40,129 +40,43 @@ test('a new world has food on the board, off the wire', () => {
   assert.ok(E.inBounds(L, w.food.x, w.food.y));
 });
 
-/* ---------- portrait layout ---------- */
+/* ---------- the board's shape ---------- */
 
-const TALL = E.LAYOUT_TALL;
-
-test('the portrait grid is taller than wide, at the same cell size', () => {
-  assert.ok(TALL.ROWS > TALL.COLS, 'more rows than columns');
-  assert.ok(TALL.H > TALL.W);
-  assert.equal(TALL.CELL, L.CELL, 'cells stay the same size, so the wire reads the same');
+test('the board is portrait: taller than wide', () => {
+  // portrait only since 2026-10-14 — there is no landscape grid to fall back to
+  assert.ok(L.ROWS > L.COLS, 'more rows than columns');
+  assert.ok(L.H > L.W);
 });
 
-test('pace is identical on both grids — the tick rate is per cell', () => {
-  // this is why Feedline needs no speed rescaling, unlike Hull Breach
-  const a = E.createWorld({ layout: L });
-  const b = E.createWorld({ layout: TALL });
-  a.eaten = b.eaten = 7;
-  assert.equal(E.tickRate(a), E.tickRate(b));
-});
-
-test('a world on the portrait grid starts legally inside it', () => {
-  const w = E.createWorld({ layout: TALL });
+test('a new world starts legally inside the board', () => {
+  const w = E.createWorld();
   assert.equal(w.wire.length, E.START_LEN);
   for (const s of w.wire) {
-    assert.ok(E.inBounds(TALL, s.x, s.y), `start cell ${s.x},${s.y} is on the board`);
+    assert.ok(E.inBounds(L, s.x, s.y), `start cell ${s.x},${s.y} is on the board`);
   }
-  assert.ok(E.inBounds(TALL, w.food.x, w.food.y), 'food lands on the board');
+  assert.ok(E.inBounds(L, w.food.x, w.food.y), 'food lands on the board');
   assert.equal(w.wire.some(s => s.x === w.food.x && s.y === w.food.y), false);
 });
 
-test('food never spawns off the narrower portrait board', () => {
-  const w = E.createWorld({ layout: TALL, seed: 31337 });
+test('food never spawns off the board', () => {
+  const w = E.createWorld({ seed: 31337 });
   for (let i = 0; i < 200; i++) {
     E.spawnFood(w);
-    assert.ok(E.inBounds(TALL, w.food.x, w.food.y), `food ${i} in bounds`);
+    assert.ok(E.inBounds(L, w.food.x, w.food.y), `food ${i} in bounds`);
   }
 });
 
-test('the portrait board runs a full game without corrupting the wire', () => {
-  const w = E.createWorld({ layout: TALL, seed: 99 });
+test('a full game runs without corrupting the wire', () => {
+  const w = E.createWorld({ seed: 99 });
   w.running = true;
   for (let i = 0; i < 800 && !w.over; i++) {
     if (i % 9 === 0) E.turn(w, 0, i % 18 === 0 ? -1 : 1);
     if (i % 11 === 0) E.turn(w, i % 22 === 0 ? -1 : 1, 0);
     E.tick(w);
-    for (const s of w.wire) assert.ok(E.inBounds(TALL, s.x, s.y), `in bounds at tick ${i}`);
+    for (const s of w.wire) assert.ok(E.inBounds(L, s.x, s.y), `in bounds at tick ${i}`);
     const keys = new Set(w.wire.map(s => `${s.x},${s.y}`));
     assert.equal(keys.size, w.wire.length, `no duplicate cells at tick ${i}`);
   }
-});
-
-/* ---------- rotating the phone ---------- */
-
-test('the two grids are exact transposes — the invariant rotation rests on', () => {
-  assert.equal(TALL.COLS, L.ROWS);
-  assert.equal(TALL.ROWS, L.COLS);
-  assert.equal(TALL.CELL, L.CELL);
-  assert.equal(TALL.COLS * TALL.ROWS, L.COLS * L.ROWS, 'same number of cells either way');
-});
-
-/** Lay a straight wire of `n` cells across the middle of the landscape board,
- *  packed against the left wall so the head keeps every spare column ahead of
- *  it — otherwise the wire starts a cell from the wall and dies immediately,
- *  which tests the wall rather than the rotation. */
-function withWire(w, n) {
-  const y = Math.floor(w.L.ROWS / 2);
-  w.wire = [];
-  for (let i = 0; i < n; i++) w.wire.push({ x: n - 1 - i, y });
-  w.dir = { x: 1, y: 0 };
-  w.grow = 0;
-  return w;
-}
-
-test('relayout is lossless: the wire is transposed, cell for cell', () => {
-  const w = withWire(world({ seed: 5 }), 13);
-  w.score = 480; w.eaten = 12;
-  const before = w.wire.map(c => ({ ...c }));
-
-  E.relayout(w, TALL);
-
-  assert.equal(w.wire.length, before.length, 'no cell lost');
-  for (let i = 0; i < before.length; i++) {
-    assert.equal(w.wire[i].x, before[i].y, `cell ${i} x came from old y`);
-    assert.equal(w.wire[i].y, before[i].x, `cell ${i} y came from old x`);
-  }
-  assert.equal(w.score, 480);
-  assert.equal(w.eaten, 12);
-});
-
-test('direction, food and bonus all turn with the board', () => {
-  const w = withWire(world({ seed: 7 }), 6);
-  w.dir = { x: 1, y: 0 };
-  w.food = { x: 20, y: 3 };
-  w.bonus = { x: 5, y: 11, ttl: 17 };
-  E.relayout(w, TALL);
-  assert.deepEqual(w.dir, { x: 0, y: 1 }, 'heading right becomes heading down');
-  assert.deepEqual(w.food, { x: 3, y: 20 });
-  assert.equal(w.bonus.x, 11); assert.equal(w.bonus.y, 5);
-  assert.equal(w.bonus.ttl, 17, 'the bonus keeps its remaining time');
-});
-
-test('the transposed wire is still legal and still moving', () => {
-  const w = withWire(world({ seed: 11 }), 25);
-  E.relayout(w, TALL);
-
-  const keys = new Set(w.wire.map(c => `${c.x},${c.y}`));
-  assert.equal(keys.size, w.wire.length, 'no cell used twice');
-  for (const c of w.wire) assert.ok(E.inBounds(TALL, c.x, c.y), `${c.x},${c.y} on the board`);
-  for (let i = 1; i < w.wire.length; i++) {
-    const a = w.wire[i - 1], b = w.wire[i];
-    assert.equal(Math.abs(a.x - b.x) + Math.abs(a.y - b.y), 1, `cells ${i - 1}/${i} adjoin`);
-  }
-  w.running = true;
-  for (let i = 0; i < 5; i++) E.tick(w);
-  assert.equal(w.over, false, 'survives the first ticks after turning');
-});
-
-test('turning out and back returns the exact original board', () => {
-  const w = withWire(world({ seed: 3 }), 20);
-  w.food = { x: 9, y: 4 };
-  const before = JSON.stringify({ wire: w.wire, dir: w.dir, food: w.food });
-  E.relayout(w, TALL);
-  E.relayout(w, L);
-  assert.equal(JSON.stringify({ wire: w.wire, dir: w.dir, food: w.food }), before);
-  assert.equal(w.L.COLS, L.COLS);
 });
 
 /* ---------- determinism ---------- */
@@ -418,7 +332,6 @@ test('the board takes the number of meals it takes — the win, in one number', 
   const L = E.LAYOUT;
   assert.equal(L.COLS * L.ROWS, 576);
   assert.equal(E.mealsToWin(L), 286);
-  assert.equal(E.mealsToWin(E.LAYOUT_TALL), E.mealsToWin(L), 'both boards are the same job');
   assert.equal(E.lengthAt(E.mealsToWin(L)), 576, 'and 286 meals is exactly a full board');
 });
 
@@ -505,13 +418,13 @@ test('a resumed checkpoint is a legal board, not a knot', () => {
  *  portrait board — the board is 80% full by then. */
 const RESUME_RUN = 5;
 
-test('every checkpoint resumes into a legal, survivable board on both grids', () => {
+test('every checkpoint resumes into a legal, survivable board', () => {
   /* The serpentine ends flush against a wall whenever the length is a whole
      number of rows — 144 cells on the 18-wide portrait board is exactly eight —
      and the head then faces straight off the edge. Continuing "the way the fold
-     was running" killed it on the first tick. Every checkpoint on every layout,
-     because that is the shape of the bug: it depends on length vs row width. */
-  for (const layout of [E.LAYOUT, E.LAYOUT_TALL]) {
+     was running" killed it on the first tick. Every checkpoint, because that is
+     the shape of the bug: it depends on length vs row width. */
+  for (const layout of [E.LAYOUT]) {
     const cells = layout.COLS * layout.ROWS;
     for (const frac of E.CHECKPOINTS) {
       const eaten = Math.ceil((frac * cells - E.START_LEN) / E.GROW_PER_FOOD);

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import * as E from './engine.js';
 
 const L = E.LAYOUT;
-const TALL = E.LAYOUT_TALL;
 
 /** A world with plenty of components, so building isn't the thing under test. */
 /* "Rich" has to mean rich relative to current prices. The purse was 9,999,
@@ -40,62 +39,41 @@ function firstBuildable(w) {
   throw new Error('no buildable cell');
 }
 
-/* ---------- board & transpose invariant ---------- */
+/* ---------- the board ---------- */
 
 test('board dimensions derive from the grid', () => {
   assert.equal(L.W, L.COLS * L.CELL);
   assert.equal(L.H, L.ROWS * L.CELL);
 });
 
-test('the two layouts are exact transposes — what rotation rests on', () => {
-  assert.equal(TALL.COLS, L.ROWS);
-  assert.equal(TALL.ROWS, L.COLS);
-  assert.equal(TALL.CELL, L.CELL);
-  assert.equal(TALL.COLS * TALL.ROWS, L.COLS * L.ROWS, 'same cell count');
-  // the routes are transposes cell for cell
-  L.route.forEach(([c, r], i) => {
-    assert.deepEqual(TALL.route[i], [r, c], `route point ${i} is transposed`);
-  });
-});
-
-test('both layouts have the same path length, so enemy distance carries over', () => {
-  const a = E.buildPath(L), b = E.buildPath(TALL);
-  assert.ok(Math.abs(a.pathLen - b.pathLen) < 1e-9, `${a.pathLen} vs ${b.pathLen}`);
-});
-
-test('the route stays inside both grids', () => {
-  for (const [c, r] of L.route) assert.ok(E.inGrid(L, c, r), `${c},${r} in landscape`);
-  for (const [c, r] of TALL.route) assert.ok(E.inGrid(TALL, c, r), `${c},${r} in portrait`);
+test('the board is portrait', () => {
+  // portrait only since 2026-10-14 — there is no landscape board any more
+  assert.ok(L.ROWS > L.COLS, 'more rows than columns');
 });
 
 /* ---------- every route, not just the default one ---------- */
 
-test('every route is legal on both layouts and transposes exactly', () => {
+test('every route is legal on the board', () => {
   for (let i = 0; i < E.ROUTE_COUNT; i++) {
-    const land = E.routeAt(L, i), tall = E.routeAt(TALL, i);
-    assert.equal(land.length, tall.length, `route ${i} same shape both ways`);
-
-    land.forEach(([c, r], k) => {
-      assert.ok(E.inGrid(L, c, r), `route ${i} point ${k} (${c},${r}) is on the landscape grid`);
-      assert.deepEqual(tall[k], [r, c], `route ${i} point ${k} is transposed`);
-      assert.ok(E.inGrid(TALL, r, c), `route ${i} point ${k} is on the portrait grid`);
+    const route = E.routeAt(L, i);
+    route.forEach(([c, r], k) => {
+      assert.ok(E.inGrid(L, c, r), `route ${i} point ${k} (${c},${r}) is on the grid`);
     });
-
     // pathCells walks a cell at a time between waypoints, so each leg must
     // change exactly one coordinate — a diagonal would silently skip cells
-    for (let k = 1; k < land.length; k++) {
-      const [c0, r0] = land[k - 1], [c1, r1] = land[k];
+    for (let k = 1; k < route.length; k++) {
+      const [c0, r0] = route[k - 1], [c1, r1] = route[k];
       const movedC = c0 !== c1, movedR = r0 !== r1;
       assert.ok(movedC !== movedR, `route ${i} leg ${k} is axis-aligned`);
     }
   }
 });
 
-test('each route is the same length on both layouts, so rotation stays lossless', () => {
-  for (let i = 0; i < E.ROUTE_COUNT; i++) {
-    const a = E.buildPath(L, i), b = E.buildPath(TALL, i);
-    assert.ok(Math.abs(a.pathLen - b.pathLen) < 1e-9, `route ${i}: ${a.pathLen} vs ${b.pathLen}`);
-  }
+test('deleting landscape left every circuit exactly the length it was', () => {
+  // the routes were stood on their end, not redrawn: these are the lengths the
+  // portrait board has had since July
+  const lengths = Array.from({ length: E.ROUTE_COUNT }, (_, i) => E.buildPath(L, i).pathLen);
+  assert.deepEqual(lengths, [2304, 1984, 896, 704, 640]);
 });
 
 test('the routes are genuinely different boards, each with room to build', () => {
@@ -152,19 +130,6 @@ test('a reset goes to the circuit it is told to, and wraps rather than running o
   assert.equal(w.routeIndex, 0);
   E.resetGame(w, { routeIndex: -1 });
   assert.equal(w.routeIndex, E.ROUTE_COUNT - 1, 'negative wraps too');
-});
-
-test('rotating mid-run keeps the run on its own circuit', () => {
-  // regression: relayout rebuilt at route 0, which would swap the board
-  // underneath the player and strand every tower off the path
-  const w = richWorld({ routeIndex: 2 });
-  const cell = firstBuildable(w);
-  E.buildTower(w, cell.c, cell.r, 'node');
-  E.relayout(w, TALL);
-  assert.equal(w.routeIndex, 2, 'still the same circuit');
-  assert.deepEqual([...w.blocked].sort(), [...E.pathCells(TALL, 2)].sort());
-  const t = w.towers[0];
-  assert.ok(!w.blocked.has(E.cellKey(t.c, t.r)), 'the tower did not end up on the path');
 });
 
 /* ---------- path geometry ---------- */
@@ -1014,17 +979,6 @@ test('a moved tower fights from where it landed', () => {
   assert.ok(w.enemies[0].hp < untouched, 'it shoots from its new cell');
 });
 
-test('rotating the board carries a moved tower with it', () => {
-  const w = withTower();
-  const to = otherFreeCell(w, 0);
-  E.moveTower(w, 0, to.c, to.r);
-  E.relayout(w, E.LAYOUT_TALL);
-  assert.equal(w.towers[0].c, to.r, 'transposed like any other tower');
-  assert.equal(w.towers[0].r, to.c);
-  assert.ok(!w.blocked.has(E.cellKey(w.towers[0].c, w.towers[0].r)),
-    'and it did not land on the route');
-});
-
 /* ---------- Sever, and the mark ---------- */
 
 test('Sever marks what it hits, and the mark is not a slow', () => {
@@ -1127,15 +1081,27 @@ test('Sever is earned on Medium, and cannot be built before that', () => {
 /* ---------- Chain and Veterancy ---------- */
 
 test('Chain forks every Nth shot, deterministically', () => {
-  const w = fullyEarned('node');
+  /* Two enemies 40px apart along a stretch the tower covers: far enough that
+     Node's splash (12px plus the enemy's radius) cannot reach the second, well
+     inside a fork's reach (CHAIN_RADIUS). The lead is the further along, so
+     the default 'first' priority aims at it, and any damage the second takes
+     can only have come from a fork. At 18px apart the second was splashed on
+     every shot, which only passed on the old landscape board by accident of
+     where the tower stood. */
+  const GAP = 40;
+  const w = richWorld();
+  const p = E.newProgress();
+  for (const d of E.DIFFICULTY_KEYS) E.recordWin(p, d, 0);
+  E.syncUnlocks(w, p);
+  const { c, r, d } = overlook(w, 'node', GAP);
+  assert.equal(E.buildTower(w, c, r, 'node'), true, 'built a node');
   w.classUpgrades.node.chain = 1;
   const every = E.chainEvery(1);
   assert.ok(every > 0);
 
-  // a second enemy alongside the first, within a fork's reach
-  const lead = w.enemies[0];
-  const second = { ...lead, dist: lead.dist + 18, hp: 500, maxhp: 500, marked: 0 };
-  w.enemies.push(second);
+  const lead = { type: 'load', dist: d + GAP, hp: 500, maxhp: 500, speed: 0, r: 15, slow: 0, marked: 0 };
+  const second = { ...lead, dist: d };
+  w.enemies.push(lead, second);
 
   let shots = 0, forked = 0;
   const rate = E.stats(w, w.towers[0]).rate;
@@ -1980,40 +1946,6 @@ test('clearing a wave flags betweenWaves and pays a bonus', () => {
   assert.equal(w.waveActive, false);
   assert.equal(w.betweenWaves, true);
   assert.ok(w.score > score0, 'clear bonus');
-});
-
-/* ---------- rotation ---------- */
-
-test('relayout transposes towers and keeps enemy progress, lossless', () => {
-  const w = richWorld();
-  E.startWave(w);
-  // build a couple of towers on known cells
-  const a = firstBuildable(w);
-  E.buildTower(w, a.c, a.r, 'node');
-  // an enemy partway along the path
-  w.enemies.push({ type: 'surge', dist: w.pathLen * 0.4, hp: 15, maxhp: 20, speed: 60, r: 12, slow: 0 });
-  const enemyDist = w.enemies[0].dist;
-  const comp = w.components, integ = w.integrity, wave = w.wave, score = w.score;
-  const tc = { c: w.towers[0].c, r: w.towers[0].r };
-
-  E.relayout(w, TALL);
-
-  assert.equal(w.L, TALL, 'moved to portrait');
-  assert.deepEqual({ c: w.towers[0].c, r: w.towers[0].r }, { c: tc.r, r: tc.c }, 'tower transposed');
-  assert.ok(Math.abs(w.enemies[0].dist - enemyDist) < 1e-9, 'enemy distance unchanged');
-  assert.equal(w.components, comp); assert.equal(w.integrity, integ);
-  assert.equal(w.wave, wave); assert.equal(w.score, score);
-  // the transposed tower still sits on a legal, non-path cell of the new board
-  assert.ok(E.inGrid(TALL, w.towers[0].c, w.towers[0].r));
-});
-
-test('rotating out and back returns the tower to its cell', () => {
-  const w = richWorld();
-  const a = firstBuildable(w);
-  E.buildTower(w, a.c, a.r, 'coil');
-  E.relayout(w, TALL);
-  E.relayout(w, L);
-  assert.deepEqual({ c: w.towers[0].c, r: w.towers[0].r }, a);
 });
 
 /* ---------- full-run sanity ---------- */

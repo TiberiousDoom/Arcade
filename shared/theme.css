@@ -302,9 +302,11 @@ footer{font-size:10px;letter-spacing:.1em;color:var(--dim);display:flex;gap:16px
   footer{display:none}
 }
 
-/* Short and wide — a phone held sideways. The board is height-limited here, so
-   there is dead space either side of it; the shell spreads to full width and
-   that space becomes somewhere to rest a thumb without covering the board. */
+/* Short and wide — a phone held sideways in a browser tab. Every game is
+   portrait only (DECISIONS 2026-10-14) and an installed app stays upright, but
+   a tab can still turn, and then the portrait board is letterboxed. This keeps
+   that usable: the header shrinks so the board is not tiny, and the dead space
+   either side becomes somewhere to rest a thumb without covering the board. */
 @media (max-height:520px) and (orientation:landscape){
   body{padding:4px;padding-top:calc(4px + env(safe-area-inset-top,0px));padding-left:calc(4px + env(safe-area-inset-left,0px));padding-right:calc(4px + env(safe-area-inset-right,0px))}
   #shell{max-width:none;gap:4px}

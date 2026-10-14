@@ -456,19 +456,6 @@ const fx = {
   shot() { audio.fire(); },
 };
 
-/* Portrait phones get a tall board plus an empty band beneath the cannon:
-   somewhere to rest and drag a thumb without covering the play area. Landscape
-   uses the wide board and the side gutters. Re-picked whenever the phone
-   turns — see applyLayout. */
-/* Portrait-only since 2026-07-27: landscape didn't feel right on a real phone.
-   Every board uses the tall layout regardless of orientation. The rotation
-   machinery below is left intact but inert (applyLayout early-returns because
-   the layout never changes) — flip this flag back to false to restore
-   landscape without re-deriving anything. */
-const PORTRAIT_ONLY = true;
-const pickLayout = () =>
-  (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
-
 /* Which input this device aims with decides which correction the engine
    applies: touch gets a wider hit radius, mouse gets a traverse cap. Declared
    here rather than beside the pointer handlers because the world needs it. */
@@ -507,19 +494,15 @@ function writeResearch(r) {
 }
 
 const world = E.createWorld({
-  fx, layout: pickLayout(), assist: isTouch, drops: readDrops(), research: readResearch(),
+  fx, assist: isTouch, drops: readDrops(), research: readResearch(),
 });
 E.spawnWave(world);
 
+// one board, portrait, with a thumb rest below the cannon (DECISIONS 2026-10-14)
 const board = { w: world.L.W, h: world.L.H };   // makeFit re-reads this
-
-function adoptLayout() {
-  W = world.L.W; H = world.L.H;
-  board.w = W; board.h = H;
-  cv.width = W; cv.height = H;
-  document.documentElement.style.setProperty('--board-max', W + 'px');
-}
-adoptLayout();
+W = world.L.W; H = world.L.H;
+cv.width = W; cv.height = H;
+document.documentElement.style.setProperty('--board-max', W + 'px');
 
 /* ---------- input ---------- */
 let keys = {}, firing = false;
@@ -527,7 +510,6 @@ let keys = {}, firing = false;
    dropping; with lives gone there is no counter to watch, so this latches on
    `world.over` instead and clears when a run restarts. */
 let overCued = false;
-let paused = false;      // set when a rotation pauses a run in progress
 
 function stagePt(e) {
   const r = cv.getBoundingClientRect();
@@ -620,27 +602,6 @@ if (isTouch) document.body.classList.add('touch');
    `extra` is unnecessary. */
 const fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 
-/* Rotating the phone moves the run onto the other board. Chains are positioned
-   by arc-length, so scaling by the ratio of path lengths puts every segment at
-   the same fraction of its journey; wave, score, scrap, upgrades and the
-   battery all carry over. */
-function applyLayout() {
-  const L2 = pickLayout();
-  if (L2 === world.L) return;
-  const wasRunning = world.running;
-  E.relayout(world, L2);
-  adoptLayout();
-  fitStage();
-  sync();
-  if (wasRunning) {
-    world.running = false;
-    paused = true;                 // so Resume does not restart the run
-    showBanner('Turned', 'Your run is where you left it.', 'Resume');
-    $('banner').classList.remove('hide');
-  }
-}
-addEventListener('resize', applyLayout);
-addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 // settings panel content for the shared menu's `extra` slot
 const settingsEl = document.createElement('div');
@@ -3117,15 +3078,13 @@ function showBanner(h, p, btn) {
 }
 $('go').addEventListener('click', () => {
   $('shop').classList.remove('on');
-  // Resuming after a rotation must NOT restart the run — the whole point is
-  // that your place was kept. Only a finished or unstarted run resets.
-  const restarting = !paused && (world.over || !world.running);
+  // only a finished or unstarted run resets
+  const restarting = world.over || !world.running;
   /* Only after a *loss*, not on the first Begin of a session. The ask was to
      land on research when starting over, and a player who has never played has
      nothing to spend and no reason to be shown a shop first. */
-  const afterLoss = !paused && world.over;
-  if (paused) paused = false;
-  else if (restarting) { E.resetRun(world); overCued = false; }
+  const afterLoss = world.over;
+  if (restarting) { E.resetRun(world); overCued = false; }
   $('banner').classList.add('hide');
   firing = false; drag = null;
 

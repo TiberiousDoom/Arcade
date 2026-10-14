@@ -131,29 +131,13 @@ const fx = {
   die() { gfx.hit(.8); audio.die(); },
 };
 
-/* Portrait phones get a taller, narrower grid at the same cell size.
-   Re-picked whenever the phone turns — see applyLayout. */
-/* Portrait-only since 2026-07-27: landscape didn't feel right on a real phone.
-   Every board uses the tall layout regardless of orientation. The rotation
-   machinery below is left intact but inert (applyLayout early-returns because
-   the layout never changes) — flip this flag back to false to restore
-   landscape without re-deriving anything. */
-const PORTRAIT_ONLY = true;
-const pickLayout = () =>
-  (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
+const world = E.createWorld({ fx, seed: Date.now() & 0x7fffffff });
 
-const world = E.createWorld({ fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff });
-
-let L = world.L;
+const L = world.L;                     // one board, portrait (DECISIONS 2026-10-14)
 const board = { w: L.W, h: L.H };      // makeFit re-reads this on every fit
 
-function adoptLayout() {
-  L = world.L;
-  board.w = L.W; board.h = L.H;
-  cv.width = L.W; cv.height = L.H;
-  document.documentElement.style.setProperty('--board-max', L.W + 'px');
-}
-adoptLayout();
+cv.width = L.W; cv.height = L.H;
+document.documentElement.style.setProperty('--board-max', L.W + 'px');
 
 /* ---------- input ---------- */
 const KEYS = {
@@ -227,7 +211,7 @@ let SWIPE_MIN = sensToPx(swipeSens);
 let inputMode = readInputMode();
 
 // Listen on the stage, not just the canvas, so a swipe that starts in the
-// side gutters (landscape, where the board cannot fill the width) still steers.
+// side gutters (wherever the board cannot fill the width) still steers.
 const surface = $('stage');
 surface.addEventListener('pointerdown', e => {
   if (e.target.closest('button')) return;      // let ? and Begin work
@@ -365,24 +349,6 @@ function showLossButtons() {
    would double-count it). */
 fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 
-/* Rotating the phone moves the run onto the other grid. Score, meals and
-   length come with you; the wire itself is re-laid, because a wire thirty
-   columns wide has nowhere to exist on an eighteen-wide board. */
-function applyLayout() {
-  const L2 = pickLayout();
-  if (L2 === world.L) return;
-  const wasRunning = world.running;
-  E.relayout(world, L2);
-  adoptLayout();
-  fitStage();
-  sync();
-  if (wasRunning) {
-    world.running = false;
-    showBanner('Turned', 'Your wire turned with the board.', 'Resume');
-  }
-}
-addEventListener('resize', applyLayout);
-addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 // settings panel content, handed to the shared menu's `extra` slot
 const settingsEl = document.createElement('div');

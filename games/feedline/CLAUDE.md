@@ -2,8 +2,8 @@
 
 The detailed design notes for `games/feedline/`, moved out of the root [CLAUDE.md](../../CLAUDE.md) so they load when you work in this directory rather than on every session (Claude Code picks up a `CLAUDE.md` in the directory it is working in). The root file keeps the rules that break things; this file has the reasoning and the model. Read it before changing the engine or the shell here. Past decisions are in [docs/DECISIONS.md](../../docs/DECISIONS.md).
 
-- **[engine.js](engine.js)** — grid/tick model rather than continuous physics. The board is a 32×24 grid of 25px cells (800×600, same as Hull Breach, so the two could share a cabinet frame without rescaling), or `LAYOUT_TALL`'s 18×34 in portrait, picked by the shell the same way Hull Breach does it.
-  - **No pace rescaling, unlike Hull Breach** — the tick rate is seconds *per cell*, so reaction time per move is already board-independent. A portrait grid is just a slightly shorter game to fill. There's a test asserting both layouts tick at the same rate.
+- **[engine.js](engine.js)** — grid/tick model rather than continuous physics. The board is an 18×32 grid of 25px cells (450×800), portrait only since v51 — the landscape grid, and the `relayout` that transposed a running wire between the two, are gone (DECISIONS 2026-10-14).
+  - **No pace tied to the board** — the tick rate is seconds *per cell*, so reaction time per move does not depend on the grid's size.
   - **No thumb band either**: steering is a flick, not a hold, so a finger is never parked over the board.
 - **The engine owns the tick clock.** `step(w, dt)` accumulates time and fires as many ticks as have come due; `tick(w)` is exported separately so tests can drive exact discrete steps. Pace lives in the engine because *pace is the difficulty curve here* (`tickRate` shortens with every meal) — it's a game rule, not a rendering concern. This is the opposite call from Hull Breach, where the shell drives everything.
 - Randomness is a seeded LCG (`rand`), same one Flak Battery uses. `createWorld({ seed })` makes food sequences reproducible — the shell seeds from the clock, tests pass a fixed seed.

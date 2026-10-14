@@ -17,7 +17,7 @@ An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invad
 
 ## Session workflow
 
-Planned-but-unbuilt work lives in its own `docs/*-plan.md` file. **[docs/pre-release-plan.md](docs/pre-release-plan.md) is open** (delete landscape, Choke Point’s gradual unlock, three new classics). A plan file is deleted once the work ships and its reasoning moves to DECISIONS.md, so if one exists it is live.
+Planned-but-unbuilt work lives in its own `docs/*-plan.md` file. **[docs/pre-release-plan.md](docs/pre-release-plan.md) is open** (Choke Point’s gradual unlock, then three new classics; deleting landscape shipped in v51). A plan file is deleted once the work ships and its reasoning moves to DECISIONS.md, so if one exists it is live.
 
 This is a solo, part-time project with potentially long gaps (weeks or months) between sessions. Read **[STATUS.md](STATUS.md)** first — it's the current "what's playable / what's next" snapshot, kept fresh each session rather than left to go stale. **[docs/DECISIONS.md](docs/DECISIONS.md)** has the reasoning behind past architectural choices, append-only — check it before re-deciding something that looks unusual.
 
@@ -116,7 +116,7 @@ Every engine is pure: no DOM, no canvas, no timers, no `Date.now()`, no `Math.ra
 
 ## Architecture: the PWA layer
 
-- **[manifest.webmanifest](manifest.webmanifest)** — installable metadata. `start_url`/`scope` are `./` (relative, so the app survives being served from a subpath), `display: standalone`, `orientation: portrait`. Every game still handles both orientations; the lock is the portrait-only *flag* (DECISIONS 2026-07-27), which only binds once installed, so a browser tab can still go sideways and the landscape layouts stay live until that flag becomes a deletion.
+- **[manifest.webmanifest](manifest.webmanifest)** — installable metadata. `start_url`/`scope` are `./` (relative, so the app survives being served from a subpath), `display: standalone`, `orientation: portrait`. **Every game is portrait only** (DECISIONS 2026-10-14): one `LAYOUT` per engine, no rotation code. The manifest lock binds only once installed, so a browser tab can still turn sideways; the board is then letterboxed, and a rule in `shared/theme.css` keeps that usable. Do not add a second layout back for a new game.
 - **[sw.js](sw.js)** — precaches the entire app on install, then serves **cache-first** with a network fallback, plus a cabinet fallback for failed navigations. Cache-first is right here (everything is static, offline play is the point) but see the version warning above.
 - **[index.html](index.html) and [classics.html](classics.html)** — the two cabinets. `index.html` is the invasion (Flak Battery, Choke Point) and the navigation fallback for a failed request; `classics.html` is the classics (Feedline, Hull Breach). Both are the same page with a different roster, self-contained apart from `scores.js` (personal bests on the cards), `unlocks.js` (which cards are dimmed) and `version.js`, and each links to the other. **A gate never crosses cabinets** — each has its own ungated opener, or someone who wants Snake would have to play a tower defense first.
 - **[shared/pwa.js](shared/pwa.js)** — registration, imported by all six pages (two cabinets + four games) so landing directly on a game installs the cache too. Resolves the worker URL via `import.meta.url` rather than an absolute `/sw.js`, again for subpath safety.

@@ -7,33 +7,18 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /* ---------- board ---------- */
 
-/** 32x18 cells of 25px — 800x450, near enough 16:9 to fill a phone held
- *  sideways.
+/** 18x32 cells of 25px — 450x800, a phone held upright. Portrait only since
+ *  2026-10-14 (DECISIONS); the landscape grid and the rotation that mapped one
+ *  onto the other are gone.
  *
- *  The landscape and portrait grids are deliberately exact **transposes** of
- *  one another. That is what lets rotation be lossless: turning the phone
- *  simply turns the board, mapping every cell (x, y) to (y, x), so the wire
- *  keeps its exact shape rather than being rebuilt. See `relayout`. */
-export const LAYOUT = {
-  COLS: 32, ROWS: 18, CELL: 25,
-  get W() { return this.COLS * this.CELL; },
-  get H() { return this.ROWS * this.CELL; },
-};
-
-/** Portrait phones get a taller, narrower grid at the same cell size.
- *
- *  No pace adjustment is needed, unlike Hull Breach: the tick rate is seconds
- *  *per cell*, so reaction time per move — which is the whole difficulty curve
- *  — is identical on any grid. A portrait board is a slightly shorter game
- *  simply because there are fewer cells to fill.
+ *  No pace adjustment is tied to the board: the tick rate is seconds *per
+ *  cell*, so reaction time per move — the whole difficulty curve — does not
+ *  depend on the grid's size.
  *
  *  No thumb-rest band either: steering is a flick, not a hold, so a finger is
  *  never parked over the board the way it is in Hull Breach or Flak Battery. */
-export const LAYOUT_TALL = {
-  // The exact transpose of LAYOUT — 450x800. Same cell count, same game, just
-  // stood on its end. Keep these two mirrored: `relayout` relies on it, and a
-  // test pins it.
-  COLS: LAYOUT.ROWS, ROWS: LAYOUT.COLS, CELL: LAYOUT.CELL,
+export const LAYOUT = {
+  COLS: 18, ROWS: 32, CELL: 25,
   get W() { return this.COLS * this.CELL; },
   get H() { return this.ROWS * this.CELL; },
 };
@@ -287,28 +272,6 @@ export function resetGame(w, seed) {
   w.checkpoint = -1; w.justCheckpoint = false;
   w.seed = (seed ?? 20260722) & 0x7fffffff;
   spawnFood(w);
-}
-
-/** Move an in-progress game onto the other grid, as when the phone is turned.
- *
- *  The two layouts are exact transposes, so this is **lossless**: every cell
- *  maps (x, y) -> (y, x) and the wire keeps its precise shape, direction,
- *  food and bonus. Turning the phone turns the board — which is what a player
- *  physically just did, so it is also the least surprising thing that could
- *  happen.
- *
- *  An earlier version rebuilt the wire from its length alone, because the
- *  grids were arbitrary sizes and no honest mapping existed. Making them
- *  mirror images removed the problem rather than papering over it. */
-export function relayout(w, L2) {
-  const flip = (c) => ({ ...c, x: c.y, y: c.x });
-  w.wire = w.wire.map(flip);
-  w.dir = { x: w.dir.y, y: w.dir.x };
-  w.queue = w.queue.map(d => ({ x: d.y, y: d.x }));
-  if (w.food) w.food = flip(w.food);
-  if (w.bonus) w.bonus = flip(w.bonus);
-  w.L = L2;
-  return w;
 }
 
 /* ---------- input ---------- */

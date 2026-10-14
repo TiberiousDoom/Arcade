@@ -1,24 +1,24 @@
-# Device test checklist — build v50
+# Device test checklist — build v51
 
 For a real phone, via **https://tiberiousdoom.github.io/Arcade/**. These are the
 questions a desk cannot answer — thumb reach, legibility at real size, frame
 rate, and whether the balance numbers are any good. Every item here was
 reviewed only at a desk, through node-canvas or a desktop browser.
 
-Rewritten 2026-10-13 for v49, updated for v50. The v22 checklist it replaces had sat for 27
+Rewritten 2026-10-13 for v49, updated for v51. The v22 checklist it replaces had sat for 27
 builds; the items it asked about have since been answered in feedback rounds,
 superseded by later builds, or carried forward below. When a section is
 settled, record the outcome in STATUS.md and delete the section.
 
 ---
 
-## 0. First: confirm you're on v50
+## 0. First: confirm you're on v51
 
 The service worker serves cache-first, so a phone keeps running an old build
 until the new worker takes over, and every observation below would then be
 about the wrong code.
 
-- [ ] Open any game's menu and check the bottom line reads **Arcade v50**.
+- [ ] Open any game's menu and check the bottom line reads **Arcade v51**.
 - [ ] If it doesn't: fully close the app, reopen, and reload once more. The
       first load installs the new worker, the second reads from it.
 
@@ -60,7 +60,7 @@ Nobody has reported from these waves on glass.
 - [ ] **The Chain and Veterancy tracks**, and `MARK_BRITTLE`/`CHAIN_EVERY` —
       all measured, none played.
 - [ ] **Circuits 4 and 5** get their difficulty from *shape*, not just length.
-      Circuit 5 entering from the top edge is the biggest untested guess.
+      Circuit 5 entering from the side is the biggest untested guess.
 - [ ] **The circuit picker** comes to about 690px against ~640px on a short
       phone, so it scrolls inside its panel with Back pinned. Usable?
 - [ ] **Breaker's round** (`SLUG_SPEED`) — does it look heavy, or slow?
@@ -79,6 +79,9 @@ Nobody has reported from these waves on glass.
 
 ## 5. The whole app
 
+- [ ] **Portrait only (v51).** Nothing should look or play differently from
+      v50 in any game. Turn the phone sideways in a browser tab: the board
+      stays upright and letterboxed, and no "Turned" banner appears.
 - [ ] **The two cabinets.** Is the crosslink between them findable, or does it
       read as a footer nobody taps?
 - [ ] **Slide-off cancels** (v47): press a button, drag off, let go — nothing

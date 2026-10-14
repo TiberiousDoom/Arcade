@@ -731,18 +731,10 @@ const fx = {
 };
 
 /* ---------- layout ---------- */
-/* Portrait-only since 2026-07-27: landscape didn't feel right on a real phone.
-   Every board uses the tall layout regardless of orientation. The rotation
-   machinery below is left intact but inert (applyLayout early-returns because
-   the layout never changes) — flip this flag back to false to restore
-   landscape without re-deriving anything. */
-const PORTRAIT_ONLY = true;
-const pickLayout = () =>
-  (PORTRAIT_ONLY || matchMedia('(max-aspect-ratio: 4/5)').matches) ? E.LAYOUT_TALL : E.LAYOUT;
-
+// one board, portrait (DECISIONS 2026-10-14)
 const startDifficulty = readDifficulty();
 const world = E.createWorld({
-  fx, layout: pickLayout(), seed: Date.now() & 0x7fffffff,
+  fx, seed: Date.now() & 0x7fffffff,
   classUpgrades: readArmory(), difficulty: startDifficulty,
   // start on the furthest circuit earned at this difficulty, not on route 1
   routeIndex: nextRoute(startDifficulty),
@@ -751,16 +743,10 @@ const world = E.createWorld({
   progress,
 });
 
-let W = world.L.W, H = world.L.H;
+const W = world.L.W, H = world.L.H;
 const board = { w: W, h: H };
-
-function adoptLayout() {
-  W = world.L.W; H = world.L.H;
-  board.w = W; board.h = H;
-  cv.width = W; cv.height = H;
-  document.documentElement.style.setProperty('--board-max', W + 'px');
-}
-adoptLayout();
+cv.width = W; cv.height = H;
+document.documentElement.style.setProperty('--board-max', W + 'px');
 
 /* ---------- tower palette ---------- */
 let selected = 'node';   // currently-picked tower type for building
@@ -1325,23 +1311,6 @@ addEventListener('keydown', e => {
    the board to what is actually on screen. */
 fitStage = makeFit({ canvas: cv, stage: $('stage'), board });
 
-/* ---------- rotation ---------- */
-function applyLayout() {
-  const L2 = pickLayout();
-  if (L2 === world.L) return;
-  const wasRunning = world.running;
-  closePopup();
-  E.relayout(world, L2);
-  adoptLayout();
-  fitStage();
-  sync();
-  if (wasRunning) {
-    world.running = false;
-    showBanner('Turned', 'Your towers came with it.', 'Resume');
-  }
-}
-addEventListener('resize', applyLayout);
-addEventListener('orientationchange', () => setTimeout(applyLayout, 200));
 
 /* Game-specific settings for the menu panel. One control now: the thing that
    can undo the armory. Goes through makeMenu's `extra` slot, the same hook
@@ -1582,7 +1551,6 @@ function offerResume() {
       clearRun(GAME_ID);
       E.resetGame(world);
     }
-    adoptLayout();
     if (fitStage) fitStage();
     sync();
   }, { capture: true });

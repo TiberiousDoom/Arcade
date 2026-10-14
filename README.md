@@ -14,7 +14,7 @@ are no accounts, ads, tracking, or network calls of any kind.
 | **Feedline** | A lengthening wire on a grid. Longer and faster with every meal; you may cross where your tail is leaving, and the gold bonus won't wait. |
 
 Installable to a phone home screen (it's a PWA) and playable with touch,
-mouse, or keyboard, in portrait or landscape.
+mouse, or keyboard. Every game is played in portrait.
 
 ## Running it locally
 

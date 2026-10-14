@@ -8,47 +8,30 @@ export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /* ---------- geometry ---------- */
 
-/** Both layouts share one brick grid — 8 rows by 9 columns — and differ only
- *  in pixel geometry. That is deliberate: it means a brick at (row, col) exists
- *  on both boards, so rotating the phone can carry damage across index-for-index
- *  instead of throwing the level away. See `relayout`. */
+/** The brick grid — 8 rows by 9 columns. */
 export const BRICK_ROWS = 8;
 export const BRICK_COLS = 9;
 
+/** The board: portrait only since 2026-10-14 (DECISIONS). A narrow, tall court
+ *  plus an empty band beneath the paddle. The band is a thumb rest: the paddle
+ *  tracks only the horizontal position of your finger, so resting it below the
+ *  floor line steers perfectly well without your hand covering the play area.
+ *  Same reasoning as Flak Battery's board. */
 export const LAYOUT = {
-  W: 800, H: 600,
+  // 1:2 — squarer than a modern phone (~0.46), so the court fills the screen
+  // without being tuned to one handset: a board matched to 19.5:9 would
+  // letterbox badly on an iPad or an older 16:9.
+  W: 600, H: 1200,
   WALL: 12,                 // thickness of the left/right/top playfield border
-  THUMB: 0,                 // landscape rests thumbs in the side gutters instead
-  PADDLE_W: 112, PADDLE_H: 14,
+  // Deep enough to park a thumb below the floor line without reaching. Tuned
+  // on a real phone; the first attempt at 190 sat too close to the paddle.
+  THUMB: 250,
+  PADDLE_W: 92, PADDLE_H: 14,
   get FLOOR() { return this.H - this.THUMB; },   // the line a ball dies past
   get PADDLE_Y() { return this.FLOOR - 46; },    // top edge of the paddle
   BALL_R: 8,
   // Brick width is derived so the columns fill the space between the margins
   // exactly; only the row height and gaps are fixed here.
-  BRICK_TOP: 72, MARGIN: 40,
-  BRICK_ROWS, BRICK_COLS,
-  BRICK_H: 22, BRICK_GAP: 6,
-};
-
-/** Portrait phones get a narrower, taller board plus an empty band beneath the
- *  paddle. The band is a thumb rest: the paddle tracks only the horizontal
- *  position of your finger, so resting it below the floor line steers perfectly
- *  well without your hand covering the play area. Same reasoning as Serpent
- *  Battery's LAYOUT_TALL. */
-export const LAYOUT_TALL = {
-  // 1:2 — squarer than a modern phone (~0.46) but much closer than the
-  // landscape board, so the court fills the screen instead of floating in a
-  // band of dead space. Deliberately not matched exactly to one handset: a
-  // board tuned to 19.5:9 would letterbox badly on an iPad or an older 16:9.
-  W: 600, H: 1200,
-  WALL: 12,
-  // Deep enough to park a thumb below the floor line without reaching. Tuned
-  // on a real phone; the first attempt at 190 sat too close to the paddle.
-  THUMB: 250,
-  PADDLE_W: 92, PADDLE_H: 14,
-  get FLOOR() { return this.H - this.THUMB; },
-  get PADDLE_Y() { return this.FLOOR - 46; },
-  BALL_R: 8,
   BRICK_TOP: 80, MARGIN: 26,
   BRICK_ROWS, BRICK_COLS,
   BRICK_H: 22, BRICK_GAP: 6,
@@ -67,8 +50,11 @@ export const BALL_SPEED = 340;          // px/sec at level 1, on the reference b
 export const SPEED_PER_LEVEL = 0.06;    // +6% per level, so pace climbs
 export const BALL_SPEED_MAX = 560;
 
-/** The playable height the speeds above are tuned against. */
-export const REF_FLOOR = LAYOUT.FLOOR;
+/** The playable height the speeds above are tuned against: 600px, the floor
+ *  of the retired 800x600 landscape board. Kept as a number rather than
+ *  re-tuning every speed, so deleting landscape changed nothing about pace —
+ *  the portrait board's ball is exactly as fast as it was. */
+export const REF_FLOOR = 600;
 
 /** Launch and per-hit speed for a given level. A ball keeps this magnitude for
  *  its whole life — every bounce only changes direction — so difficulty is set
@@ -285,8 +271,8 @@ export function buildBricks(level = 1, L = LAYOUT) {
   const bricks = [];
   for (let r = 0; r < L.BRICK_ROWS; r++) {
     for (let c = 0; c < L.BRICK_COLS; c++) {
-      // pass the layout's own dimensions — relying on brickPresent's defaults
-      // silently used the landscape grid whatever board was being built
+      // pass the layout's own dimensions rather than relying on brickPresent's
+      // defaults, so a test board with another grid builds correctly
       if (!brickPresent(level, r, c, L.BRICK_ROWS, L.BRICK_COLS)) continue;
       const hp = brickHp(r, L.BRICK_ROWS, level);
       bricks.push({
@@ -515,14 +501,14 @@ export function createWorld(opts = {}) {
 
 /** A JSON-safe picture of a run. Bricks are stored as damage keyed by cell
  *  rather than as a list of rectangles: the field is rebuilt from `level` on
- *  the way back in and the damage laid over it, exactly as `relayout` does, so
- *  a save also survives being restored onto the other board shape. */
+ *  the way back in and the damage laid over it, which keeps the save small and
+ *  independent of pixel geometry. */
 export function snapshot(w) {
   return {
     level: w.level, score: w.score, lives: w.lives,
     salvage: w.salvage, upgrades: { ...w.upgrades },
     over: w.over, levelClear: w.levelClear, held: w.held,
-    paddleFrac: w.paddle.x / w.L.W,     // fraction, so it survives a board change
+    paddleFrac: w.paddle.x / w.L.W,     // a fraction, independent of pixel geometry
     effects: { ...w.effects },
     balls: w.balls.map(b => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, r: b.r })),
     drops: w.drops.map(d => ({ kind: d.kind, x: d.x, y: d.y, vy: d.vy })),
@@ -576,35 +562,6 @@ export function resetGame(w) {
   w.balls = []; w.held = true;
   clearEffects(w);
   w.paddle.x = w.L.W / 2;
-}
-
-/** Move an in-progress game onto a different board, as when the phone is
- *  rotated. Lossless for everything that matters: level, score, lives and the
- *  exact damage state of every brick survive, because both layouts share one
- *  brick grid and only differ in pixel geometry.
- *
- *  The ball is the one casualty — its position and heading mean nothing on a
- *  board of another shape — so it is re-racked on the paddle. */
-export function relayout(w, L2) {
-  const rebuilt = buildBricks(w.level, L2);
-  const byCell = new Map(w.bricks.map(b => [`${b.row},${b.col}`, b]));
-  for (const b of rebuilt) {
-    const was = byCell.get(`${b.row},${b.col}`);
-    if (was) { b.hp = was.hp; b.alive = was.alive; b.flash = 0; }
-  }
-
-  const centerFrac = w.paddle.x / w.L.W;      // keep the paddle where it sat
-  w.L = L2;
-  w.bricks = rebuilt;
-  w.balls = [];
-  w.held = true;
-  // capsules in flight go the way the ball does — their position means nothing
-  // on a board of another shape — but timed effects are earned, so they persist
-  // and the paddle is re-widened against the new layout's base width.
-  w.drops = [];
-  w.paddle.w = paddleWidth(w);
-  setPaddle(w, centerFrac * L2.W);
-  return w;
 }
 
 /* ---------- paddle ---------- */

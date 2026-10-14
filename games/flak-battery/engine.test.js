@@ -286,70 +286,26 @@ test('an untouched wave stays on screen for a playable stretch', () => {
   assert.ok(tenth > 12, `wave 10 traversal was ${tenth.toFixed(0)}s`);
 });
 
-test('the tall board plays at the same pace as the standard one', () => {
-  // speed is derived from path length, so a bigger board must not mean
-  // a slower game
-  const tall = E.buildPath(E.LAYOUT_TALL);
-  for (const wv of [1, 5, 10]) {
-    const a = pathLen / E.waveSpeed(wv, pathLen);
-    const b = tall.pathLen / E.waveSpeed(wv, tall.pathLen);
-    assert.ok(Math.abs(a - b) < 0.01, `wave ${wv}: ${a.toFixed(1)}s vs ${b.toFixed(1)}s`);
-  }
-});
-
-test('the portrait board is genuinely phone-shaped, not the landscape one squashed', () => {
+test('the board is genuinely phone-shaped', () => {
   // Retuned after real-device testing: the first portrait board was 880x800,
-  // nearly square, and left a third of a phone screen empty. It is now much
-  // taller than wide, with more rows to fill the extra height. Pace is NOT
-  // affected — the traversal-time test above pins that across both layouts.
-  const T = E.LAYOUT_TALL, L = E.LAYOUT;
-  assert.ok(T.H / T.W > 1.6, `portrait aspect is ${(T.H / T.W).toFixed(2)}, wanted > 1.6`);
-  assert.ok(T.W < L.W, 'narrower than landscape');
-  // Row COUNT must match, or the serpentine's alternating directions put a
-  // segment at the same path fraction into a row running the opposite way, and
-  // the map visibly flips when the phone is turned. Real-device regression.
-  assert.equal(T.ROWS, L.ROWS, 'same row count, so the path keeps its shape');
-  assert.ok(T.ROW_GAP > L.ROW_GAP, 'the extra height goes into row spacing instead');
-});
-
-test('a segment sits the same way round on either board', () => {
-  // the regression behind "the map reverses on rotate"
-  const a = E.buildPath(E.LAYOUT), b = E.buildPath(E.LAYOUT_TALL);
-  for (const frac of [0.1, 0.3, 0.5, 0.7, 0.9]) {
-    const ha = E.segHeading(a.path, a.pathLen, { s: a.pathLen * frac, spacing: 30 }, 0);
-    const hb = E.segHeading(b.path, b.pathLen, { s: b.pathLen * frac, spacing: 30 }, 0);
-    assert.ok(Math.sign(ha.x) === Math.sign(hb.x) || Math.abs(ha.x) < 0.3 || Math.abs(hb.x) < 0.3,
-      `at ${frac} of the path the boards disagree on direction (${ha.x.toFixed(2)} vs ${hb.x.toFixed(2)})`);
-  }
+  // nearly square, and left a third of a phone screen empty. Portrait only
+  // since 2026-10-14, so this is the only board there is.
+  const L = E.LAYOUT;
+  assert.ok(L.H / L.W > 1.6, `aspect is ${(L.H / L.W).toFixed(2)}, wanted > 1.6`);
 });
 
 test('the thumb rest sits below the cannon, not inside the play area', () => {
-  const L = E.LAYOUT_TALL;
-  assert.ok(L.THUMB > 0, 'portrait reserves a rest band');
+  const L = E.LAYOUT;
+  assert.ok(L.THUMB > 0, 'the board reserves a rest band');
   assert.ok(L.CANNON_Y < L.H - L.THUMB + 1, 'cannon sits above the band');
   assert.ok(L.FLOOR < L.CANNON_Y, 'breach line stays above the cannon');
   const clearance = L.H - L.CANNON_Y;
   assert.ok(clearance > 140, `only ${clearance}px below the cannon to rest a thumb`);
 });
 
-test('the standard layout reserves no thumb band', () => {
-  assert.equal(E.LAYOUT.THUMB, 0);
-  assert.equal(E.LAYOUT.CANNON_Y, E.LAYOUT.H - 44);
-});
-
-test('the portrait descent still crosses its breach line', () => {
-  const tall = E.buildPath(E.LAYOUT_TALL);
-  const end = tall.path[tall.path.length - 1];
-  assert.ok(end.y > E.LAYOUT_TALL.FLOOR, 'descent crosses the floor');
-});
-
-test('a world can be built on the tall layout', () => {
-  const w = E.createWorld({ layout: E.LAYOUT_TALL });
-  E.spawnWave(w);
-  assert.equal(w.L.H, E.LAYOUT_TALL.H);
-  assert.ok(w.chains.length === 1);
-  for (let i = 0; i < 600; i++) E.step(w, 1 / 60);
-  assert.ok(w.chains.length > 0 || w.breaches > 0, 'simulates without stalling');
+test('the descent still crosses the breach line', () => {
+  const end = path[path.length - 1];
+  assert.ok(end.y > E.LAYOUT.FLOOR, 'descent crosses the floor');
 });
 
 test('wave scaling grows then caps', () => {
@@ -361,12 +317,9 @@ test('wave scaling grows then caps', () => {
 
 test('a maxed chain still fits the board it is actually played on', () => {
   /* The length cap is a geometry limit: the tail must not still be entering
-     while the head is at the floor. Measured against the *portrait* path,
-     since the game has been portrait-only since 2026-07-27 — the landscape
-     REF_PATH_LEN is longer and would flatter the numbers. Derived from the
-     live constants so raising either one trips this rather than shipping a
-     chain that laps itself. */
-  const portrait = E.buildPath(E.LAYOUT_TALL).pathLen;
+     while the head is at the floor. Derived from the live constants so raising
+     either one trips this rather than shipping a chain that laps itself. */
+  const portrait = E.buildPath(E.LAYOUT).pathLen;
   const span = E.waveCount(999) * E.SEGMENT_SPACING;
   assert.ok(span < portrait * 0.85,
     `maxed chain spans ${span.toFixed(0)} of a ${portrait.toFixed(0)} path`);
@@ -449,19 +402,6 @@ test('optics pushes the falloff outward, and maxed removes it', () => {
   assert.ok(tiers[tiers.length - 1] > tiers[0], 'and the branch as a whole buys something');
   const maxReach = E.UPGRADES.optics.tiers[E.MAX_TIER].reach;
   assert.equal(E.falloff(d, maxReach, d), 1, 'maxed, there is no falloff anywhere on the board');
-});
-
-/* The layouts are very different sizes — the battery is ~506px from the top row
-   in landscape and ~1020px in portrait. An absolute falloff distance would make
-   the phone board play twice as harsh, so it is a fraction of the board. Same
-   principle as Hull Breach scaling ball speed by FLOOR. */
-test('falloff is the same on both boards', () => {
-  for (const f of [0, 0.25, 0.5, 0.75, 1]) {
-    const wide = E.falloff(f * E.boardDepth(E.LAYOUT), 1, E.boardDepth(E.LAYOUT));
-    const tall = E.falloff(f * E.boardDepth(E.LAYOUT_TALL), 1, E.boardDepth(E.LAYOUT_TALL));
-    assert.ok(Math.abs(wide - tall) < 1e-9,
-      `at ${f * 100}% of the board both layouts agree (${wide} vs ${tall})`);
-  }
 });
 
 test('splash damage is not subject to falloff', () => {
@@ -1977,13 +1917,10 @@ test('the focus never comes closer than the floor its level allows', () => {
     `a partly-researched battery must not commit past its floor (${r.toFixed(0)} vs ${E.focusFloor(w).toFixed(0)})`);
 });
 
-test('the default focal point is five rungs out, on either board', () => {
-  // a flat pixel count would sit five rungs up one board and two up the other
-  for (const L of [E.LAYOUT, E.LAYOUT_TALL]) {
-    assert.equal(E.focusDefault(L), E.FOCUS_RUNGS * L.ROW_GAP);
-  }
-  assert.ok(E.focusDefault(E.LAYOUT_TALL) > E.focusDefault(E.LAYOUT),
-    'the taller board has taller rungs');
+test('the default focal point is five rungs out', () => {
+  // derived from the rung spacing rather than a pixel count, so it stays five
+  // rungs if the board's geometry changes
+  assert.equal(E.focusDefault(E.LAYOUT), E.FOCUS_RUNGS * E.LAYOUT.ROW_GAP);
 });
 
 test('convergence is researched with points, permanently, for the whole battery', () => {
@@ -3107,27 +3044,42 @@ test('power-ups appear and take effect during real play', () => {
         if (d < bd) { bd = d; best = p; }
       }
     }
+    /* A player prises crates open: on the tall board one dropped near the top
+       takes ~8s to fall to the catch band and the wave is usually over first,
+       so a bot that only ever shoots craft never catches anything. */
+    const crate = w.pickups[0];
+    if (crate) best = crate;
     if (best) w.cannon.ang = E.clampAim(Math.atan2(best.y - w.cannon.y, best.x - w.cannon.x));
   };
 
   const w = E.createWorld({ drops: true });   // the point of this test is drops
   w.wave = ALL_KINDS;
+  /* Three mounts, as a player at this wave has. The board is portrait: a crate
+     that drifts toward an edge falls past a lone centre gun, which cannot aim
+     below the horizontal, before its third round lands. */
+  w.scrap = 1e6;
+  E.buyMount(w); E.buyMount(w);
   E.spawnWave(w);
   w.shieldCharges = 1e6;   // survive breaches: shields are the only thing that does now
 
+  /* Count catches by what the engine announces, not by crates leaving the
+     array. A crate also leaves when it expires, falls past the board, or is
+     cleared by the next wave — counting departures "above the bottom of the
+     canvas" only worked on the landscape board, where the canvas bottom was the
+     floor. Every power-up that takes effect pushes its own name, the instant
+     ones (Bomb) included, which a check of running effects cannot see. */
+  const NAMES = new Set(Object.values(E.POWERUPS).map(p => p.name.toUpperCase()));
   let collected = 0;
   const seen = new Set();
+  const push = w.fx.push;
+  w.fx.push = (label, ...rest) => {
+    if (NAMES.has(label)) { collected++; seen.add(label.toLowerCase()); }
+    return push.call(w.fx, label, ...rest);
+  };
   const shields0 = w.shieldCharges;
   for (let i = 0; i < 60 * 120; i++) {
     aim(w);
-    const before = w.pickups.length;
-    const beforeY = w.pickups.map(p => p.y);
     E.step(w, 1 / 60, true);
-    /* A pickup leaving the array is not the same as one being *caught* — it
-       also expires on a timer and falls off the bottom. Only a catch happens
-       above the floor, so count those; the old test counted reaps and would
-       have passed on a run where the player touched nothing. */
-    if (w.pickups.length < before && beforeY.some(y => y < w.L.H)) collected++;
     for (const k of Object.keys(w.effects)) seen.add(k);
     /* Per-mount effects too. `spread` has lived on the gun since v30, so a run
        that caught only spreads registered nothing here and the test failed

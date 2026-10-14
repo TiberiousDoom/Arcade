@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-14 (v50 — owner decisions answered; two shipped, the rest planned in [docs/pre-release-plan.md](docs/pre-release-plan.md))
+Last updated: 2026-10-14 (v51 — landscape deleted; next is Choke Point's gradual unlock, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -21,6 +21,17 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, four tower classes (node/breaker/coil, plus Sever earned on Medium) that level themselves from combat XP, a persistent per-class armory of six tracks, five circuits and three difficulties all earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **571 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## v51 — landscape deleted (2026-10-14)
+
+Item 1 of the [pre-release plan](docs/pre-release-plan.md). Every game is now portrait only, with one board per engine: `LAYOUT_TALL`, `relayout`, the transpose code, the shells' rotation handlers and the "Turned" banners are gone, along with the 26 tests that covered them.
+
+- **Nothing about play moved.** Each engine's portrait board became its only `LAYOUT`, unchanged. Choke Point's circuits are stored already stood on their end, and a test pins their lengths at what they have been since July. Hull Breach's ball speeds were tuned on the old 600px landscape floor, so that reference stays the number 600 and the crossing time is pinned.
+- **Three tests had only ever been checking the landscape board** and failed on the portrait one, where the game has actually been played since July. None was a game bug; each test was fixed to test what it says:
+  - *Flak Battery — power-ups take effect in real play.* It counted a crate as caught if it left the screen above the canvas bottom, which on portrait includes crates that fall past the cannon. It now counts what the engine announces, and its simulated player shoots crates open with a three-gun battery. Worth knowing: on the tall board a crate dropped near the top takes about eight seconds to reach the catch band, so a player who never shoots crates will rarely get one.
+  - *Choke Point — Chain forks every Nth shot.* Its second enemy sat 18px from the first, inside Node's splash, so it was hit on every shot. Now 40px apart.
+  - *Hull Breach — slow power-up.* The ball was placed at x=400, the old board's paddle centre; it now uses the paddle's position.
+- A browser tab can still turn sideways (the manifest's lock binds only once installed); the board is letterboxed, as it already was.
 
 ## v50 — owner decisions answered (2026-10-14)
 
@@ -923,11 +934,11 @@ Do **not** try to unify the engine `step()` signatures — those differ per game
 
 1. **Ship or polish** — hold off on shipping until the pre-release plan is done.
 2. **Asset Links hosting** — undecided; not needed until shipping. A free `tiberiousdoom.github.io` repo holding one file is the cheap answer; a custom domain changes the app's origin, so installed copies and local saves would not carry over.
-3. **Portrait-only** — delete landscape. Planned, item 1.
+3. **Portrait-only** — delete landscape. **Shipped in v51.**
 4. **Choke Point builds on press** — cancel on slide-off. **Shipped in v50.**
 5. **The armory's size** — keep it, and fence it: the Choke Point test now fails if a full armory costs fewer than 8 or more than 30 Easy runs (measures ~24.4). Done 2026-10-14.
 6. **Flak Battery difficulty selector** — leave it for now.
-7. **Choke Point's opening** — unlock gradually. Planned, item 2, with one open question on timing.
+7. **Choke Point's opening** — unlock gradually: Node from the start, Breaker at best wave 3, Coil at best wave 8 (a wave before the enemy each answers). Planned, item 2 — next.
 8. **Flak Battery's locked guns in Refit** — hide them. **Shipped in v50.**
 9. **The next game** — all three, before release: **Airburst** (Missile Command), **Shield Wall** (Invaders), **Bulkhead** (the falling-block game), all in the classics cabinet, unlocking in a chain after Hull Breach. Saves, names, chain and Bulkhead's art all settled 2026-10-14; see the plan.
 10. **Apple** — deferred.

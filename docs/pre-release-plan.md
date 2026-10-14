@@ -8,7 +8,7 @@ item ships, and move the reasoning to DECISIONS.
 
 Build order, cheapest and most foundational first:
 
-1. **Delete landscape** — first, because every later item (and all three new
+1. ~~**Delete landscape**~~ — **shipped in v51.** First, because every later item (and all three new
    games) would otherwise be built for two layouts.
 2. **Choke Point's gradual unlock** — a contained change to one game.
 3. **Three new classics**: Airburst, Shield Wall, then Bulkhead.
@@ -18,7 +18,7 @@ the usual `CACHE_VERSION`/`BUILD` bump; new games also go into `PRECACHE`.
 
 ---
 
-## 1. Delete landscape
+## 1. Delete landscape — shipped in v51 (2026-10-14)
 
 The owner's call on the portrait-only flag (open since DECISIONS 2026-07-27):
 delete landscape rather than keep the flag.
@@ -63,9 +63,10 @@ Choke Point already gates Sever (Medium win), Chain (Hard win) and Veterancy
 classes, four armory tracks and a difficulty choice. A proposal to settle
 before building:
 
-- **Classes**: Node only on the very first run; Breaker at best wave 4 (first
-  Swarm, where splash pays); Coil at best wave 9 (first Phase, where its slow
-  matters). Sever stays on its Medium-win gate.
+- **Classes** (decided 2026-10-14): Node only on the very first run; Breaker
+  at best wave 3 and Coil at best wave 8 — one wave *before* the enemy each
+  answers (Swarm at 4, Phase at 9), so the tower is in hand when that enemy
+  first turns up. Sever stays on its Medium-win gate.
 - **Armory tracks**: Damage and Rate first; Range and Splash once the armory has
   been opened after a run (i.e. once there is a second run).
 - **Difficulty**: Easy is already the only open difficulty on a new save, so
@@ -75,9 +76,7 @@ before building:
   snapshotted, refused by `buildTower`/`buyClassUpgrade` so the shell cannot
   sell a locked thing, and **drawn with the requirement on it**, never hidden.
 
-**Open question for the owner:** are those wave numbers the right moments, or
-should a class arrive one wave *before* the enemy it answers, so the player has
-it in hand when that enemy turns up?
+**Decided 2026-10-14:** one wave before the enemy each class answers.
 
 ## 3. Three new classics
 
