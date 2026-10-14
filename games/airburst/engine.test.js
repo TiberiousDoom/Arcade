@@ -202,16 +202,47 @@ test('a splitting warhead becomes several at its split height', () => {
 });
 
 test('the split decision costs the same LCG advances either way, so a seed replays', () => {
-  // two waves with different split chances must release warheads from the same
-  // positions — only whether each splits may differ
-  const a = E.createWorld({ seed: 3 }), b = E.createWorld({ seed: 3 });
-  b.wave = 9;                              // splits on
-  a.running = b.running = true;
-  a.toSpawn = b.toSpawn = 4;
-  a.spawnT = b.spawnT = 0;
-  // release four, one per step, by zeroing the timer each time
-  for (let i = 0; i < 4; i++) { E.step(a, 0.001); E.step(b, 0.001); a.spawnT = b.spawnT = 0; }
-  assert.deepEqual(a.warheads.map(h => h.x0), b.warheads.map(h => h.x0));
+  /* Played, not staged: two runs from one seed, one on a wave where nothing
+     splits and one where plenty does, stepped until each has released six
+     warheads from the top. Release *positions* must match one for one; only
+     whether each splits may differ. A split that took an extra advance only
+     when it fired would shift every warhead after the first split. */
+  const released = (wave) => {
+    const w = E.createWorld({ seed: 3 });
+    w.wave = wave; w.running = true;
+    w.toSpawn = 6; w.spawnT = 0;
+    const seen = [];
+    for (let i = 0; i < 60 * 30 && seen.length < 6; i++) {
+      E.step(w, 1 / 60);
+      for (const h of w.warheads) if (h.y0 === -10 && !seen.includes(h)) seen.push(h);
+    }
+    return seen.map(h => h.x0);
+  };
+  const calm = released(1), busy = released(12);
+  assert.equal(calm.length, 6);
+  assert.deepEqual(busy, calm);
+});
+
+test('a warhead about to split warns, and one that will not never does', () => {
+  const plain = { y: 300, splitAt: null };
+  assert.equal(E.splitSoon(plain), 0);
+  const h = { y: 100, splitAt: 400 };
+  assert.equal(E.splitSoon(h), 0, 'far above its split height: no warning yet');
+  h.y = 400 - E.SPLIT_WARN / 2;
+  assert.ok(Math.abs(E.splitSoon(h) - 0.5) < 1e-9, 'halfway through the warning');
+  h.y = 400;
+  assert.equal(E.splitSoon(h), 1);
+});
+
+test('a split is announced, so the shell can sound it', () => {
+  const seen = [];
+  const w = quiet({ fx: { split: (x, y) => seen.push([x, y]) } });
+  w.wave = 6;
+  const h = warheadOver(w, 1, 280);
+  h.splitAt = 300;
+  w.warheads.push(h);
+  run(w, 0.5);
+  assert.equal(seen.length, 1);
 });
 
 /* ---------- waves ---------- */

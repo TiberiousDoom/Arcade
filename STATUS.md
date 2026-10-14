@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-14 (v53 — Airburst, the first new classic; next is Shield Wall, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
+Last updated: 2026-10-14 (v54 — Airburst polish pass; next is playing it on a phone, then Shield Wall, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -22,6 +22,18 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, four tower classes (node/breaker/coil, plus Sever earned on Medium) that level themselves from combat XP, a persistent per-class armory of six tracks, five circuits and three difficulties all earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **All tests pass** — run them with `node --test games/*/engine.test.js shared/*.test.js` (logic) and `node --test games/*/render-test.mjs games/*/resume-test.mjs` (shells, after `npm install --no-save jsdom canvas`). The counts move every build, so they are in each build's notes rather than here.
+
+## v54 — Airburst polish pass (2026-10-14)
+
+v53 was solid plumbing with the game design given one pass. This build is the second pass, before anyone plays it.
+
+- **A finger aims at a crosshair 64px above itself, and fires on release.** v53 fired at the point under the finger, which covered the warhead being aimed at. Slide off the board to cancel. A mouse still fires on press.
+- **A warhead about to split warns**: it runs hot inside a closing ring for the last stretch before it splits, with a chirp as it does.
+- **Its own sounds** instead of borrowed ones: launch, burst, catch, split, city lost, battery dry.
+- **Frame cost roughly halved.** v53 measured 21.5ms a frame on a crowded late-wave sky on a desktop, over budget before a phone was involved. Cubes are now pre-drawn sprites, and trails show the recent stretch instead of the whole line.
+- **A real bug, found by replacing a weak test.** Splitting warheads chose their children's targets at the moment of splitting, so shooting a warhead early changed every warhead released after it. All the rolls are now taken at release. The old test was staged by hand and passed anyway; the new one plays through.
+- **An art bench**, [docs/art/airburst-bench.html](docs/art/airburst-bench.html): the game's real drawing code in a browser, with a staged sky showing every element in every state and a live run at a chosen wave. Built from the shell by `node tools/airburst-bench.mjs`.
+- The cabinet card's icon had a warhead trail running straight through the burst; it now ends at the burst's edge.
 
 ## v53 — Airburst (2026-10-14)
 

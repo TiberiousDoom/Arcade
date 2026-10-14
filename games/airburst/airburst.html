@@ -79,24 +79,16 @@ const $ = id => document.getElementById(id);
 const gfx = makeFx({ reduce });
 const audio = makeAudio();
 
-const COL = {
-  warhead: '#e0503c',       // the invaders' red, as in the other games
-  burst: '#a8e4f2',
-  trail: '#7fd0e6',
-  city: '#c9a227',
-  base: '#3fae8f',
-  ground: '#2c4a52',
-};
-
 /* the engine never sees these — cosmetic particles, plus sound */
 const fx = {
-  launch() { audio.fire(); },
-  burst(x, y) { audio.bounce(); },
-  kill(x, y) { gfx.burst(x, y, COL.warhead, 10, 120); audio.hit(); },
-  // a city lost is the one moment worth a buzz: rare, and final
-  cityLost(x, y) { gfx.burst(x, y - 8, COL.city, 24, 170); gfx.hit(.7); audio.breach(); buzz([25, 40, 25]); },
+  launch() { audio.launch(); },
+  burst() { audio.burst(); },
+  kill(x, y) { gfx.burst(x, y, COL.warhead, 10, 120); audio.intercept(); },
+  split(x, y) { gfx.burst(x, y, COL.warn, 8, 90); audio.split(); },
+  // a city lost is the one moment worth a buzz: rare, and permanent
+  cityLost(x, y) { gfx.burst(x, y - 8, COL.city, 24, 170); gfx.hit(.7); audio.impact(); buzz([25, 40, 25]); },
   baseLost(x, y) { gfx.burst(x, y - 8, COL.base, 18, 150); gfx.hit(.4); audio.lose(); },
-  empty() { audio.overheat(); },
+  empty() { audio.dry(); },
 };
 
 const world = E.createWorld({ fx, seed: Date.now() & 0x7fffffff });
@@ -107,20 +99,57 @@ cv.width = W; cv.height = H;
 document.documentElement.style.setProperty('--board-max', W + 'px');
 
 /* ---------- input ----------
-   A tap in the sky fires from the nearest battery with ammunition. On press,
-   not release: this is a gameplay surface, where a beat of latency is the
-   difference between a hit and a miss (shared/tap.js leaves canvases alone for
-   the same reason). */
-function boardPoint(e) {
+
+   A finger aims at a crosshair drawn above it, not at the point under it.
+   Tapping exactly where the burst should be — the first version — put the
+   finger over the very warhead it was aimed at, which is Missile Command's
+   central problem on glass. So a touch shows a crosshair AIM_LIFT pixels
+   above the fingertip, follows the finger while it moves, and fires on
+   release. A quick tap still fires at once (press and release); a slow one is
+   a chance to line up. Released off the board, it is a cancel — the same rule
+   every button has (shared/tap.js).
+
+   A mouse has no such problem — the cursor is a point, not a fingertip — so it
+   fires on press, at the cursor, as before. */
+const AIM_LIFT = 64;            // CSS px between fingertip and crosshair
+let aim = null;                 // { x, y, id } in board coords while a touch aims
+
+function boardPoint(e, lift = 0) {
   const r = cv.getBoundingClientRect();
-  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+  return {
+    x: (e.clientX - r.left) * (W / r.width),
+    y: Math.max(0, (e.clientY - lift - r.top) * (H / r.height)),
+    over: e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom,
+  };
 }
+const aimsAbove = (e) => e.pointerType === 'touch' || e.pointerType === 'pen';
+
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   if (pause.paused) return;
+  if (aimsAbove(e)) {
+    const p = boardPoint(e, AIM_LIFT);
+    aim = { x: p.x, y: p.y, id: e.pointerId };
+    try { cv.setPointerCapture(e.pointerId); } catch {}
+    return;
+  }
   const p = boardPoint(e);
   if (E.fire(world, p.x, p.y)) sync();
 });
+cv.addEventListener('pointermove', e => {
+  if (!aim || e.pointerId !== aim.id) return;
+  const p = boardPoint(e, AIM_LIFT);
+  aim.x = p.x; aim.y = p.y;
+});
+addEventListener('pointerup', e => {
+  if (!aim || e.pointerId !== aim.id) return;
+  const p = boardPoint(e, AIM_LIFT);
+  const target = { x: p.x, y: p.y };
+  aim = null;
+  if (!boardPoint(e).over || pause.paused) return;    // slid off the board: cancel
+  if (E.fire(world, target.x, target.y)) sync();
+});
+addEventListener('pointercancel', () => { aim = null; });
 for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
   cv.addEventListener(ev, e => e.preventDefault());
 }
@@ -186,7 +215,7 @@ function frame(now) {
   wasOver = world.over; wasClear = world.waveClear;
 
   gfx.step(dt, 1.5);
-  draw(now);
+  draw();
   requestAnimationFrame(frame);
 }
 
@@ -227,8 +256,89 @@ function sync() {
   $('uiAmmo').textContent = E.ammoLeft(world);
 }
 
-/* ---------- draw ---------- */
-function draw(now) {
+/* ---------- art (lifted verbatim by tools/airburst-bench.mjs) ----------
+
+   Everything from here to the end marker is the game's drawing, and the art
+   bench builds itself from exactly this text — so it depends only on: ctx, W,
+   H, L, world, gfx, prefs, reduce, aim, E, TAU and the glow.js primitives.
+   Keep it that way, or the bench stops building. */
+const COL = {
+  warhead: '#e0503c',       // the invaders' red, as in the other games
+  warn: '#ffd2a0',          // a warhead about to split runs hot
+  burst: '#a8e4f2',
+  trail: '#7fd0e6',
+  city: '#c9a227',
+  base: '#3fae8f',
+  ground: '#2c4a52',
+};
+
+/** How much of each warhead's line of fall is drawn, px. Only the recent tail:
+ *  the full line back to the top of the sky cost more than the rest of the
+ *  frame put together on a late wave, and the tail already says which way it
+ *  is going — which is what the aim needs. */
+const TRAIL_LEN = 240;
+/** The same for an interceptor's streak: it moves fast, so a short one reads. */
+const INT_TRAIL = 150;
+
+/* Warheads are cubes, and a cube is several glow passes. Forty of them on a
+   late wave measured 7.4ms a frame drawn live; stamped from a cache of
+   pre-rendered sprites, 0.09ms. Rotation is quantised to 32 steps, which is
+   finer than a 9px cube can show. The live path stays as the fallback for any
+   environment without a second canvas — the render harness is one, so the
+   tests exercise the live path, as Choke Point's do. */
+const CUBE = 9, CUBE_PAD = 16, CUBE_STEPS = 32;
+const cubeSprites = new Map();
+const SPRITES_OK = (() => {
+  try {
+    const a = document.createElement('canvas');
+    a.width = a.height = 2;
+    const g2 = a.getContext('2d');
+    if (!g2 || g2 === ctx) return false;        // shared context: not a real surface
+    ctx.drawImage(a, -4, -4);                   // and it has to be blittable
+    return true;
+  } catch { return false; }
+})();
+
+function cubeRot(h) {
+  const a = Math.atan2(h.ty - h.y0, h.tx - h.x0) - Math.PI / 4;
+  const step = Math.round(((a % TAU) + TAU) % TAU / TAU * CUBE_STEPS) % CUBE_STEPS;
+  return { step, rot: step / CUBE_STEPS * TAU };
+}
+
+function drawWarhead(h) {
+  const { step, rot } = cubeRot(h);
+  const warn = E.splitSoon(h);
+  const col = warn > 0 ? COL.warn : COL.warhead;
+  if (SPRITES_OK) {
+    const key = step + (warn > 0 ? 'w' : '');
+    let spr = cubeSprites.get(key);
+    if (!spr) {
+      spr = document.createElement('canvas');
+      spr.width = spr.height = CUBE_PAD * 2;
+      cube(spr.getContext('2d'), CUBE_PAD, CUBE_PAD, CUBE, col, { rot, width: 1.4 });
+      cubeSprites.set(key, spr);
+    }
+    ctx.drawImage(spr, Math.round(h.x - CUBE_PAD), Math.round(h.y - CUBE_PAD));
+  } else {
+    cube(ctx, h.x, h.y, CUBE, col, { rot, width: 1.4 });
+  }
+  /* About to split: a ring closing in on it, and the cube itself runs hot.
+     A split is answered by bursting it high, so it has to be visible before
+     it happens, not after. */
+  if (warn > 0) {
+    const r = 6 + (1 - warn) * 16;
+    glowStroke(ctx, c => c.arc(h.x, h.y, r, 0, TAU), COL.warn, 1.2, GLOW_PASSES_CHEAP, .4 + warn * .6);
+  }
+}
+
+function drawTrail(h) {
+  const dx = h.x - h.x0, dy = h.y - h.y0;
+  const len = Math.hypot(dx, dy) || 1, k = Math.min(1, TRAIL_LEN / len);
+  glowStroke(ctx, c => { c.moveTo(h.x - dx * k, h.y - dy * k); c.lineTo(h.x, h.y); },
+    COL.warhead, 1.1, GLOW_PASSES_CHEAP, .55);
+}
+
+function draw() {
   ctx.clearRect(0, 0, W, H);
   const shake = reduce ? 0 : prefs.shake * gfx.flash * 6;
   ctx.save();
@@ -246,17 +356,16 @@ function draw(now) {
   for (const c of world.cities) drawCity(c);
   world.bases.forEach(drawBase);
 
-  /* Warheads: a cube at the head of a fading trail back to where it entered.
-     Invaders are cubes, everywhere; the trail is what makes its line readable,
-     and reading its line is the whole skill. */
-  for (const h of world.warheads) {
-    glowStroke(ctx, c => { c.moveTo(h.x0, h.y0); c.lineTo(h.x, h.y); }, COL.warhead, 1, GLOW_PASSES_CHEAP, .45);
-    cube(ctx, h.x, h.y, 9, COL.warhead, { rot: Math.atan2(h.ty - h.y0, h.tx - h.x0) - Math.PI / 4, width: 1.4 });
-  }
+  // trails under every cube, so no trail is drawn across a warhead
+  for (const h of world.warheads) drawTrail(h);
+  for (const h of world.warheads) drawWarhead(h);
 
-  // interceptors: a bright line from the battery, and a mark where it will burst
+  /* interceptors: a bright streak behind the round, and a mark where it will
+     burst. A streak rather than the whole line from the battery: six full
+     lines measured 3.7ms, nearly as much as forty warhead trails. */
   for (const m of world.interceptors) {
-    glowStroke(ctx, c => { c.moveTo(m.sx, m.sy); c.lineTo(m.x, m.y); }, COL.trail, 1.2, GLOW_PASSES_CHEAP, .7);
+    const dx = m.x - m.sx, dy = m.y - m.sy, k = Math.min(1, INT_TRAIL / (Math.hypot(dx, dy) || 1));
+    glowStroke(ctx, c => { c.moveTo(m.x - dx * k, m.y - dy * k); c.lineTo(m.x, m.y); }, COL.trail, 1.2, GLOW_PASSES_CHEAP, .7);
     glowDot(ctx, m.x, m.y, 2.5, '#ffffff', 1, DOT_PASSES_CHEAP);
     glowStroke(ctx, c => {
       c.moveTo(m.tx - 6, m.ty - 6); c.lineTo(m.tx + 6, m.ty + 6);
@@ -264,18 +373,38 @@ function draw(now) {
     }, COL.trail, 1.2, GLOW_PASSES_CHEAP, .8);
   }
 
-  /* Bursts are spheres — the defenders' shape — drawn as a lit disc with a
-     bright rim, fading as they shrink. */
+  /* Bursts are spheres — the defenders' shape: a lit disc with a bright rim,
+     fading as they shrink. The disc is one additive fill rather than a glow
+     dot, which measured about a third cheaper with ten on screen. */
   for (const b of world.blasts) {
     const r = E.blastRadius(b.t);
     if (r <= 0) continue;
     const fade = b.t > E.BLAST_GROW + E.BLAST_HOLD ? r / E.BLAST_R : 1;
-    glowDot(ctx, b.x, b.y, r, COL.burst, .35 * fade, DOT_PASSES_CHEAP);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(168,228,242,${.18 * fade})`;
+    ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, TAU); ctx.fill();
+    ctx.restore();
     glowStroke(ctx, c => c.arc(b.x, b.y, r, 0, TAU), '#ffffff', 1.4, GLOW_PASSES_CHEAP, .8 * fade);
   }
 
+  if (aim) drawReticle(aim.x, aim.y);
+
   gfx.draw(ctx);
   ctx.restore();
+}
+
+/* The crosshair a touch aims with: a ring the size of a full burst, so the
+   player sees what the burst will cover, and a cross at its centre. Dim and
+   red where nothing can be fired (into the ground). */
+function drawReticle(x, y) {
+  const ok = y <= L.FIRE_FLOOR;
+  const col = ok ? COL.burst : COL.warhead;
+  glowStroke(ctx, c => c.arc(x, y, E.BLAST_R, 0, TAU), col, 1, GLOW_PASSES_CHEAP, ok ? .45 : .3);
+  glowStroke(ctx, c => {
+    c.moveTo(x - 10, y); c.lineTo(x - 3, y); c.moveTo(x + 3, y); c.lineTo(x + 10, y);
+    c.moveTo(x, y - 10); c.lineTo(x, y - 3); c.moveTo(x, y + 3); c.lineTo(x, y + 10);
+  }, col, 1.4, GLOW_PASSES_CHEAP, ok ? 1 : .5);
 }
 
 /* A city: three domes on the ground line. Domes, not blocks — what is being
@@ -297,7 +426,7 @@ function drawCity(c) {
 }
 
 /* A battery: a dome with its remaining interceptors as pips beneath it. */
-function drawBase(b, i) {
+function drawBase(b) {
   const y = L.GROUND_Y;
   const col = b.alive ? COL.base : '#3a4a4e';
   inkDot(ctx, b.x, y, 18);
@@ -311,6 +440,7 @@ function drawBase(b, i) {
     else inkDot(ctx, px, py, 2.3, '#1b3038');
   }
 }
+/* ---------- end art ---------- */
 
 /* ---------- resuming an interrupted run ----------
    Saved when a wave is held (already paused behind a banner) and when the page

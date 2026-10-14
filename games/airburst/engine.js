@@ -66,6 +66,19 @@ export const BONUS_CITY_EVERY = 10000;
 export const SPLIT_WAVE = 4;
 export const splitChance = (wave) => (wave < SPLIT_WAVE ? 0 : Math.min(0.35, 0.07 * (wave - SPLIT_WAVE + 1)));
 export const splitInto = (wave) => (wave < 8 ? 2 : 3);
+/** How far above its split height a splitting warhead starts to warn, px. At
+ *  wave-4 speeds that is a little over a second — time to see it and burst it
+ *  high, which is the answer to a split. */
+export const SPLIT_WARN = 90;
+
+/** 0 for a warhead that will not split (or is not close), rising to 1 at the
+ *  moment it splits. The shell draws the warning from this. */
+export function splitSoon(h) {
+  if (h.splitAt === null || h.splitAt === undefined) return 0;
+  const left = h.splitAt - h.y;
+  if (left >= SPLIT_WARN) return 0;
+  return clamp(1 - left / SPLIT_WARN, 0, 1);
+}
 
 /* ---------- randomness ---------- */
 
@@ -78,7 +91,7 @@ export function rand(w) {
 
 /* ---------- world ---------- */
 
-const noFx = { launch() {}, burst() {}, kill() {}, cityLost() {}, baseLost() {}, empty() {} };
+const noFx = { launch() {}, burst() {}, kill() {}, cityLost() {}, baseLost() {}, empty() {}, split() {} };
 
 function makeBases(L) {
   return BASE_X.map(f => ({ x: f * L.W, ammo: BASE_AMMO, alive: true }));
@@ -158,11 +171,20 @@ function targets(w) {
   return out;
 }
 
-function pickTarget(w) {
+/** A target from a roll in [0, 1) taken earlier — no LCG advance here. */
+function targetFrom(w, roll) {
   const all = targets(w);
   if (!all.length) return null;
-  return all[Math.floor(rand(w) * all.length) % all.length];
+  return all[Math.floor(roll * all.length) % all.length];
 }
+
+function pickTarget(w) {
+  return targetFrom(w, rand(w));
+}
+
+/** The most a warhead can split into, and so how many target rolls each one
+ *  takes when it is released. */
+const MAX_SPLIT = 3;
 
 function makeWarhead(w, x0, y0, target) {
   const tx = target.x, ty = w.L.GROUND_Y;
@@ -180,18 +202,27 @@ function releaseWarhead(w) {
   if (!target) return;
   const x0 = (0.05 + rand(w) * 0.9) * w.L.W;
   const h = makeWarhead(w, x0, -10, target);
-  // one LCG advance decides whether it splits and another where, always both,
-  // so a seeded run releases the same sequence whatever the split chance is
+  /* Every roll a split could ever need is taken *now*, for every warhead,
+     whether it splits or not: whether, where, and a target for each child.
+     The number of LCG advances must not depend on what happens later — or
+     shooting a warhead before it splits (so its children never pick targets)
+     would change every warhead released after it, and a seed would replay
+     only for a player who did exactly the same things. Flak Battery's
+     `rollDrop` exists for the same reason. */
   const roll = rand(w), height = rand(w);
+  h.kidRolls = Array.from({ length: MAX_SPLIT }, () => rand(w));
   if (roll < splitChance(w.wave)) h.splitAt = (0.28 + height * 0.2) * w.L.GROUND_Y;
   w.warheads.push(h);
 }
 
 function splitWarhead(w, h) {
-  const n = splitInto(w.wave);
+  const n = Math.min(splitInto(w.wave), MAX_SPLIT);
+  const rolls = h.kidRolls || [];
   const kids = [];
   for (let k = 0; k < n; k++) {
-    const t = pickTarget(w);
+    // a staged warhead with no rolls (tests, old saves) spreads its children
+    // evenly rather than drawing new numbers
+    const t = targetFrom(w, rolls[k] ?? (k + 0.5) / n);
     if (t) kids.push(makeWarhead(w, h.x, h.y, t));
   }
   return kids;
@@ -275,6 +306,7 @@ export function step(w, dt) {
     if (h.splitAt !== null && h.y >= h.splitAt) {
       w.warheads.splice(i, 1);
       born.push(...splitWarhead(w, h));
+      w.fx.split(h.x, h.y);
       continue;
     }
     if (k >= 1) {
@@ -341,7 +373,7 @@ export function snapshot(w) {
     lastBonus: w.lastBonus ? { ...w.lastBonus } : null,
     cities: w.cities.map(c => c.alive),
     bases: w.bases.map(b => ({ ammo: b.ammo, alive: b.alive })),
-    warheads: w.warheads.map(h => ({ ...h, target: { ...h.target } })),
+    warheads: w.warheads.map(h => ({ ...h, target: { ...h.target }, kidRolls: h.kidRolls ? [...h.kidRolls] : undefined })),
     interceptors: w.interceptors.map(m => ({ ...m })),
     blasts: w.blasts.map(b => ({ ...b })),
     toSpawn: w.toSpawn, spawnT: w.spawnT,
@@ -370,7 +402,7 @@ export function hydrate(w, s) {
   w.bases = BASE_X.map((f, i) => ({
     x: f * w.L.W, alive: !!s.bases[i].alive, ammo: Math.max(0, Math.floor(s.bases[i].ammo) || 0),
   }));
-  w.warheads = s.warheads.map(h => ({ ...h, target: { ...h.target } }));
+  w.warheads = s.warheads.map(h => ({ ...h, target: { ...h.target }, kidRolls: Array.isArray(h.kidRolls) ? [...h.kidRolls] : undefined }));
   w.interceptors = s.interceptors.map(m => ({ ...m }));
   w.blasts = s.blasts.map(b => ({ ...b }));
   w.toSpawn = Math.max(0, Math.floor(s.toSpawn) || 0);

@@ -83,6 +83,10 @@ node --test games/*/engine.test.js shared/*.test.js games/*/render-test.mjs game
 # docs/art/gun-bench.html from the current sources; open it directly, no server.
 node tools/gun-bench.mjs
 
+# Rebuild Airburst's art bench after changing its art: docs/art/airburst-bench.html,
+# built from the shell's marked art section — a staged sky and a live run.
+node tools/airburst-bench.mjs
+
 # Look at a game from here — boots the real shell against node-canvas and drives
 # frames by hand, so it returns an honest picture where a headless browser
 # returns a blank one. Same jsdom/canvas install as the render tests.
@@ -114,7 +118,7 @@ Every engine is pure: no DOM, no canvas, no timers, no `Date.now()`, no `Math.ra
 - **Hull Breach** — [games/hull-breach/CLAUDE.md](games/hull-breach/CLAUDE.md). `step(w, dt)` reads no input: the shell moves the paddle (`setPaddle`/`nudgePaddle`) and serves (`launch`). A ball dies past `FLOOR`, not `H`. The paddle sets the outgoing angle by where the ball lands, so don't "fix" it into a reflection.
 - **Feedline** — [games/feedline/CLAUDE.md](games/feedline/CLAUDE.md). The engine owns the tick clock (pace is the difficulty curve). Don't simplify the tail-vacating collision rule or the turn queue's check against the last *queued* direction; both are tested.
 - **Choke Point** — [games/choke-point/CLAUDE.md](games/choke-point/CLAUDE.md). Numbers come only from `stats(w, tower)` and prices only from `buildCost(w, type)`. The armory persists across runs and the shell stores it. `w.unlocked` is derived and never snapshotted. Players see "circuit", never "route".
-- **Airburst** — [games/airburst/CLAUDE.md](games/airburst/CLAUDE.md). `step(w, dt)` reads no input; the shell calls `fire(w, x, y)` on a tap and the engine picks the battery. The split roll is taken for every warhead released, split or not, so a seed replays on any wave. Records waves held for the classics chain.
+- **Airburst** — [games/airburst/CLAUDE.md](games/airburst/CLAUDE.md). `step(w, dt)` reads no input; the shell calls `fire(w, x, y)` and the engine picks the battery. Touch aims at a crosshair above the finger and fires on release. Every roll a split could need is taken at release, so a seed replays whatever the player shoots. Its art lives between markers in the shell and is reviewed on its own bench (below). Records waves held for the classics chain.
 
 ## Architecture: the PWA layer
 
