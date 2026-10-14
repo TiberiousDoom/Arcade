@@ -2125,3 +2125,14 @@ Same day as the split above. A `NOTES.md` is only read when a session thinks to 
 STATUS had said since 2026-07-27 that the Pages domain "satisfies the Digital Asset Links requirement, subpath included". It doesn't: a TWA verifies its site by fetching `/.well-known/assetlinks.json` from the root of the host, and a project site at `tiberiousdoom.github.io/Arcade/` cannot put a file there. The options are a separate `tiberiousdoom.github.io` repo serving just that file, or a custom domain; that choice is the owner's and is listed in STATUS. Recorded here because the wrong version had stood as settled for eleven weeks and would have surfaced only at the end of a Bubblewrap build, as an address bar across the app.
 
 Same pass: TESTING.md was still the v22 checklist 27 builds on. Rather than tick through items nobody could say were answered, it was rewritten from the v49 phone checks and the still-open phone questions in STATUS, and the old one survives in git.
+
+## 2026-10-14 — The owner's answers to the open decisions
+
+Ten calls had collected across nineteen rounds of "still open" lists; they were gathered into one list in STATUS and answered in one sitting.
+
+- **Hold off on shipping.** The store path waits on the pre-release plan: delete landscape, Choke Point's gradual unlock, and three new classics (Missile Command, Invaders, Tetris) — all before release. [docs/pre-release-plan.md](pre-release-plan.md) is the live plan.
+- **Delete landscape**, closing the portrait-only question opened on 2026-07-27. It goes first in the plan, because every later item would otherwise be built for two layouts.
+- **Choke Point builds on release.** A tap that slides off is a cancel, as every button has been since v47. The worry in round 18 was the handler shared with tap-to-popup and drag-to-move; in practice it was small, because a press on an existing tower already resolved at release. Only the empty-cell branch (and landing a pending move) changed.
+- **Flak Battery's Refit block hides locked guns.** The research screen still draws locked rungs, deliberately — that is where progression is advertised. The shop is where you spend, and a chip you cannot press is noise there.
+- **Choke Point unlocks gradually**, on Flak Battery's model (best wave ever, never per run). The wave numbers are proposed in the plan, not yet agreed.
+- **Left as they are for now**: no Flak Battery difficulty selector; Apple deferred. **Undecided**: Asset Links hosting (not needed until shipping), and the armory's size (the test pins a floor of 8 Easy runs and no ceiling; it measures ~24).

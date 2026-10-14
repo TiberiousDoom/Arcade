@@ -625,6 +625,36 @@ test('the tower popup opens and renders on a real DOM', async () => {
   assert.deepEqual(g.errors, [], 'opening the popup threw');
 });
 
+test('a press on an empty cell builds on release, and a press slid off builds nothing', async () => {
+  const g = await bootAndStart(SHELL);
+  const { world, E, window: w } = g;
+  world.components = 9999;
+
+  // two buildable cells: one to press, one to slide onto
+  const open = [];
+  for (let r = 0; r < world.L.ROWS && open.length < 2; r++)
+    for (let c = 0; c < world.L.COLS && open.length < 2; c++)
+      if (E.canBuild(world, c, r, 'node')) open.push({ c, r });
+  assert.equal(open.length, 2, 'found two buildable cells');
+  const [a, b] = open.map(o => E.cellCenter(world.L, o.c, o.r));
+  const cv = w.document.getElementById('cv');
+
+  // slid off: pressed on one cell, released on another
+  const purse = world.components;
+  cv.dispatchEvent(new w.PointerEvent('pointerdown', { clientX: a.x, clientY: a.y, bubbles: true }));
+  assert.equal(world.towers.length, 0, 'nothing is built on the press itself');
+  w.dispatchEvent(new w.PointerEvent('pointerup', { clientX: b.x, clientY: b.y, bubbles: true }));
+  assert.equal(world.towers.length, 0, 'a press slid off is a cancel');
+  assert.equal(world.components, purse, 'and costs nothing');
+
+  // a plain tap: released where it was pressed
+  cv.dispatchEvent(new w.PointerEvent('pointerdown', { clientX: a.x, clientY: a.y, bubbles: true }));
+  w.dispatchEvent(new w.PointerEvent('pointerup', { clientX: a.x, clientY: a.y, bubbles: true }));
+  assert.equal(world.towers.length, 1, 'a tap builds');
+  assert.deepEqual([world.towers[0].c, world.towers[0].r], [open[0].c, open[0].r], 'on the cell pressed');
+  assert.deepEqual(g.errors, [], 'building by tap threw');
+});
+
 test('a tower can be dragged to a new cell, and the board draws the pending move', async () => {
   const g = await bootAndStart(SHELL);
   const { world, E, window: w } = g;

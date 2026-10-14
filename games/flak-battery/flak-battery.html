@@ -1047,12 +1047,14 @@ function renderShop(bought) {
   const refit = groupHosts.get('Refit');
   if (refit) {
     refit.appendChild(renderBarrels(gun));
-    refit.appendChild(renderRetrofit(gun));
+    const retro = renderRetrofit(gun);
+    if (retro) refit.appendChild(retro);
   } else {
     // Optics is not open yet, so the card does not exist — the two still have
     // to go somewhere, and the tail of the tree is where they used to live
     host.appendChild(renderBarrels(gun));
-    host.appendChild(renderRetrofit(gun));
+    const retro = renderRetrofit(gun);
+    if (retro) host.appendChild(retro);
   }
 
   if (bought) flashStat(host, bought);
@@ -1402,23 +1404,27 @@ function renderGunStats(gun) {
 
 /** The retrofit row for one mount: swap it to any researched type, for a fee.
  *  Research itself is bought once on the Battery tab; this is the per-mount
- *  conversion, so kitting five guns out costs five retrofits. */
+ *  conversion, so kitting five guns out costs five retrofits.
+ *
+ *  Only researched types are listed, and with nothing to swap to there is no
+ *  block at all (null). Four "locked" chips on the first shop were first-run
+ *  noise; the research screen is where locked guns are advertised, as rungs
+ *  with the wave that opens them. */
 function renderRetrofit(gun) {
+  const owned = E.GUN_KEYS.filter(t => t === 'standard' || world.gunUnlocks[t]);
+  if (owned.length < 2) return null;
   const el = document.createElement('div');
   el.className = 'branch retro';
-  el.innerHTML = `<h3>Refit</h3><p>Researched types only.</p>`;
+  el.innerHTML = `<h3>Refit</h3>`;
   const row = document.createElement('div');
   row.className = 'assign';
-  for (const type of E.GUN_KEYS) {
+  for (const type of owned) {
     const G = E.GUN_TYPES[type];
-    const owned = type === 'standard' || world.gunUnlocks[type];
     const cost = E.retrofitCost(world, shopTab, type);
     const chip = document.createElement('button');
     chip.className = 'chip' + (gun.type === type ? ' on' : '');
-    chip.textContent = gun.type === type ? G.name
-      : !owned ? `${G.name} ·  locked`
-      : `${G.name} · ${cost}`;
-    chip.disabled = gun.type === type || !owned || world.scrap < cost;
+    chip.textContent = gun.type === type ? G.name : `${G.name} · ${cost}`;
+    chip.disabled = gun.type === type || world.scrap < cost;
     chip.style.borderColor = G.col;
     chip.addEventListener('click', () => {
       if (E.setGunType(world, shopTab, type)) { renderShop(); sync(); }

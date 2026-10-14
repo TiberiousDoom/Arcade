@@ -342,7 +342,7 @@ test('a first-run shop opens with three rows, grouped, and no Research tab', asy
 
 test('the branch groups gather their rows once the ramp opens them', async () => {
   const g = experienced(await bootAndStart(SHELL));
-  const { world, window: w } = g;
+  const { world, E, window: w } = g;
   const doc = w.document;
   world.scrap = 1e6;
   world.shopOpen = true;
@@ -366,7 +366,21 @@ test('the branch groups gather their rows once the ramp opens them', async () =>
      inside the card rather than trailing after the tree as loose blocks. */
   const refitCard = cards.find(c => c.querySelector('.groupName').textContent === 'Refit');
   assert.ok(refitCard.querySelector('.barrels'), 'barrels sit in the Refit card');
-  assert.ok(refitCard.querySelector('.retro'), 'and so does the type swap');
+  // with only the standard cannon known there is nothing to swap to, so no block
+  assert.equal(refitCard.querySelector('.retro'), null, 'no type swap with nothing to swap to');
+  assert.doesNotMatch(refitCard.textContent, /locked/i, 'and no locked guns advertised here');
+
+  world.research.guns.auto = true;
+  E.syncGunUnlocks(world);
+  world.shopOpen = true;
+  g.frame(1100);
+  openMount(doc, w, 0);
+  const refitAgain = [...doc.querySelectorAll('#branches .branchGroup')]
+    .find(c => c.querySelector('.groupName').textContent === 'Refit');
+  const retro = refitAgain.querySelector('.retro');
+  assert.ok(retro, 'the type swap joins the Refit card once a second type is researched');
+  assert.deepEqual([...retro.querySelectorAll('.chip')].map(c => c.textContent.split(' ·')[0]),
+    [E.GUN_TYPES.standard.name, E.GUN_TYPES.auto.name], 'listing researched types only');
   assert.equal(doc.querySelectorAll('#branches > .barrels, #branches > .retro').length, 0,
     'and neither is left loose at the end of the tree');
 

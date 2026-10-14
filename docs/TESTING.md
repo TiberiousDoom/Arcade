@@ -1,24 +1,24 @@
-# Device test checklist — build v49
+# Device test checklist — build v50
 
 For a real phone, via **https://tiberiousdoom.github.io/Arcade/**. These are the
 questions a desk cannot answer — thumb reach, legibility at real size, frame
 rate, and whether the balance numbers are any good. Every item here was
 reviewed only at a desk, through node-canvas or a desktop browser.
 
-Rewritten 2026-10-13 for v49. The v22 checklist it replaces had sat for 27
+Rewritten 2026-10-13 for v49, updated for v50. The v22 checklist it replaces had sat for 27
 builds; the items it asked about have since been answered in feedback rounds,
 superseded by later builds, or carried forward below. When a section is
 settled, record the outcome in STATUS.md and delete the section.
 
 ---
 
-## 0. First: confirm you're on v49
+## 0. First: confirm you're on v50
 
 The service worker serves cache-first, so a phone keeps running an old build
 until the new worker takes over, and every observation below would then be
 about the wrong code.
 
-- [ ] Open any game's menu and check the bottom line reads **Arcade v49**.
+- [ ] Open any game's menu and check the bottom line reads **Arcade v50**.
 - [ ] If it doesn't: fully close the app, reopen, and reload once more. The
       first load installs the new worker, the second reads from it.
 
@@ -35,6 +35,9 @@ All five guns were redrawn from the bench (DECISIONS 2026-09-25).
       the ion. Does each still read as one gun?
 - [ ] **Six mounts in portrait.** Spacing is 84px and the towed legs span ~74px;
       the leftmost pad reaches the board edge. Crowded, or fine?
+- [ ] **Refit (v50)**: on a save with only the standard cannon, the Refit
+      card has no gun-swap row at all; once another gun is researched, the row
+      lists only researched guns.
 - [ ] Shop portraits render at about a third of bench scale. Can you tell the
       five guns apart on the card?
 
@@ -63,8 +66,9 @@ Nobody has reported from these waves on glass.
 - [ ] **Breaker's round** (`SLUG_SPEED`) — does it look heavy, or slow?
 - [ ] **Tower prices climb** with every tower standing (~5.9x at 24). Felt as a
       decision, or as a wall?
-- [ ] **Build on press**: tap a cell, slide off, and the tower is still placed.
-      Has this ever cost you a tower by accident?
+- [ ] **Build on release (v50)**: tap a cell and a tower appears when you let
+      go. Press a cell, slide off, let go — nothing should be built. Does the
+      wait for the release ever feel laggy?
 - [ ] **The armory** now costs ~24 Easy runs of kill income to fill (~15 for the
       four tracks anyone can buy). Does progress feel steady or grindy?
 
@@ -75,10 +79,6 @@ Nobody has reported from these waves on glass.
 
 ## 5. The whole app
 
-- [ ] **Portrait-only.** In an installed app it stays locked portrait. In a
-      browser tab, sideways gives a letterboxed portrait board — unavoidable
-      there. Does anything make you miss landscape? (Deleting landscape is
-      still on the table; see STATUS "Open decisions".)
 - [ ] **The two cabinets.** Is the crosslink between them findable, or does it
       read as a footer nobody taps?
 - [ ] **Slide-off cancels** (v47): press a button, drag off, let go — nothing

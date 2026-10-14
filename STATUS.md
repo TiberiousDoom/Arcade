@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-13 (v49, docs only — see "Docs pass" below)
+Last updated: 2026-10-14 (v50 — owner decisions answered; two shipped, the rest planned in [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -22,6 +22,13 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 
 **571 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
 
+## v50 — owner decisions answered (2026-10-14)
+
+The ten open decisions were answered (DECISIONS 2026-10-14). Two shipped in this build; the rest is planned in **[docs/pre-release-plan.md](docs/pre-release-plan.md)** — delete landscape, Choke Point's gradual unlock, then three new classics.
+
+- **Flak Battery: the Refit block lists researched guns only.** Four "locked" chips on the first shop were first-run noise; the research screen is where locked guns are advertised. With only the standard cannon known, the block is gone.
+- **Choke Point: a press on the board builds on release, on the cell pressed.** Slide off and nothing is built, as every button has worked since v47. Landing a pending move works the same way. Parked since round 18; a render test now pins both halves.
+
 ## Docs pass — no build change (2026-10-13)
 
 - Per-game design notes moved out of the root CLAUDE.md into `games/<name>/CLAUDE.md`, which Claude Code loads when working in that folder.
@@ -29,7 +36,7 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - [docs/TESTING.md](docs/TESTING.md) rewritten for v49 — it was still the v22 checklist, with the old game names.
 - **The Play plan had a wrong assumption**: Asset Links must be served from the root of the host, which this project site cannot do. "Immediate next step" now spells out the Play path with that as step 1.
 - Stale claims corrected: manifest orientation in CLAUDE.md, the armory ratio (now ~24x an Easy run), the Choke Point roster in "What's playable", and three false open decisions.
-- A single list of **[decisions waiting on the owner](#decisions-waiting-on-the-owner-collected-2026-10-13)**.
+- A single list of owner decisions (answered 2026-10-14; see "Owner decisions" below).
 
 ## v49 — the five guns, redrawn (2026-09-25)
 
@@ -903,7 +910,7 @@ the shop's tab strip rather than a card buried on another tab.
 
 **The PWA is finished** (2026-07-27: `shared/`, self-hosted fonts, portrait layouts, the cabinet, manifest + service worker — all done, verified offline). Since then 22 feedback rounds (v28–v49) have gone into the games, and the store path below has not moved. Rewritten 2026-10-13 so the next step is written down rather than implied.
 
-**Next: a decision, then the Google Play path.** Whether to keep polishing or to ship is open — see "Decisions waiting on the owner" below. If shipping, the steps, in order:
+**Next: [docs/pre-release-plan.md](docs/pre-release-plan.md).** The owner decided on 2026-10-14 to hold off shipping until it is done. The Google Play path, for when that changes, in order:
 
 1. **Digital Asset Links — blocked on a hosting choice.** A TWA verifies the site by fetching `https://<host>/.well-known/assetlinks.json` from the **root of the host**. This app lives at `tiberiousdoom.github.io/Arcade/`, and this repo cannot serve the host root. Either create a separate `tiberiousdoom.github.io` user-site repo that serves only that file, or move to a custom domain. Without it the app still runs, but with a browser address bar across the top.
 2. **Bubblewrap** — `bubblewrap init --manifest <Pages URL>/manifest.webmanifest`, then build a signed `.aab`. The manifest already has the 512px and maskable icons it wants. **The signing keystore is the one thing that cannot be lost**; enrol in Play App Signing so Google holds the release key.
@@ -912,20 +919,18 @@ the shop's tab strip rather than a card buried on another tab.
 
 Do **not** try to unify the engine `step()` signatures — those differ per game on purpose (see DECISIONS.md).
 
-## Decisions waiting on the owner (collected 2026-10-13)
+## Owner decisions (collected 2026-10-13, answered 2026-10-14)
 
-Gathered from every "Still open after this round" list and checked against the code. Balance numbers that only play can answer are in [docs/TESTING.md](docs/TESTING.md), not here; these are the calls nobody but the owner can make.
-
-1. **Ship or polish.** Start the Play path above now, or run more feedback rounds first?
-2. **Asset Links hosting.** A `tiberiousdoom.github.io` user-site repo (free, one file) or a custom domain (costs money, cleaner URL, and moves the PWA's origin — installed copies and local saves would not follow)?
-3. **Portrait-only: delete landscape, or keep the flag?** Open since 2026-07-27. Deleting removes the transpose code and its tests in all four games; keeping it costs a second layout on every change.
-4. **Choke Point builds on press.** Move building to release so a slide-off cancels, as every button now does, at the cost of untangling the build/popup/drag-to-move handler? Parked since round 18 "for its own round".
-5. **The armory's size.** Filling it costs ~24 Easy runs of kill income (~15 for the four open tracks); the test only requires more than 8. Accept, cut prices, or add a ceiling to the test?
-6. **Flak Battery difficulty selector.** Still none, while research makes every run stronger than the last. Add one like Choke Point's, or keep one curve?
-7. **Choke Point's opening.** Three tower classes (plus a locked fourth), four armory tracks and a difficulty choice on the first runs — the problem Flak Battery's branch ramp solved in v34. Apply the same ramp here?
-8. **Flak Battery's first shop** still lists four locked gun types under Refit. Keep them as advertising, or hide them until a rung is near?
-9. **The next game.** The classics cabinet has two of the five originals (Breakout, Snake). Missile Command, Tetris or Invaders next — and before or after a store release?
-10. **Apple.** Still deferred?
+1. **Ship or polish** — hold off on shipping until the pre-release plan is done.
+2. **Asset Links hosting** — undecided; not needed until shipping. A free `tiberiousdoom.github.io` repo holding one file is the cheap answer; a custom domain changes the app's origin, so installed copies and local saves would not carry over.
+3. **Portrait-only** — delete landscape. Planned, item 1.
+4. **Choke Point builds on press** — cancel on slide-off. **Shipped in v50.**
+5. **The armory's size** — open, pending the explanation below. Filling every Choke Point armory track costs about 24 Easy runs of kill income. The test that guards it only fails if that drops *below* 8, so prices could rise without limit and nothing would notice. Options: leave as is, cut prices, or also fail the test above some ceiling.
+6. **Flak Battery difficulty selector** — leave it for now.
+7. **Choke Point's opening** — unlock gradually. Planned, item 2, with one open question on timing.
+8. **Flak Battery's locked guns in Refit** — hide them. **Shipped in v50.**
+9. **The next game** — all three (Missile Command, Invaders, Tetris), before release. Planned, item 3, with open questions on names, gating, saves and the Tetris trademark.
+10. **Apple** — deferred.
 
 ## Store readiness (decided 2026-07-27: Google Play first, Apple deferred)
 

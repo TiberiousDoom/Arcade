@@ -1169,10 +1169,10 @@ cv.addEventListener('pointerdown', e => {
      Deliberately checked before the build branch: while a move is pending, a
      tap on an empty cell must move the tower there, not build a second one. */
   if (moveIndex >= 0) {
-    // moveTower fires the engine's `build` fx hook, which is what makes the
-    // sound — nothing extra to play here
-    if (cell && moveTargetOk(cell.c, cell.r)) E.moveTower(world, moveIndex, cell.c, cell.r);
-    cancelMove();
+    // committed on release, on the same cell, like a build (see below);
+    // anywhere else cancels
+    if (cell) pressCell = { c: cell.c, r: cell.r, move: true };
+    else cancelMove();
     return;
   }
 
@@ -1189,10 +1189,34 @@ cv.addEventListener('pointerdown', e => {
     return;
   }
 
+  /* Building waits for the release, and only happens if the finger lets go
+     on the cell it pressed. A press slid off is a cancel, as it is on every
+     button since v47 (`shared/tap.js`) — and here it matters more, since every
+     tower standing makes the next one dearer. */
+  pressCell = { c: cell.c, r: cell.r, move: false };
+});
+/** The empty cell under a press that will build (or land a pending move) if
+ *  the release comes back to it. */
+let pressCell = null;
+
+/** Resolve a press on the board at release: commit only on the cell pressed. */
+function releaseCell(e) {
+  const pc = pressCell;
+  pressCell = null;
+  const p = dragPoint(e);
+  const cell = p && E.cellAt(world.L, p.x, p.y);
+  const same = cell && cell.c === pc.c && cell.r === pc.r;
+  if (pc.move) {
+    // moveTower fires the engine's `build` fx hook, which is what makes the
+    // sound — nothing extra to play here
+    if (same && moveTargetOk(cell.c, cell.r)) E.moveTower(world, moveIndex, cell.c, cell.r);
+    cancelMove();
+    return;
+  }
   // a tap that actually placed something, confirmed in the hand — the
   // board is dense enough that a rejected tap looks much like an accepted one
-  if (E.buildTower(world, cell.c, cell.r, selected)) { buzz(); sync(); }
-});
+  if (same && E.buildTower(world, cell.c, cell.r, selected)) { buzz(); sync(); }
+}
 for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
   cv.addEventListener(ev, e => e.preventDefault());
 }
@@ -1249,7 +1273,10 @@ addEventListener('pointermove', e => {
   hoverCell = p ? E.cellAt(world.L, p.x, p.y) : null;
 });
 
+addEventListener('pointercancel', () => { pressCell = null; });
+
 addEventListener('pointerup', e => {
+  if (pressCell) { releaseCell(e); return; }
   if (dragMove >= 0) {
     const armed = moveIndex === dragMove;
     const i = dragMove, from = dragFrom;
