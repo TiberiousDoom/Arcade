@@ -929,7 +929,7 @@ Do **not** try to unify the engine `step()` signatures — those differ per game
 6. **Flak Battery difficulty selector** — leave it for now.
 7. **Choke Point's opening** — unlock gradually. Planned, item 2, with one open question on timing.
 8. **Flak Battery's locked guns in Refit** — hide them. **Shipped in v50.**
-9. **The next game** — all three, before release. Saves settled (Missile Command and Invaders save mid-run; the falling-block game is one-life). Names (Airburst / Shield Wall / Bulkhead proposed), Bulkhead's piece art and an unlock chain are proposed in the plan, awaiting the owner.
+9. **The next game** — all three, before release: **Airburst** (Missile Command), **Shield Wall** (Invaders), **Bulkhead** (the falling-block game), all in the classics cabinet, unlocking in a chain after Hull Breach. Saves, names, chain and Bulkhead's art all settled 2026-10-14; see the plan.
 10. **Apple** — deferred.
 
 ## Store readiness (decided 2026-07-27: Google Play first, Apple deferred)

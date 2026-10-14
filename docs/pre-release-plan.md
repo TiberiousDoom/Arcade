@@ -11,7 +11,7 @@ Build order, cheapest and most foundational first:
 1. **Delete landscape** — first, because every later item (and all three new
    games) would otherwise be built for two layouts.
 2. **Choke Point's gradual unlock** — a contained change to one game.
-3. **Three new classics**: Missile Command, Invaders, then Tetris.
+3. **Three new classics**: Airburst, Shield Wall, then Bulkhead.
 
 Every item touches files the app loads, so each ships as its own build with
 the usual `CACHE_VERSION`/`BUILD` bump; new games also go into `PRECACHE`.
@@ -103,9 +103,9 @@ Suggested order, by how much each reuses what exists:
 
 **Settled 2026-10-14: saves.** Missile Command and Invaders run in waves and get mid-run saves through `shared/resume.js`, with a resume test each. The falling-block game is one-life score-attack like Feedline: no save.
 
-### Proposed names (owner to pick)
+### Names — decided 2026-10-14: Airburst, Shield Wall, Bulkhead
 
-Every game here is named for its fiction in two plain words, not for the classic it echoes. Each name below is a common phrase, which helps the store listing and hurts trademark exclusivity in the same way; search the Play store for each before committing.
+Every game here is named for its fiction in two plain words, not for the classic it echoes. Each is a common phrase, which helps the store listing and hurts trademark exclusivity in the same way; still search the Play store for each before a listing goes up. Directories and game ids follow the names: `games/airburst/`, `games/shield-wall/`, `games/bulkhead/`.
 
 | Classic | Proposal | Why | Alternates |
 |---|---|---|---|
@@ -113,7 +113,7 @@ Every game here is named for its fiction in two plain words, not for the classic
 | Space Invaders | **Shield Wall** | The bunkers you hide behind and watch erode are the part everyone remembers. | Firing Line, Holdfast |
 | Tetris | **Bulkhead** | A hull is sealed one section at a time; a full row is a compartment closed. Sits next to Hull Breach. | Ballast, Dry Dock |
 
-### Bulkhead's piece art — keeping clear of Tetris's look
+### Bulkhead's piece art — decided 2026-10-14, as below
 
 The falling-block mechanic is free to use; Tetris's *look* is protected trade dress (Tetris Holding v. Xio, 2012, turned largely on the visual expression: the 10×20 well, one bright colour per piece, pieces drawn as bevelled square tiles). Not legal advice, but the safe design is the one that is different on every one of those points, and the house style already points there:
 
@@ -124,11 +124,11 @@ The falling-block mechanic is free to use; Tetris's *look* is protected trade dr
 - **The pieces are never called tetrominoes or tetriminos** (the second is a trademark) — they are plates.
 - Plates are neither invaders nor defenders, so the cubes/spheres rule does not apply; no plate is drawn as a cube.
 
-### Unlocking — a proposal
+### Unlocking — decided 2026-10-14: the chain below, all three in the classics cabinet
 
 The rules already set: **one chain per cabinet, never across cabinets**, enforced on the cabinet only (direct links still open everything), recorded through `recordProgress`. Each gate should be a moment a new player reaches in one or two sittings, and ideally one that teaches something the next game uses.
 
-**Recommended: extend the classics chain, one game at a time.**
+**The chain: extend the classics, one game at a time.**
 
 | Game | Opens when | Teaches |
 |---|---|---|
@@ -140,9 +140,9 @@ The rules already set: **one chain per cabinet, never across cabinets**, enforce
 
 Hull Breach records no progress today, so it needs one `recordProgress(GAME_ID, level)` call where a level clears — small, and a version bump it would share with Airburst's arrival.
 
-**Alternatives considered:**
+**Alternatives considered and not taken:**
 
 - **Any N runs anywhere in the cabinet opens the next game.** Kinder to someone who only likes one game, but a gate you can pass by losing quickly teaches nothing.
 - **Airburst and Shield Wall in the invasion cabinet instead.** Both are defend-the-planet games and would fit the invasion story as chapters (descending missiles, a descending formation), leaving the classics as Feedline, Hull Breach and Bulkhead. Worth deciding before Airburst's lore line is written — the classics cards carry no story, the invasion cards do.
 
-**Still open for the owner:** names; the chain (or one of the alternatives); which cabinet Airburst and Shield Wall belong in.
+**Decided:** the names, the chain above, and the classics cabinet for all three (so their cards carry no story line, like Feedline and Hull Breach). Nothing about the new games is waiting on the owner now.
