@@ -17,7 +17,7 @@ An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invad
 
 ## Session workflow
 
-Planned-but-unbuilt work lives in its own `docs/*-plan.md` file. **[docs/pre-release-plan.md](docs/pre-release-plan.md) is open** (Choke Point’s gradual unlock, then three new classics; deleting landscape shipped in v51). A plan file is deleted once the work ships and its reasoning moves to DECISIONS.md, so if one exists it is live.
+Planned-but-unbuilt work lives in its own `docs/*-plan.md` file. **[docs/pre-release-plan.md](docs/pre-release-plan.md) is open** (three new classics; deleting landscape shipped in v51, Choke Point’s gradual unlock in v52). A plan file is deleted once the work ships and its reasoning moves to DECISIONS.md, so if one exists it is live.
 
 This is a solo, part-time project with potentially long gaps (weeks or months) between sessions. Read **[STATUS.md](STATUS.md)** first — it's the current "what's playable / what's next" snapshot, kept fresh each session rather than left to go stale. **[docs/DECISIONS.md](docs/DECISIONS.md)** has the reasoning behind past architectural choices, append-only — check it before re-deciding something that looks unusual.
 

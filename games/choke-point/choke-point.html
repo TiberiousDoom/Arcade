@@ -330,6 +330,13 @@
      plainly out of reach */
   .menuSettings label.locked{opacity:.4}
   .menuSettings label em{font-style:normal;font-size:9px;color:var(--dim);letter-spacing:.1em}
+  /* A class or track opened mid-run, said in passing rather than with a banner:
+     the run keeps going, and the palette has already changed under it. */
+  #unlockNote{position:absolute;left:50%;top:10px;transform:translateX(-50%);
+    padding:5px 12px;border:1px solid var(--accent-hot);background:rgba(4,10,12,.86);
+    color:var(--bone);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .35s}
+  #unlockNote.on{opacity:1}
 </style>
 
 <div id="shell">
@@ -360,6 +367,7 @@
   <div id="stage">
     <canvas id="cv" width="780" height="520"></canvas>
     <div id="tsel"></div>
+    <div id="unlockNote" role="status" aria-live="polite"></div>
     <div id="shop">
       <div id="shopHead">
         <h2>Armory</h2>
@@ -393,7 +401,7 @@ import { makeFit } from '../../shared/fit.js';
 import { makeFx } from '../../shared/fx.js';
 import { glowStroke, glowDot, inkDot, extrudeDisc, cube, dim, GLOW_PASSES_CHEAP } from '../../shared/glow.js';
 import { best, submit } from '../../shared/scores.js';
-import { recordProgress } from '../../shared/unlocks.js';
+import { recordProgress, progress as cabinetBest } from '../../shared/unlocks.js';
 import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
 import { makeAudio } from '../../shared/audio.js';
 import { makeMenu } from '../../shared/menu.js';
@@ -486,6 +494,18 @@ function writeProgress(p) {
 }
 
 const progress = readProgress();
+/* The opening ramp (v52) is gated on experience this object only started
+   recording in v52. A player from before then already has their best wave on
+   record — the cabinet's unlock gate has stored it since v26 — so take it from
+   there rather than make a veteran re-earn Breaker and Coil. Anyone with a
+   wave on record but no runs counted predates the ramp, and has certainly had
+   more than one run's worth of the armory: count them past the second run. */
+{
+  const seen = cabinetBest(GAME_ID);
+  if (seen > progress.best) progress.best = seen;
+  if (seen > 0 && progress.runs === 0) progress.runs = 2;
+  writeProgress(progress);
+}
 
 /** The circuit a new run should start on: the furthest one unlocked at this
  *  difficulty, so "play again" continues the campaign rather than replaying a
@@ -558,6 +578,7 @@ function renderPicker() {
         writeDifficulty(d);
         E.resetGame(world, { difficulty: d, routeIndex: r });
         world.classUpgrades = readArmory();
+        countRun();
         closePicker();
         // start it straight away: choosing a circuit *is* the decision to play it
         world.running = true;
@@ -951,10 +972,16 @@ const TRACK_LABEL = {
    rather than hidden, exactly like Flak Battery's locked research rungs: a
    reward nobody knows about incentivises nobody. */
 const TRACK_LOCK = {
+  range: 'From your second run',
+  splash: 'From your second run',
   chain: 'Hold a circuit on Hard',
   veterancy: 'Hold one circuit on all three',
 };
-const CLASS_LOCK = { sever: 'Hold a circuit on Medium' };
+const CLASS_LOCK = {
+  breaker: `Reach wave ${E.CLASS_UNLOCK.breaker.best}`,
+  coil: `Reach wave ${E.CLASS_UNLOCK.coil.best}`,
+  sever: 'Hold a circuit on Medium',
+};
 
 /* A grid: one column per class, one row per track, and the buy button is the
    cell. It was three stacked per-class cards, which meant comparing what a
@@ -1423,6 +1450,7 @@ $('go').addEventListener('click', () => {
   // `won` covers the victory banner, where the run is finished but the core
   // never broke — the button there starts the next circuit, not a resume
   if (world.over || world.won) startFreshRun();
+  if (!runCounted) countRun();
   world.running = true;
   gfx.clear();
   hideBanner();
@@ -1434,6 +1462,36 @@ function startFreshRun() {
   E.resetGame(world, { difficulty: d, routeIndex: nextRoute(d) });
   barrelOut.clear(); readyHold.clear();
   clearRun(GAME_ID);
+  runCounted = false;
+}
+
+/* ---------- the opening ramp ----------
+
+   Breaker, Coil, Range and Splash open on experience (see the engine's
+   CLASS_UNLOCK), so they can open in the middle of a run: the palette and
+   armory change at once, and a line at the top of the board says so. */
+let runCounted = false;     // has the run on the board been counted as started?
+
+function announceOpened(opened) {
+  if (!opened.length) return;
+  writeProgress(progress);
+  E.syncUnlocks(world, progress);
+  syncPalette();
+  if ($('shop').classList.contains('on')) renderShop();
+  const name = (o) => o.kind === 'class' ? E.TOWER_TYPES[o.key].name : TRACK_LABEL[o.key];
+  const note = $('unlockNote');
+  note.textContent = opened.map(name).join(' · ') + ' unlocked';
+  note.classList.add('on');
+  buzz();
+  clearTimeout(announceOpened.t);
+  announceOpened.t = setTimeout(() => note.classList.remove('on'), 2600);
+}
+
+function countRun() {
+  runCounted = true;
+  const opened = E.recordRunStart(progress);
+  writeProgress(progress);
+  announceOpened(opened);
 }
 
 /* ---------- winning ----------
@@ -1550,6 +1608,8 @@ function offerResume() {
       // a snapshot this build cannot read is dropped rather than half-applied
       clearRun(GAME_ID);
       E.resetGame(world);
+    } else {
+      runCounted = true;              // it was counted when it began
     }
     if (fitStage) fitStage();
     sync();
@@ -1647,6 +1707,12 @@ function sync() {
   // how far this run got, for the cabinet's unlock gate — recorded live, so a
   // player who closes the tab mid-run still keeps the wave they reached
   recordProgress(GAME_ID, world.wave);
+  // and for the opening ramp: a wave further than ever may open a class
+  if (world.wave > progress.best) {
+    const opened = E.recordWave(progress, world.wave);
+    writeProgress(progress);
+    announceOpened(opened);
+  }
   // naming the circuit matters on a replay: the board genuinely changed, and
   // without a label that reads as a glitch rather than as a new map. Numbered
   // rather than lettered now that they run easiest to hardest — "3" says

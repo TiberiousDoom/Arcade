@@ -1,24 +1,24 @@
-# Device test checklist — build v51
+# Device test checklist — build v52
 
 For a real phone, via **https://tiberiousdoom.github.io/Arcade/**. These are the
 questions a desk cannot answer — thumb reach, legibility at real size, frame
 rate, and whether the balance numbers are any good. Every item here was
 reviewed only at a desk, through node-canvas or a desktop browser.
 
-Rewritten 2026-10-13 for v49, updated for v51. The v22 checklist it replaces had sat for 27
+Rewritten 2026-10-13 for v49, updated for v52. The v22 checklist it replaces had sat for 27
 builds; the items it asked about have since been answered in feedback rounds,
 superseded by later builds, or carried forward below. When a section is
 settled, record the outcome in STATUS.md and delete the section.
 
 ---
 
-## 0. First: confirm you're on v51
+## 0. First: confirm you're on v52
 
 The service worker serves cache-first, so a phone keeps running an old build
 until the new worker takes over, and every observation below would then be
 about the wrong code.
 
-- [ ] Open any game's menu and check the bottom line reads **Arcade v51**.
+- [ ] Open any game's menu and check the bottom line reads **Arcade v52**.
 - [ ] If it doesn't: fully close the app, reopen, and reload once more. The
       first load installs the new worker, the second reads from it.
 
@@ -71,6 +71,20 @@ Nobody has reported from these waves on glass.
       wait for the release ever feel laggy?
 - [ ] **The armory** now costs ~24 Easy runs of kill income to fill (~15 for the
       four tracks anyone can buy). Does progress feel steady or grindy?
+
+## 3b. Choke Point — the opening ramp (v52)
+
+Best judged as a new player: clear the site data for the Pages URL first
+(this also clears your armory and wins), or ask someone who has never played.
+
+- [ ] A first run offers **Node only**; Breaker and Coil are on the palette,
+      dimmed, saying "Reach wave 3" / "Reach wave 8".
+- [ ] At **wave 3** Breaker opens mid-run with "Breaker unlocked" at the top of
+      the board. Is the notice noticeable without being in the way?
+- [ ] Does Breaker arriving a wave before Swarm feel like being handed the
+      answer in time, or like too little time to learn it?
+- [ ] On the **second run**, Range and Splash are in the armory.
+- [ ] On your own phone without clearing anything: nothing you had is locked.
 
 ## 4. Choke Point — the win waves
 

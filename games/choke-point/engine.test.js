@@ -9,8 +9,14 @@ const L = E.LAYOUT;
    which stopped covering a single full armory track once the armory was
    repriced — so a test about *buying* things started failing for want of
    money rather than for anything it was checking. */
+/** Progress past the opening ramp (see CLASS_UNLOCK): every class and track
+ *  that experience opens is open, while the win-gated ones (Sever, Chain,
+ *  Veterancy) still wait on wins. Tests about what a tower *does* use this, as
+ *  Flak Battery's use `veteran(w)`; the ramp has its own tests. */
+const seasoned = () => ({ ...E.newProgress(), best: 99, runs: 9 });
+
 function richWorld(opts = {}) {
-  const w = E.createWorld(opts);
+  const w = E.createWorld({ progress: seasoned(), ...opts });
   w.components = 1e7;
   return w;
 }
@@ -1058,11 +1064,89 @@ test('the mark expires, and rides a save through', () => {
   assert.equal(back.enemies[0].marked, 2, 'a resumed run remembers what was marked');
 });
 
-test('Sever is earned on Medium, and cannot be built before that', () => {
+/* ---------- the opening ramp ---------- */
+
+test('a first run opens on Node alone, with Damage and Rate in the armory', () => {
   const p = E.newProgress();
+  assert.deepEqual(E.unlockedClasses(p), ['node'], 'one class to learn first');
+  for (const t of ['dmg', 'rate']) assert.equal(E.trackUnlocked(p, t), true, `${t} from the start`);
+  for (const t of ['range', 'splash']) assert.equal(E.trackUnlocked(p, t), false, `${t} waits`);
+});
+
+test('each class arrives one wave before the enemy it answers', () => {
+  // the owner's call (DECISIONS 2026-10-14): the counter is in hand when its
+  // enemy first turns up, rather than arriving with it
+  assert.equal(E.CLASS_UNLOCK.breaker.best, E.ENEMY_UNLOCK.swarm - 1, 'Breaker before Swarm');
+  assert.equal(E.CLASS_UNLOCK.coil.best, E.ENEMY_UNLOCK.phase - 1, 'Coil before Phase');
+});
+
+test('reaching a wave opens a class mid-run, once, and only going forward', () => {
+  const p = E.newProgress();
+  assert.deepEqual(E.recordWave(p, 1), []);
+  assert.deepEqual(E.recordWave(p, 2), []);
+  assert.deepEqual(E.recordWave(p, 3), [{ kind: 'class', key: 'breaker' }], 'Breaker at wave 3');
+  assert.deepEqual(E.recordWave(p, 3), [], 'and only the first time');
+  assert.deepEqual(E.recordWave(p, 8), [{ kind: 'class', key: 'coil' }], 'Coil at wave 8');
+  assert.equal(p.best, 8);
+  assert.deepEqual(E.recordWave(p, 4), [], 'a shorter run never walks it back');
+  assert.equal(p.best, 8);
+  assert.equal(E.classUnlocked(p, 'sever'), false, 'and no wave buys a win-gated class');
+});
+
+test('a jump past both thresholds opens both at once', () => {
+  // a veteran whose best predates the ramp, seeded in one step
+  const p = E.newProgress();
+  assert.deepEqual(E.recordWave(p, 40).map(o => o.key).sort(), ['breaker', 'coil']);
+});
+
+test('the second run opens Range and Splash', () => {
+  const p = E.newProgress();
+  assert.deepEqual(E.recordRunStart(p), [], 'the first run opens nothing');
+  assert.deepEqual(E.recordRunStart(p).map(o => o.key).sort(), ['range', 'splash']);
+  assert.deepEqual(E.recordRunStart(p), [], 'and later runs nothing more');
+  assert.equal(p.runs, 3);
+});
+
+test('the ramp is enforced by the engine, not only drawn by the shell', () => {
+  const w = E.createWorld({ progress: E.newProgress() });
+  w.components = 1e7;
+  const cell = firstBuildable(w);
+  assert.equal(E.canBuild(w, cell.c, cell.r, 'breaker'), false, 'no Breaker on a first run');
+  assert.equal(E.buildTower(w, cell.c, cell.r, 'coil'), false, 'or Coil');
+  assert.equal(E.buildTower(w, cell.c, cell.r, 'node'), true, 'Node builds');
+  assert.equal(E.buyClassUpgrade(w, 'breaker', 'dmg'), false, 'no armory column for a locked class');
+  assert.equal(E.buyClassUpgrade(w, 'node', 'range'), false, 'Range waits for the second run');
+  assert.equal(E.buyClassUpgrade(w, 'node', 'dmg'), true, 'Damage sells');
+
+  const p = E.newProgress();
+  E.recordWave(p, 3);
+  E.syncUnlocks(w, p);
+  const next = otherFreeCell(w, 0);     // firstBuildable ignores towers, and Node stands there
+  assert.equal(E.buildTower(w, next.c, next.r, 'breaker'), true, 'Breaker builds once wave 3 is reached');
+});
+
+test('stored progress keeps experience, and junk or an old save reads as none', () => {
+  const p = E.sanitizeProgress(JSON.parse(JSON.stringify({ ...E.newProgress(), best: 12, runs: 4 })));
+  assert.equal(p.best, 12); assert.equal(p.runs, 4);
+  const old = E.sanitizeProgress({ wins: { easy: [0] } });   // a pre-ramp save
+  assert.equal(old.best, 0); assert.equal(old.runs, 0);
+  const junk = E.sanitizeProgress({ best: 'lots', runs: -3 });
+  assert.equal(junk.best, 0); assert.equal(junk.runs, 0);
+});
+
+test('experience is never part of a snapshot', () => {
+  // it lives on the progress object the shell stores, like the win ladder, so a
+  // save cannot carry a class past what this player has reached
+  const w = E.createWorld({ progress: seasoned() });
+  const snap = JSON.stringify(E.snapshot(w));
+  assert.ok(!/"best"|"runs"|"unlocked"/.test(snap), 'no experience fields in the save');
+});
+
+test('Sever is earned on Medium, and cannot be built before that', () => {
+  const p = seasoned();
   assert.equal(E.classUnlocked(p, 'sever'), false);
   for (const t of ['node', 'breaker', 'coil']) {
-    assert.equal(E.classUnlocked(p, t), true, `${t} is open from the first run`);
+    assert.equal(E.classUnlocked(p, t), true, `${t} is open to an experienced player`);
   }
 
   const locked = richWorld();
@@ -1090,7 +1174,7 @@ test('Chain forks every Nth shot, deterministically', () => {
      where the tower stood. */
   const GAP = 40;
   const w = richWorld();
-  const p = E.newProgress();
+  const p = seasoned();
   for (const d of E.DIFFICULTY_KEYS) E.recordWin(p, d, 0);
   E.syncUnlocks(w, p);
   const { c, r, d } = overlook(w, 'node', GAP);
@@ -1142,11 +1226,11 @@ test('a fork is not splash — it reaches past it, and Phase cannot shrug it off
 });
 
 test('Chain and Veterancy are earned, and refused until they are', () => {
-  const p = E.newProgress();
+  const p = seasoned();
   assert.equal(E.trackUnlocked(p, 'chain'), false);
   assert.equal(E.trackUnlocked(p, 'veterancy'), false);
   for (const t of E.CLASS_TRACKS_FREE) {
-    assert.equal(E.trackUnlocked(p, t), true, `${t} is open to everyone`);
+    assert.equal(E.trackUnlocked(p, t), true, `${t} needs no win`);
   }
 
   const w = richWorld();
@@ -1289,7 +1373,7 @@ function towerVsEnemy(type, opts = {}) {
  *  be built out of a bare world, which is the whole point of them. */
 function fullyEarned(type) {
   const w = richWorld();
-  const p = E.newProgress();
+  const p = seasoned();
   for (const d of E.DIFFICULTY_KEYS) E.recordWin(p, d, 0);
   E.syncUnlocks(w, p);
   const { c, r, d } = overlook(w, type);

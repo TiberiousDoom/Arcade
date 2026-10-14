@@ -319,7 +319,8 @@ export function addXp(tower, amount) {
  *  exist whether or not this player has earned them yet. What the gate governs
  *  is `buyClassUpgrade`, and the shell drawing the row as locked. */
 export const CLASS_TRACKS = ['dmg', 'rate', 'range', 'splash', 'chain', 'veterancy'];
-/** The four anyone can buy from their first run. */
+/** The four no win is needed for. Range and Splash still wait for a second
+ *  run (the opening ramp, see TRACK_UNLOCK); Chain and Veterancy wait on wins. */
 export const CLASS_TRACKS_FREE = ['dmg', 'rate', 'range', 'splash'];
 export const CLASS_MAX = 5;
 /** Per-level growth for a purchased track, same divide-don't-multiply rule for
@@ -623,8 +624,16 @@ export const winWave = (difficulty) => diffOf(difficulty).winWave;
 export function newProgress() {
   const wins = {};
   for (const k of DIFFICULTY_KEYS) wins[k] = [];
-  return { wins };
+  /* `best` is the furthest wave ever reached, on any circuit or difficulty, and
+     `runs` how many runs have been started. Both only ever go up; they are what
+     the opening ramp (see CLASS_UNLOCK) is gated on. */
+  return { wins, best: 0, runs: 0 };
 }
+
+const count = (v) => {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
 
 /** Defensive read of stored progress — junk degrades to "nothing unlocked"
  *  rather than to a crash or to everything unlocked. */
@@ -637,25 +646,48 @@ export function sanitizeProgress(raw) {
       .map(n => Math.floor(Number(n)))
       .filter(n => Number.isInteger(n) && n >= 0 && n < ROUTE_COUNT))].sort((a, b) => a - b);
   }
+  p.best = count(raw.best);
+  p.runs = count(raw.runs);
   return p;
 }
 
 export const hasWon = (progress, difficulty, routeIndex) =>
   !!progress?.wins?.[difficulty]?.includes(routeIndex);
 
-/* ---------- what a harder win is *for* ----------
+/* ---------- what is earned, and when ----------
 
-   Winning on Medium or Hard used to buy nothing but the next circuit at that
-   difficulty — which a player had usually already opened on Easy, so the
-   reward was one they held before they started. These are the things a harder
-   win actually earns.
+   Two ladders share these tables.
 
-   Everything is gated on holding a circuit rather than on reaching a wave: a
-   win is the thing being rewarded, and it is already recorded per circuit per
-   difficulty. `sweep` means one circuit held on *all three* difficulties, the
-   deepest thing the progression can express. */
-export const CLASS_UNLOCK = { sever: { difficulty: 'medium' } };
-export const TRACK_UNLOCK = { chain: { difficulty: 'hard' }, veterancy: { sweep: true } };
+   **The opening ramp** (v52) is gated on experience — the best wave ever
+   reached, and how many runs have been started — exactly like Flak Battery's
+   branch ramp, so a veteran restarting never re-earns anything. A first run
+   used to open on three classes, four armory tracks and a difficulty choice at
+   once. Now it opens on Node alone: Breaker arrives at wave 3 and Coil at wave
+   8, each one wave *before* the enemy it answers (Swarm at 4, Phase at 9), so
+   the tower is in hand when that enemy first turns up. Range and Splash join
+   Damage and Rate in the armory from the second run, once there is a run's
+   worth of components to spend.
+
+   **What a harder win is for.** Winning on Medium or Hard used to buy nothing
+   but the next circuit at that difficulty — which a player had usually already
+   opened on Easy, so the reward was one they held before they started. These
+   are gated on holding a circuit, recorded per circuit per difficulty. `sweep`
+   means one circuit held on *all three* difficulties, the deepest thing the
+   progression can express.
+
+   Requirement shapes: `{ best: n }`, `{ runs: n }`, `{ difficulty }`,
+   `{ sweep: true }`. Anything not listed is open from the start. */
+export const CLASS_UNLOCK = {
+  breaker: { best: 3 },
+  coil: { best: 8 },
+  sever: { difficulty: 'medium' },
+};
+export const TRACK_UNLOCK = {
+  range: { runs: 2 },
+  splash: { runs: 2 },
+  chain: { difficulty: 'hard' },
+  veterancy: { sweep: true },
+};
 
 /** Has any one circuit been held on every difficulty? */
 export function hasSweep(progress) {
@@ -674,11 +706,42 @@ export function sweptCircuits(progress) {
   return out;
 }
 
-/** Is a requirement of the `{ difficulty }` / `{ sweep }` shape met? */
+/** Is a requirement (any shape listed above CLASS_UNLOCK) met? */
 function unlockMet(progress, req) {
   if (!req) return true;
+  if (req.best) return (progress?.best || 0) >= req.best;
+  if (req.runs) return (progress?.runs || 0) >= req.runs;
   if (req.sweep) return hasSweep(progress);
   return (progress?.wins?.[req.difficulty] || []).length > 0;
+}
+
+/** Everything a change to `progress` opened: run `mutate` on it and compare
+ *  what was unlocked before and after. Shared by the experience recorders. */
+function openedBy(progress, mutate) {
+  const was = { classes: {}, tracks: {} };
+  for (const t of Object.keys(CLASS_UNLOCK)) was.classes[t] = classUnlocked(progress, t);
+  for (const t of Object.keys(TRACK_UNLOCK)) was.tracks[t] = trackUnlocked(progress, t);
+  mutate(progress);
+  const out = [];
+  for (const t of Object.keys(CLASS_UNLOCK)) {
+    if (!was.classes[t] && classUnlocked(progress, t)) out.push({ kind: 'class', key: t });
+  }
+  for (const t of Object.keys(TRACK_UNLOCK)) {
+    if (!was.tracks[t] && trackUnlocked(progress, t)) out.push({ kind: 'track', key: t });
+  }
+  return out;
+}
+
+/** Note a wave reached. Raises `best` if it is further than ever, and returns
+ *  what that opened (empty almost always), so the shell can say so mid-run. */
+export function recordWave(progress, wave) {
+  if (!(wave > (progress.best || 0))) return [];
+  return openedBy(progress, p => { p.best = Math.floor(wave); });
+}
+
+/** Note that a run has started, and return what that opened. */
+export function recordRunStart(progress) {
+  return openedBy(progress, p => { p.runs = (p.runs || 0) + 1; });
 }
 
 /** Can this tower class be built yet? Classes with no entry are always open. */
@@ -714,7 +777,7 @@ export function syncUnlocks(w, progress) {
 /** What holding this circuit at this difficulty would open, so the victory
  *  banner can say what was earned rather than only that something was. */
 export function rewardsFor(progress, difficulty, routeIndex) {
-  const after = { wins: {} };
+  const after = { wins: {}, best: progress?.best || 0, runs: progress?.runs || 0 };
   for (const d of DIFFICULTY_KEYS) after.wins[d] = [...(progress?.wins?.[d] || [])];
   if (!after.wins[difficulty].includes(routeIndex)) after.wins[difficulty].push(routeIndex);
 

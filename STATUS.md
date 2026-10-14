@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-14 (v51 — landscape deleted; next is Choke Point's gradual unlock, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
+Last updated: 2026-10-14 (v52 — Choke Point's gradual unlock; next are the three new classics, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -21,6 +21,15 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, four tower classes (node/breaker/coil, plus Sever earned on Medium) that level themselves from combat XP, a persistent per-class armory of six tracks, five circuits and three difficulties all earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **571 logic tests pass** (`node --test games/*/engine.test.js shared/*.test.js`) — plus **77 render and resume tests** (`node --test games/*/render-test.mjs games/*/resume-test.mjs`, after `npm install --no-save jsdom canvas`).
+
+## v52 — Choke Point's opening ramp (2026-10-14)
+
+Item 2 of the [pre-release plan](docs/pre-release-plan.md), on Flak Battery's model: unlocks gated on the best wave ever reached and on runs started, never per run.
+
+- **A first run opens on Node alone**, with Damage and Rate in the armory. **Breaker opens at wave 3 and Coil at wave 8**, a wave before Swarm and Phase first arrive, and they open *during* the run: the palette changes at once and a line at the top of the board says "Breaker unlocked". **Range and Splash join the armory from the second run.** Sever, Chain and Veterancy keep their win gates.
+- Locked classes and tracks stay on screen with what opens them ("Reach wave 3", "From your second run"), as the win-gated ones always have.
+- **Nobody who has played already loses anything.** The cabinet has stored Choke Point's best wave since v26, so the shell seeds the new record from it, and a player with any wave on record counts as past their second run.
+- The engine refuses locked classes and tracks (`canBuild`, `buyClassUpgrade`), so the shell cannot sell one. 11 new tests (8 engine, 3 render).
 
 ## v51 — landscape deleted (2026-10-14)
 
@@ -938,7 +947,7 @@ Do **not** try to unify the engine `step()` signatures — those differ per game
 4. **Choke Point builds on press** — cancel on slide-off. **Shipped in v50.**
 5. **The armory's size** — keep it, and fence it: the Choke Point test now fails if a full armory costs fewer than 8 or more than 30 Easy runs (measures ~24.4). Done 2026-10-14.
 6. **Flak Battery difficulty selector** — leave it for now.
-7. **Choke Point's opening** — unlock gradually: Node from the start, Breaker at best wave 3, Coil at best wave 8 (a wave before the enemy each answers). Planned, item 2 — next.
+7. **Choke Point's opening** — unlock gradually: Node from the start, Breaker at best wave 3, Coil at best wave 8 (a wave before the enemy each answers), Range and Splash from the second run. **Shipped in v52.**
 8. **Flak Battery's locked guns in Refit** — hide them. **Shipped in v50.**
 9. **The next game** — all three, before release: **Airburst** (Missile Command), **Shield Wall** (Invaders), **Bulkhead** (the falling-block game), all in the classics cabinet, unlocking in a chain after Hull Breach. Saves, names, chain and Bulkhead's art all settled 2026-10-14; see the plan.
 10. **Apple** — deferred.

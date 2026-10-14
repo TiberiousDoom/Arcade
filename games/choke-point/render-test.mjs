@@ -18,9 +18,16 @@ const SHELL = fileURLToPath(new URL('./choke-point.html', import.meta.url));
    and Veterancy are all earned. Passed as stored progress, which is how the
    shell really learns it: `progress` is read from localStorage at boot and
    projected onto the world by `syncUnlocks`. */
-const SWEPT = JSON.stringify({ wins: { easy: [0], medium: [0], hard: [0] } });
+const SWEPT = JSON.stringify({ wins: { easy: [0], medium: [0], hard: [0] }, best: 150, runs: 9 });
 const swept = (opts = {}) =>
   ({ ...opts, storage: { 'arcade:choke-point:progress': SWEPT, ...(opts.storage || {}) } });
+
+/* A player past the opening ramp (v52) but with no wins: every class and track
+   that experience opens is open, the win-gated ones are not. The default for
+   tests about what towers do, as the engine suite's `seasoned()` is. */
+const SEASONED = JSON.stringify({ wins: { easy: [], medium: [], hard: [] }, best: 99, runs: 9 });
+const seasoned = (opts = {}) =>
+  ({ ...opts, storage: { 'arcade:choke-point:progress': SEASONED, ...(opts.storage || {}) } });
 
 /** A real tap: press and release on the same control, then the click the
  *  browser synthesizes from it. */
@@ -52,13 +59,13 @@ function slideOff(w, el, away) {
 }
 
 test('the shell boots without throwing', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   assert.deepEqual(g.errors, [], 'boot threw');
   assert.ok(g.world, 'the world exists, so the module ran to completion');
 });
 
 test('every enemy type renders, slow/heal overlays included', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E } = g;
   // one of everything, half of them slowed and one mid-repair, so the frost
   // overlay and the heal flash both execute (per-trait glyphs were dropped —
@@ -105,7 +112,7 @@ test('every tower type renders across the level range, aiming and firing', async
    barrel once something is. Both states have to survive a draw, and the second
    one only appears after the easing has had frames to run. */
 test('towers draw both idle and deployed', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E } = g;
   world.components = 99999;
   let cell = null;
@@ -172,7 +179,7 @@ test('the armory opens and renders every class and track', async () => {
    kills the second, so a row you can suddenly afford stays greyed out. Both are
    asserted here, together, because either one alone passes on the broken build. */
 test('the armory pauses the wave but keeps repainting affordability', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, window: w } = g;
   const doc = w.document;
   const enabled = () => [...doc.querySelectorAll('#shopClasses .armTable button[data-t]')]
@@ -210,7 +217,7 @@ test('the armory pauses the wave but keeps repainting affordability', async () =
    tap you thought you had made had become a different tap. Selection is yours
    now; being broke only changes how the button looks. */
 test('a press slid off a button does nothing when it is let go', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E, window: w } = g;
   const doc = w.document;
   world.components = 9999;
@@ -246,7 +253,7 @@ test('a press slid off a button does nothing when it is let go', async () => {
 });
 
 test('a palette selection survives going broke', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, window: w } = g;
   const doc = w.document;
   doc.getElementById('go').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
@@ -278,7 +285,7 @@ test('a palette selection survives going broke', async () => {
 });
 
 test('the palette quotes the price the board is actually charging', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E, window: w } = g;
   const doc = w.document;
   world.components = 99999;
@@ -301,7 +308,7 @@ test('the palette quotes the price the board is actually charging', async () => 
 });
 
 test('rush latches down, and lets go when the wave has finished arriving', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, window: w } = g;
   const doc = w.document;
   const rush = doc.getElementById('rushWave');
@@ -335,7 +342,7 @@ test('rush latches down, and lets go when the wave has finished arriving', async
 });
 
 test("a breaker's round is drawn while it flies, and only then does it land", async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E } = g;
   world.components = 99999;
   // put a breaker where it overlooks the route, and something slow on the path
@@ -373,7 +380,7 @@ test("a breaker's round is drawn while it flies, and only then does it land", as
 });
 
 test('the HUD names the circuit and the difficulty, in the words the rest uses', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E, window: w } = g;
   const doc = w.document;
   g.frame(1000);
@@ -393,7 +400,7 @@ test('the HUD names the circuit and the difficulty, in the words the rest uses',
 });
 
 test('the gameplay strip fades out under a full-board panel', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { window: w } = g;
   const doc = w.document;
   assert.ok(!doc.body.classList.contains('panelOpen'), 'clear while playing');
@@ -405,7 +412,7 @@ test('the gameplay strip fades out under a full-board panel', async () => {
 });
 
 test('the circuit picker puts the board on the left and the difficulties down the right', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { window: w, E } = g;
   const doc = w.document;
   // the picker is earned; render it directly rather than winning three circuits
@@ -422,7 +429,7 @@ test('the circuit picker puts the board on the left and the difficulties down th
 });
 
 test('an unearned class sits on the palette, locked, saying what earns it', async () => {
-  const g = await bootAndStart(SHELL);            // a fresh player: nothing swept
+  const g = await bootAndStart(SHELL, seasoned()); // experienced, but nothing won
   const { world, E, window: w } = g;
   const doc = w.document;
   world.components = 99999;
@@ -475,7 +482,7 @@ test('a swept player gets the class, and the two earned armory rows', async () =
 });
 
 test('the armory shows the earned rows locked rather than hiding them', async () => {
-  const g = await bootAndStart(SHELL);            // fresh player again
+  const g = await bootAndStart(SHELL, seasoned()); // experienced, nothing won, again
   const { E, window: w } = g;
   const doc = w.document;
   g.frame(1000);
@@ -518,6 +525,64 @@ test('the armory shows the earned rows locked rather than hiding them', async ()
   const buys = doc.querySelectorAll('#shopClasses .armTable button[data-t]');
   assert.equal(buys.length, (E.TOWER_KEYS.length - 1) * E.CLASS_TRACKS_FREE.length);
   assert.deepEqual(g.errors, [], 'the locked armory threw');
+});
+
+test('a brand-new player meets Node alone, with the rest drawn and labelled', async () => {
+  const g = await bootAndStart(SHELL);            // nothing stored at all
+  const { E, window: w } = g;
+  const doc = w.document;
+  g.frame(1000);
+
+  const pick = (re) => [...doc.querySelectorAll('.pick')].find(b => re.test(b.textContent));
+  assert.ok(!pick(/node/i).classList.contains('locked'), 'Node is open');
+  assert.ok(pick(/breaker/i).classList.contains('locked'), 'Breaker is drawn, locked');
+  assert.match(pick(/breaker/i).textContent, new RegExp(`wave ${E.CLASS_UNLOCK.breaker.best}`, 'i'),
+    'saying which wave opens it');
+  assert.match(pick(/coil/i).textContent, new RegExp(`wave ${E.CLASS_UNLOCK.coil.best}`, 'i'));
+
+  doc.getElementById('shopBtn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  const lockedRows = [...doc.querySelectorAll('#shopClasses .armTable .rh.locked')].map(el => el.textContent);
+  assert.equal(lockedRows.length, 4, 'Range, Splash, Chain and Veterancy all wait');
+  assert.match(doc.querySelector('#shopClasses .armTable').textContent, /second run/i,
+    'and the ramp rows say what opens them');
+  assert.deepEqual(g.errors, [], 'the opening shell threw');
+});
+
+test('reaching wave 3 opens Breaker mid-run, and says so', async () => {
+  const g = await bootAndStart(SHELL);            // a first run
+  const { world, window: w } = g;
+  const doc = w.document;
+  const breaker = () => [...doc.querySelectorAll('.pick')].find(b => /breaker/i.test(b.textContent));
+  g.frame(1000);
+  assert.ok(breaker().classList.contains('locked'));
+
+  world.wave = 3;                                 // as the run arrives there
+  g.frame(1100);
+  assert.ok(!breaker().classList.contains('locked'), 'Breaker is on the palette now');
+  const note = doc.getElementById('unlockNote');
+  assert.ok(note.classList.contains('on'), 'and a notice is up');
+  assert.match(note.textContent, /breaker unlocked/i);
+  const stored = JSON.parse(w.localStorage.getItem('arcade:choke-point:progress'));
+  assert.equal(stored.best, 3, 'and the wave is remembered for next time');
+  assert.equal(world.running, true, 'without stopping the run');
+  assert.deepEqual(g.errors, [], 'opening a class mid-run threw');
+});
+
+test('a veteran from before the ramp keeps every class', async () => {
+  // a v51 save: wins and no experience fields, but the cabinet has the best
+  // wave on record, as it has since v26
+  const g = await bootAndStart(SHELL, { storage: {
+    'arcade:choke-point:progress': JSON.stringify({ wins: { easy: [0], medium: [], hard: [] } }),
+    'arcade:progress:choke-point': '23',
+  } });
+  const doc = g.window.document;
+  g.frame(1000);
+  const locked = [...doc.querySelectorAll('.pick.locked')].map(b => b.textContent);
+  assert.ok(locked.every(t => /sever/i.test(t)), `only the win-gated class is locked (${locked.length})`);
+  doc.getElementById('shopBtn').dispatchEvent(new g.window.MouseEvent('click', { bubbles: true }));
+  assert.ok(!/second run/i.test(doc.querySelector('#shopClasses .armTable').textContent),
+    'and Range and Splash are open');
+  assert.deepEqual(g.errors, [], 'seeding a veteran threw');
 });
 
 test('an open panel is bounded by the screen, and its buttons are one size', async () => {
@@ -600,7 +665,7 @@ test('a fork and a mark both draw on a real board', async () => {
 });
 
 test('the tower popup opens and renders on a real DOM', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E, window: w } = g;
   world.components = 9999;
   let built = false;
@@ -626,7 +691,7 @@ test('the tower popup opens and renders on a real DOM', async () => {
 });
 
 test('a press on an empty cell builds on release, and a press slid off builds nothing', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E, window: w } = g;
   world.components = 9999;
 
@@ -656,7 +721,7 @@ test('a press on an empty cell builds on release, and a press slid off builds no
 });
 
 test('a tower can be dragged to a new cell, and the board draws the pending move', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E, window: w } = g;
   world.components = 9999;
 
@@ -696,7 +761,7 @@ test('a tower can be dragged to a new cell, and the board draws the pending move
 });
 
 test('a run through several waves never throws while drawing', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world, E } = g;
   world.components = 99999;
   let placed = 0;
@@ -721,7 +786,7 @@ test('a run through several waves never throws while drawing', async () => {
 });
 
 test('the game-over banner renders', async () => {
-  const g = await bootAndStart(SHELL);
+  const g = await bootAndStart(SHELL, seasoned());
   const { world } = g;
   world.integrity = 0;
   world.over = true;

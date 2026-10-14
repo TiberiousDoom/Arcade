@@ -10,7 +10,7 @@ Build order, cheapest and most foundational first:
 
 1. ~~**Delete landscape**~~ — **shipped in v51.** First, because every later item (and all three new
    games) would otherwise be built for two layouts.
-2. **Choke Point's gradual unlock** — a contained change to one game.
+2. ~~**Choke Point's gradual unlock**~~ — **shipped in v52.**
 3. **Three new classics**: Airburst, Shield Wall, then Bulkhead.
 
 Every item touches files the app loads, so each ships as its own build with
@@ -51,7 +51,7 @@ four engines and four test suites (`PORTRAIT_ONLY`, `LAYOUT_TALL`,
 - Update the root CLAUDE.md (PWA layer line, Hull Breach/Feedline notes) and the
   per-game CLAUDE.md files, which describe two layouts throughout.
 
-## 2. Choke Point's gradual unlock
+## 2. Choke Point's gradual unlock — shipped in v52 (2026-10-14)
 
 The owner's answer: yes, apply Flak Battery's ramp. Flak Battery's shop opens
 with three branches and widens on `experience(w)` — the best wave ever reached
