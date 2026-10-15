@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-14 (v54 — Airburst polish pass; next is playing it on a phone, then Shield Wall, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
+Last updated: 2026-10-15 (v54 on main — round 20 played Airburst on a phone; next is Shield Wall, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -22,6 +22,16 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, four tower classes (node/breaker/coil, plus Sever earned on Medium) that level themselves from combat XP, a persistent per-class armory of six tracks, five circuits and three difficulties all earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **All tests pass** — run them with `node --test games/*/engine.test.js shared/*.test.js` (logic) and `node --test games/*/render-test.mjs games/*/resume-test.mjs` (shells, after `npm install --no-save jsdom canvas`). The counts move every build, so they are in each build's notes rather than here.
+
+## Round 20 feedback — Airburst on a phone (v54, 2026-10-15)
+
+The first play of Airburst on glass, after the branch was merged to `main`. "It feels nice."
+
+- **The crosshair 64px above the finger: good.** The distance stands.
+- **Firing on release: good.** No complaint of lag on quick taps.
+- **The split warning: good.** It reads in time.
+- **Reaching wave 5 was "not bad"**, which is where the gate to Shield Wall will sit, so the opening curve and the gate stand. Leading the shot was learnable within that.
+- Still open (TESTING.md): slide-off cancel, where it gets hard past wave 5, sound, ammunition, legibility and frame rate on a late wave.
 
 ## v54 — Airburst polish pass (2026-10-14)
 

@@ -72,21 +72,13 @@ Nobody has reported from these waves on glass.
 - [ ] **The armory** now costs ~24 Easy runs of kill income to fill (~15 for the
       four tracks anyone can buy). Does progress feel steady or grindy?
 
-## 3a. Airburst — new in v53, polished in v54
+## 3a. Airburst — still open after round 20
 
-Never played on glass. Classics cabinet, card 3 (opens at Hull Breach level 3).
+Round 20 settled the crosshair, firing on release, the split warning and the
+wave-5 curve (outcomes in STATUS). Still to judge:
 
-- [ ] **The crosshair (v54).** A touch shows a crosshair above your finger and
-      fires when you let go. Is 64px the right distance — far enough that the
-      finger never covers it, near enough to feel like pointing? Does firing
-      on release feel laggy on quick taps?
 - [ ] **Slide off to cancel**: press, drag off the board, let go — nothing fires.
-- [ ] **Leading.** The burst takes a moment to grow, so you have to tap ahead.
-      Learnable within a wave or two, or frustrating?
-- [ ] **The curve.** Wave 1 should be gentle. Roughly where does it get hard,
-      and is wave 5 (which will open Shield Wall) a fair target?
-- [ ] **Splitting** from wave 4: a warhead about to split runs hot inside a
-      closing ring (v54). Do you notice it in time to burst it high?
+- [ ] **Past wave 5.** Roughly where does it start to get hard?
 - [ ] **Sound (v54)**: launch, burst, catch, split, city lost — distinct from
       one another, and is the burst too frequent to be pleasant?
 - [ ] **Ammunition.** Ten per battery per wave — do you run dry, and does the
