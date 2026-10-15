@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-15 (v55 — Airburst's sounds re-voiced after round 20; next is Shield Wall, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
+Last updated: 2026-10-15 (v56 — Shield Wall, the second new classic; next is Bulkhead, the last, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -13,15 +13,29 @@ This is the "pick back up" file — check here before touching code. See [CLAUDE
 Serve the repo first — the shells use ES modules, so `file://` won't work:
 `python -m http.server 8123`, then open `http://localhost:8123/`.
 
-- **Two cabinets** — [index.html](index.html) is the invasion (Flak Battery, Choke Point), [classics.html](classics.html) is the classics (Feedline, Hull Breach, Airburst). Each links to the other, and each game links back to its own. Split in v34; see DECISIONS.
+- **Two cabinets** — [index.html](index.html) is the invasion (Flak Battery, Choke Point), [classics.html](classics.html) is the classics (Feedline, Hull Breach, Airburst, Shield Wall). Each links to the other, and each game links back to its own. Split in v34; see DECISIONS.
 
 - **Flak Battery** ([games/flak-battery/flak-battery.html](games/flak-battery/flak-battery.html)) — playable, backed by a tested engine ([engine.js](games/flak-battery/engine.js) / [engine.test.js](games/flak-battery/engine.test.js)). **Six** emplacements, per-emplacement upgrades and barrels, and a **persistent research tree** (RP earned per run — superlinear in the wave reached — buying gun types and the deepest two tiers of each branch). **No lives: one breach ends the run.** No standalone build any more — it was retired in v26 (see below); the render test boots the real shell in memory like every other game.
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance), and played on a phone each round.
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
-- **Airburst** ([games/airburst/airburst.html](games/airburst/airburst.html)) — new in v53: Missile Command on the engine/shell pattern, with saves, a render test and a resume test. Not yet played on a phone.
+- **Airburst** ([games/airburst/airburst.html](games/airburst/airburst.html)) — new in v53: Missile Command on the engine/shell pattern, with saves, a render test and a resume test. First played on a phone in round 20 (below).
+- **Shield Wall** ([games/shield-wall/shield-wall.html](games/shield-wall/shield-wall.html)) — new in v56: Space Invaders on the same pattern, with saves, a render test, a resume test and an art bench. Not yet played on a phone.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, four tower classes (node/breaker/coil, plus Sever earned on Medium) that level themselves from combat XP, a persistent per-class armory of six tracks, five circuits and three difficulties all earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **All tests pass** — run them with `node --test games/*/engine.test.js shared/*.test.js` (logic) and `node --test games/*/render-test.mjs games/*/resume-test.mjs` (shells, after `npm install --no-save jsdom canvas`). The counts move every build, so they are in each build's notes rather than here.
+
+## v56 — Shield Wall (2026-10-15)
+
+The second classic in the [pre-release plan](docs/pre-release-plan.md): Space Invaders, card 4 / 4 in the classics cabinet, opened by holding wave 5 in Airburst. [games/shield-wall/shield-wall.html](games/shield-wall/shield-wall.html).
+
+- **Play:** hold anywhere and the gun slides to your finger and fires; let go to stop, which is how you take cover. A finger in the band under the ground steers without covering anything. Eight columns by five ranks march down, faster as they thin and lower each wave. Four bunkers erode a few cells per hit — from their fire and from yours. A saucer crosses the top now and then for a bonus. Three lives, one extra at 1,500.
+- **Their aim improves**: from wave 1 some bombs come from the column over the gun, more each wave up to half. Without that, a bot that stood still and shot cleared everything — the bombs need dodging, which is what the bunkers are for.
+- **Saves** on a held wave and when the app is backgrounded, like Airburst.
+- **A real bug the render test found before anyone played**: shots were point-tested against invaders, and at 30fps a shot moves further in one frame than an invader is tall, so on a struggling phone shots could pass straight through. All shot hits now test the whole stretch covered. An engine test pins it at 30fps and fails on the old code.
+- **Art bench**: [docs/art/shield-wall-bench.html](docs/art/shield-wall-bench.html) (open in a browser). The bombs, shot and gun were enlarged after it showed them as flecks at phone scale.
+- **One bench generator for every classic**: `node tools/art-bench.mjs <game>` replaces `tools/airburst-bench.mjs`; each game keeps its own template.
+- **Frame cost**: a full board with six bombs draws in ~0.13ms in desktop Chromium (sprites, cached bunkers). A direction, not a verdict — see TESTING.
+- Tests: 740 across every suite (35 Shield Wall engine, 7 render, 7 resume).
 
 ## Round 20 feedback — Airburst on a phone (v54, 2026-10-15)
 

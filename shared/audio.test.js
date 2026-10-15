@@ -56,13 +56,16 @@ function record(name) {
 }
 
 const AIRBURST = ['launch', 'burst', 'intercept', 'split', 'impact', 'dry'];
+// Shield Wall's, held to the same two rules from its first build
+const SHIELD_WALL = ['march', 'laser', 'invaderDown', 'gunDown', 'chip', 'saucer', 'saucerDown'];
+const CHECKED = [...AIRBURST, ...SHIELD_WALL];
 
-test('every Airburst sound plays something', () => {
-  for (const name of AIRBURST) assert.ok(record(name).length > 0, `${name} started no voice`);
+test('every Airburst and Shield Wall sound plays something', () => {
+  for (const name of CHECKED) assert.ok(record(name).length > 0, `${name} started no voice`);
 });
 
-test('no pure tone in Airburst drops below what a phone speaker reproduces', () => {
-  for (const name of AIRBURST) {
+test('no pure tone drops below what a phone speaker reproduces', () => {
+  for (const name of CHECKED) {
     for (const v of record(name)) {
       if (v.kind !== 'tone' || (v.type !== 'sine' && v.type !== 'triangle')) continue;
       assert.ok(v.minHz >= 300, `${name}: a ${v.type} at ${v.minHz}Hz has no harmonics to be heard through`);
@@ -70,9 +73,9 @@ test('no pure tone in Airburst drops below what a phone speaker reproduces', () 
   }
 });
 
-test('every Airburst sound is at least as loud as Flak Battery\'s fire', () => {
+test('every checked sound is at least as loud as Flak Battery\'s fire', () => {
   const fire = Math.max(...record('fire').map(v => v.peak));
-  for (const name of AIRBURST) {
+  for (const name of CHECKED) {
     const loudest = Math.max(...record(name).map(v => v.peak));
     assert.ok(loudest >= fire, `${name} peaks at ${loudest}, under the fire sound's ${fire}`);
   }

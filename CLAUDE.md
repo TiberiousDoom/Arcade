@@ -6,19 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A collection of standalone HTML5 canvas games. There is no bundler, no `package.json`, and no build step for day-to-day work — each game is either a single `.html` file or a small set of files that a browser can load directly (`file://` or any static server).
 
-Five games live here, split across two cabinets — Flak Battery and Choke Point in the invasion cabinet ([index.html](index.html)), Feedline, Hull Breach and Airburst in the classics ([classics.html](classics.html)):
+Six games live here, split across two cabinets — Flak Battery and Choke Point in the invasion cabinet ([index.html](index.html)), Feedline, Hull Breach, Airburst and Shield Wall in the classics ([classics.html](classics.html)):
 
 1. **Flak Battery** (`games/flak-battery/`) — a tower-defense/shooter with a pure-logic engine (`engine.js`) covered by a large unit-test suite. The first game in the `games/<name>/` layout, and the template every other game follows.
 2. **Hull Breach** (`games/hull-breach/`) — a fresh, smaller build on the same engine/shell split. Good starting point for seeing the pattern without Flak Battery's volume.
 3. **Feedline** (`games/feedline/`) — the first grid/tick-based game rather than continuous physics. Worth reading if you want to see how far the engine/shell split bends for a different genre.
 4. **Choke Point** (`games/choke-point/`) — a grid tower-defense: build auto-firing towers to stop surges flowing along a fixed path. Placement + economy rather than reflex, and the fullest example of the shared-module wiring (fit, fx, help, scores, audio, plus a controls strip).
 5. **Airburst** (`games/airburst/`) — Missile Command: tap the sky to burst interceptors ahead of falling warheads. The first of the three classics planned before release, and the smallest complete example of a new game on the pattern (engine, shell, render and resume tests, card, gate).
+6. **Shield Wall** (`games/shield-wall/`) — Space Invaders: a marching formation of cubes, four bunkers that erode cell by cell, one finger to move and fire. The second classic built before release.
 
 An earlier `arcade_games.html` (a monolithic Breakout/Missile/Snake/Tetris/Invaders cabinet — those were its names) was scrapped — see [docs/DECISIONS.md](docs/DECISIONS.md). Those games will be rebuilt from scratch under `games/` on the engine/shell pattern when we get to them.
 
 ## Session workflow
 
-Planned-but-unbuilt work lives in its own `docs/*-plan.md` file. **[docs/pre-release-plan.md](docs/pre-release-plan.md) is open** (Shield Wall and Bulkhead still to build; landscape deleted in v51, Choke Point’s gradual unlock in v52, Airburst in v53). A plan file is deleted once the work ships and its reasoning moves to DECISIONS.md, so if one exists it is live.
+Planned-but-unbuilt work lives in its own `docs/*-plan.md` file. **[docs/pre-release-plan.md](docs/pre-release-plan.md) is open** (Bulkhead still to build; landscape deleted in v51, Choke Point’s gradual unlock in v52, Airburst in v53, Shield Wall in v56). A plan file is deleted once the work ships and its reasoning moves to DECISIONS.md, so if one exists it is live.
 
 This is a solo, part-time project with potentially long gaps (weeks or months) between sessions. Read **[STATUS.md](STATUS.md)** first — it's the current "what's playable / what's next" snapshot, kept fresh each session rather than left to go stale. **[docs/DECISIONS.md](docs/DECISIONS.md)** has the reasoning behind past architectural choices, append-only — check it before re-deciding something that looks unusual.
 
@@ -64,7 +65,7 @@ python -m http.server 8123
 # then open http://localhost:8123/games/hull-breach/hull-breach.html
 
 # Render smoke tests — boot the real shells in jsdom + node-canvas and drive
-# frames, catching draw-path crashes the logic tests can't see. All five games
+# frames, catching draw-path crashes the logic tests can't see. All six games
 # have one. Requires `jsdom` and `canvas` (not installed by default — there is
 # no package.json/node_modules):
 npm install --no-save jsdom canvas
@@ -74,8 +75,8 @@ node --test games/*/render-test.mjs
 # real localStorage: play, background, reload, press Continue. The engine suites
 # already cover snapshot/hydrate as pure functions; these cover the shell half
 # (save written on the right beat, banner offers it, Continue restores). Only
-# the four games with saves have one — Feedline is one-life score-attack.
-node --test games/{flak-battery,hull-breach,choke-point,airburst}/resume-test.mjs
+# the five games with saves have one — Feedline is one-life score-attack.
+node --test games/{flak-battery,hull-breach,choke-point,airburst,shield-wall}/resume-test.mjs
 
 # Everything at once
 node --test games/*/engine.test.js shared/*.test.js games/*/render-test.mjs games/*/resume-test.mjs
@@ -84,9 +85,11 @@ node --test games/*/engine.test.js shared/*.test.js games/*/render-test.mjs game
 # docs/art/gun-bench.html from the current sources; open it directly, no server.
 node tools/gun-bench.mjs
 
-# Rebuild Airburst's art bench after changing its art: docs/art/airburst-bench.html,
-# built from the shell's marked art section — a staged sky and a live run.
-node tools/airburst-bench.mjs
+# Rebuild a classic's art bench after changing its art: docs/art/<game>-bench.html,
+# built from the shell's marked art section and tools/<game>-bench.template.html
+# — a staged scene with every element in every state, and a live run.
+node tools/art-bench.mjs airburst
+node tools/art-bench.mjs shield-wall
 
 # Look at a game from here — boots the real shell against node-canvas and drives
 # frames by hand, so it returns an honest picture where a headless browser
@@ -109,7 +112,7 @@ There is no lint config in the repo.
 
 **Looking at a game from here:** `node tools/screenshot.mjs <shell.html> out.png` boots the real shell against node-canvas and drives frames by hand, so it returns an honest picture where a headless browser returns a blank one. `--frames`, `--width`/`--height`, `--no-start` (capture the opening banner) and Feedline's `--grow`. Needs the same `jsdom`/`canvas` install as the render tests.
 
-## Architecture: the five games
+## Architecture: the six games
 
 Each game has its own `CLAUDE.md` beside its code with the full design notes (Claude Code loads it automatically when working in that directory): the simulation model, the balance invariants tests pin, and why the odd-looking parts are that way. **Read that game's notes before changing its engine or shell.** What follows is only what breaks things if you miss it.
 
@@ -120,13 +123,14 @@ Every engine is pure: no DOM, no canvas, no timers, no `Date.now()`, no `Math.ra
 - **Feedline** — [games/feedline/CLAUDE.md](games/feedline/CLAUDE.md). The engine owns the tick clock (pace is the difficulty curve). Don't simplify the tail-vacating collision rule or the turn queue's check against the last *queued* direction; both are tested.
 - **Choke Point** — [games/choke-point/CLAUDE.md](games/choke-point/CLAUDE.md). Numbers come only from `stats(w, tower)` and prices only from `buildCost(w, type)`. The armory persists across runs and the shell stores it. `w.unlocked` is derived and never snapshotted. Players see "circuit", never "route".
 - **Airburst** — [games/airburst/CLAUDE.md](games/airburst/CLAUDE.md). `step(w, dt)` reads no input; the shell calls `fire(w, x, y)` and the engine picks the battery. Touch aims at a crosshair above the finger and fires on release. Every roll a split could need is taken at release, so a seed replays whatever the player shoots. Its art lives between markers in the shell and is reviewed on its own bench (below). Records waves held for the classics chain.
+- **Shield Wall** — [games/shield-wall/CLAUDE.md](games/shield-wall/CLAUDE.md). `step(w, dt)` reads no input; the shell moves the gun (`setGun`/`nudgeGun`) and calls `fire(w)` every frame a finger is down. Bombs and the saucer roll on their own timers with a fixed number of rolls per tick, and bunker damage costs none, so a seed replays whatever the player does. Shot hits are swept, not point tests. Art is reviewed on its own bench, like Airburst's.
 
 ## Architecture: the PWA layer
 
 - **[manifest.webmanifest](manifest.webmanifest)** — installable metadata. `start_url`/`scope` are `./` (relative, so the app survives being served from a subpath), `display: standalone`, `orientation: portrait`. **Every game is portrait only** (DECISIONS 2026-10-14): one `LAYOUT` per engine, no rotation code. The manifest lock binds only once installed, so a browser tab can still turn sideways; the board is then letterboxed, and a rule in `shared/theme.css` keeps that usable. Do not add a second layout back for a new game.
 - **[sw.js](sw.js)** — precaches the entire app on install, then serves **cache-first** with a network fallback, plus a cabinet fallback for failed navigations. Cache-first is right here (everything is static, offline play is the point) but see the version warning above.
-- **[index.html](index.html) and [classics.html](classics.html)** — the two cabinets. `index.html` is the invasion (Flak Battery, Choke Point) and the navigation fallback for a failed request; `classics.html` is the classics (Feedline, Hull Breach). Both are the same page with a different roster, self-contained apart from `scores.js` (personal bests on the cards), `unlocks.js` (which cards are dimmed) and `version.js`, and each links to the other. **A gate never crosses cabinets** — each has its own ungated opener, or someone who wants Snake would have to play a tower defense first.
-- **[shared/pwa.js](shared/pwa.js)** — registration, imported by every page (two cabinets + five games) so landing directly on a game installs the cache too. Resolves the worker URL via `import.meta.url` rather than an absolute `/sw.js`, again for subpath safety.
+- **[index.html](index.html) and [classics.html](classics.html)** — the two cabinets. `index.html` is the invasion (Flak Battery, Choke Point) and the navigation fallback for a failed request; `classics.html` is the classics (Feedline, Hull Breach, Airburst, Shield Wall). Both are the same page with a different roster, self-contained apart from `scores.js` (personal bests on the cards), `unlocks.js` (which cards are dimmed) and `version.js`, and each links to the other. **A gate never crosses cabinets** — each has its own ungated opener, or someone who wants Snake would have to play a tower defense first.
+- **[shared/pwa.js](shared/pwa.js)** — registration, imported by every page (two cabinets + six games) so landing directly on a game installs the cache too. Resolves the worker URL via `import.meta.url` rather than an absolute `/sw.js`, again for subpath safety.
 - **[tools/make-icons.mjs](tools/make-icons.mjs)** — regenerates `shared/icons/` (needs `npm install --no-save canvas`). The icons are committed; only re-run when the mark changes.
 - The PWA head tags are duplicated across the game HTML files. That's deliberate — injecting them from JS is unreliable for iOS, and there's no build step to template them.
 
@@ -147,7 +151,7 @@ Games follow a per-game engine/shell split modeled on Flak Battery: pure logic w
 - **`shared/glow.js`** — the vector/CRT art primitives every shell draws with (`glowStroke`, `glowDot`, `inkDot`, `extrude`/`extrudeDisc`/`extrudeRect`, `cube`, `fadeFrame`, `scanlines`). Two rules here have each cost a build already, and [shared/README.md](shared/README.md) has the full five: **additive compositing cannot darken** — `glowStroke`/`glowDot` brighten what's underneath, so anything meant to read as recessed or shadowed must be painted with the normal composite (`inkDot` or a plain fill); and **static content accumulates under `fadeFrame`**, settling at roughly `1/fade` times the alpha you wrote, so write static alphas about a third of what you want. The art also has one absolute: **invaders are cubes, defenders are spheres**, everywhere, because shape alone is what keeps a busy board readable.
 - **`shared/menu.js`** — `makeMenu(...)`, the single corner button + panel every game uses for pause, mute and instructions. It replaced three always-visible buttons that were eating tappable board area. **Opening the panel pauses the run**; shells gate their frame loop on the returned `{ paused, pause(), resume(), toggle() }`. The panel also hosts the effect toggles, built from `shared/prefs.js`, so a game gets them by using the menu rather than by wiring anything.
 - **`shared/prefs.js`** — the three player-set effect dials (`shake` 0/0.5/1, `numbers`, `haptics`) plus `buzz()`, the one device effect they gate. Shells read `prefs.shake` **every frame** and multiply it into their existing `reduce` check — **`prefers-reduced-motion` still wins**, these only narrow what is drawn, they can never switch an effect back on that the OS asked to be suppressed. `hasHaptics` is false on iOS Safari entirely and vibration is blocked by silent/DND, so nothing may be load-bearing on `buzz()` firing. Same guarded-localStorage shape as `scores.js`.
-- **`shared/resume.js`** — storage for mid-run saves: keys, build-stamping, and the fact that localStorage throws in real situations (Safari private browsing, storage disabled by policy). The **engines** own what a snapshot *is* (`snapshot`/`hydrate`); this owns none of it. Used by Flak Battery, Hull Breach, Choke Point and Airburst — **not** Feedline, which is one-life score-attack.
+- **`shared/resume.js`** — storage for mid-run saves: keys, build-stamping, and the fact that localStorage throws in real situations (Safari private browsing, storage disabled by policy). The **engines** own what a snapshot *is* (`snapshot`/`hydrate`); this owns none of it. Used by Flak Battery, Hull Breach, Choke Point, Airburst and Shield Wall — **not** Feedline, which is one-life score-attack.
 - **`shared/audio.js`** (`makeAudio()`, all effects synthesized in WebAudio, no files), **`shared/scores.js`** (`best()`/`submit()` for local personal bests) and **`shared/levels.js`** (highest level reached, for Hull Breach's level select) all use the same guarded-localStorage shape — losing a personal best is never worth crashing a game over.
 - **`shared/unlocks.js`** — the first-play-through gate. Each game calls `recordProgress(id, value)` as it plays (a Feedline run finishing, the current wave in Flak Battery / Choke Point), and the cabinets ask `isUnlocked(id)` / `lockLabel(id)` to decide whether a card is dimmed. `GATES` is the whole ruleset, in one object — and it holds **one chain per cabinet**, never one across both. **The gate is enforced on the cabinet only** — direct URLs and the PWA's shortcuts still open any game, on purpose (see DECISIONS.md, 2026-08-04). Don't record progress via `scores.js`'s `submit()`: it only writes on an improved score, so a weak run after a strong one would record nothing.
 

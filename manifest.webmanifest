@@ -50,6 +50,10 @@
     {
       "name": "Airburst",
       "url": "games/airburst/airburst.html"
+    },
+    {
+      "name": "Shield Wall",
+      "url": "games/shield-wall/shield-wall.html"
     }
   ]
 }

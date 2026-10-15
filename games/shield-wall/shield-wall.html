@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Shield Wall</title>
+<link rel="manifest" href="../../manifest.webmanifest">
+<meta name="theme-color" content="#0b1418">
+<link rel="icon" href="../../shared/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="../../shared/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Arcade">
+<link rel="stylesheet" href="../../shared/theme.css">
+<script type="module" src="../../shared/pwa.js"></script>
+<style>
+  /* A bunker green accent: the bunkers are the game's name. */
+  :root{
+    --accent:#6fd08a;
+    --accent-hot:#94e2a9;
+    --accent-ink:#06180d;
+    --board-max:600px;
+  }
+</style>
+
+<div id="shell">
+  <header>
+    <div class="titles">
+      <a class="back" href="../../classics.html">&larr; Classics</a>
+      <h1>Shield <span>Wall</span></h1>
+    </div>
+    <div class="meta">
+      <div>Wave <b id="uiWave">1</b></div>
+      <div>Score <b id="uiScore">0</b></div>
+      <div>Lives <b id="uiLives">3</b></div>
+      <div>Best <b id="uiBest">—</b></div>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="cv" width="600" height="1100"></canvas>
+    <div id="banner">
+      <h2>Shield Wall</h2>
+      <p id="hint">Hold to move and fire. Let go to take cover.</p>
+      <button id="go">Begin</button>
+    </div>
+  </div>
+
+  <footer>
+    <span>Hold and slide to move</span>
+    <span>The gun fires while you hold</span>
+    <span>Let go behind a bunker</span>
+    <span>Do not let them land</span>
+  </footer>
+</div>
+
+<script type="module">
+import * as E from './engine.js';
+import { makeFit } from '../../shared/fit.js';
+import { makeFx } from '../../shared/fx.js';
+import { glowStroke, glowDot, inkDot, cube, GLOW_PASSES_CHEAP, DOT_PASSES_CHEAP } from '../../shared/glow.js';
+import { best, submit } from '../../shared/scores.js';
+import { saveRun, loadRun, clearRun } from '../../shared/resume.js';
+import { makeAudio } from '../../shared/audio.js';
+import { makeMenu } from '../../shared/menu.js';
+import { buzz, prefs } from '../../shared/prefs.js';
+import { recordProgress } from '../../shared/unlocks.js';
+import { guardTaps } from '../../shared/tap.js';
+
+/* A press slid off a button is a cancel — see shared/tap.js. The board is a
+   gameplay surface and is left alone, as every game's is. */
+guardTaps();
+
+const GAME_ID = 'shield-wall';
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const TAU = E.TAU;
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+const $ = id => document.getElementById(id);
+
+const gfx = makeFx({ reduce });
+const audio = makeAudio();
+
+/* the engine never sees these — cosmetic particles, plus sound */
+const fx = {
+  shoot() { audio.laser(); },
+  kill(x, y, kind) { gfx.burst(x, y, COL.inv[kind], 12, 130); audio.invaderDown(); },
+  hit(x, y) { gfx.burst(x, y, COL.gun, 26, 170); gfx.hit(.7); audio.gunDown(); buzz([25, 40, 25]); },
+  shield(x, y) { gfx.burst(x, y, COL.bunker, 5, 70); audio.chip(); },
+  saucer() { audio.saucer(); },
+  saucerKill(x, y) { gfx.burst(x, y, COL.saucer, 22, 160); audio.saucerDown(); },
+  step(pose) { audio.march(pose); },
+  life() { audio.bonus(); },
+};
+
+const world = E.createWorld({ fx, seed: Date.now() & 0x7fffffff });
+const L = world.L;
+const W = L.W, H = L.H;
+const board = { w: W, h: H };          // makeFit re-reads this on every fit
+cv.width = W; cv.height = H;
+document.documentElement.style.setProperty('--board-max', W + 'px');
+
+/* ---------- input ----------
+   One finger does everything. Holding anywhere on the stage puts the gun under
+   the finger's x and keeps it firing whenever its one shot is free; letting go
+   stops firing, which is how you shelter. Only x is read, so a finger resting
+   in the band under the ground steers without covering any of the play — Hull
+   Breach's thumb band, for the same reason. Acting on press is right for a
+   gameplay surface (shared/tap.js leaves it alone). */
+let holding = null;                    // pointerId while a finger or button is down
+let keys = {};
+
+function stageX(e) {
+  const r = cv.getBoundingClientRect();
+  return (e.clientX - r.left) * (W / r.width);
+}
+const surface = $('stage');
+surface.addEventListener('pointerdown', e => {
+  if (e.target.closest('button')) return;   // the menu and banner buttons work normally
+  e.preventDefault();
+  if (pause.paused) return;
+  holding = e.pointerId;
+  try { surface.setPointerCapture(e.pointerId); } catch {}
+  E.setGun(world, stageX(e));
+});
+surface.addEventListener('pointermove', e => {
+  if (holding !== e.pointerId) return;
+  E.setGun(world, stageX(e));
+});
+const letGo = (e) => { if (holding === e.pointerId) holding = null; };
+addEventListener('pointerup', letGo);
+addEventListener('pointercancel', letGo);
+for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
+  surface.addEventListener(ev, e => e.preventDefault());
+}
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space') e.preventDefault();
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+
+makeFit({ canvas: cv, stage: $('stage'), board });
+
+const pause = makeMenu({
+  stage: $('stage'),
+  host: document.querySelector('header'),
+  audio,
+  title: 'Shield Wall',
+  lore: 'They come down in ranks, and the bunkers will not last.',
+  rows: [
+    ['Move', 'Hold and slide — anywhere, the band under the ground included.'],
+    ['Fire', 'The gun fires while you hold. One shot in the air at a time.'],
+    ['Cover', 'Let go behind a bunker. Their fire wears the bunkers away, and so does yours.'],
+  ],
+  notes: [
+    'The fewer that are left, the faster they march.',
+    'Some of their fire comes down the column you are under.',
+    'Shoot the ship that crosses the top for a bonus.',
+    'Keyboard: arrows and Space.',
+  ],
+});
+
+/* ---------- banner ---------- */
+function showBanner(h, p, btn) {
+  $('banner').classList.remove('hide');
+  $('banner').querySelector('h2').textContent = h;
+  $('hint').innerHTML = p;
+  const b = $('go'); b.textContent = btn; b.style.display = '';
+}
+function hideBanner() { $('banner').classList.add('hide'); }
+
+/* Set once the player has begun; `saveNow` uses it rather than
+   `world.running`, which goes false behind every banner. */
+let started = false;
+
+$('go').addEventListener('click', () => {
+  if (world.over) E.resetGame(world);
+  else if (world.waveClear) E.nextWave(world);
+  world.running = true;
+  started = true;
+  holding = null;
+  gfx.clear();
+  hideBanner();
+  sync();
+});
+
+/* ---------- loop ---------- */
+let last = performance.now();
+let wasClear = false, wasOver = false;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+
+  if (world.running && !pause.paused) {
+    let kb = 0;
+    if (keys.ArrowLeft) kb -= 1;
+    if (keys.ArrowRight) kb += 1;
+    if (kb) E.nudgeGun(world, kb * E.GUN_SPEED * dt);
+    if (holding !== null || keys.Space) E.fire(world);
+    E.step(world, dt);
+    sync();
+  }
+
+  // edges, not states: each banner is raised once, on the frame it happens
+  if (world.over && !wasOver) onGameOver();
+  if (world.waveClear && !wasClear) onWaveClear();
+  wasOver = world.over; wasClear = world.waveClear;
+
+  gfx.step(dt, 1.5);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function onWaveClear() {
+  // how far this player has got, for the cabinet's unlock chain
+  recordProgress(GAME_ID, world.wavesCleared);
+  saveNow();                     // a held wave is the natural place to keep
+  holding = null;
+  showBanner(`Wave ${world.wave} held`,
+    `Score <b style="color:var(--accent)">${world.score}</b> · the next wave starts lower.`, 'Next wave');
+  syncBest();
+}
+
+function onGameOver() {
+  clearRun(GAME_ID);             // a finished run is not one to come back to
+  holding = null;
+  const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
+  syncBest();
+  const landed = world.lives > 0 || (E.extent(world) && E.extent(world).bottom >= L.FLOOR);
+  showBanner(landed ? 'They have landed' : 'The gun is gone',
+    r.record
+      ? `New best — <b style="color:var(--accent)">${world.score}</b>`
+      : `Score <b style="color:var(--accent)">${world.score}</b> · best ${r.best}`,
+    'Play again');
+}
+
+function syncBest() {
+  const b = best(GAME_ID);
+  $('uiBest').textContent = b ? b.score : '—';
+}
+
+function sync() {
+  $('uiWave').textContent = world.wave;
+  $('uiScore').textContent = world.score;
+  $('uiLives').textContent = world.lives;
+}
+
+/* ---------- art (lifted verbatim by tools/art-bench.mjs) ----------
+
+   Everything from here to the end marker is the game's drawing, and the art
+   bench builds itself from exactly this text — so it depends only on: ctx, W,
+   H, L, world, gfx, prefs, reduce, E, TAU and the glow.js primitives. Keep it
+   that way, or the bench stops building. */
+const COL = {
+  inv: ['#e0503c', '#e07a3c', '#c95a8a'],   // top, middle, bottom ranks: the invaders' reds
+  saucer: '#ff9a6a',
+  bomb: '#ff6a4a',
+  shot: '#c8f4ff',
+  gun: '#7fd0e6',
+  bunker: '#6fd08a',
+  ground: '#2c4a52',
+};
+
+/* Invaders are cubes, and forty glow-passed cubes a frame is what cost Airburst
+   7ms. Sprites again: each rank's cube in two poses (a small tilt each way, the
+   genre's two-frame march), drawn once and stamped. The live path stays as the
+   fallback for an environment without a second canvas, which is what the
+   render harness exercises — Choke Point's and Airburst's pattern. */
+const INV_PAD = 22, SAUCER_PAD = 30;
+const sprites = new Map();
+const SPRITES_OK = (() => {
+  try {
+    const a = document.createElement('canvas');
+    a.width = a.height = 2;
+    const g2 = a.getContext('2d');
+    if (!g2 || g2 === ctx) return false;        // shared context: not a real surface
+    ctx.drawImage(a, -4, -4);                   // and it has to be blittable
+    return true;
+  } catch { return false; }
+})();
+
+function stamp(key, pad, x, y, paint) {
+  if (!SPRITES_OK) { paint(ctx, x, y); return; }
+  let spr = sprites.get(key);
+  if (!spr) {
+    spr = document.createElement('canvas');
+    spr.width = spr.height = pad * 2;
+    paint(spr.getContext('2d'), pad, pad);
+    sprites.set(key, spr);
+  }
+  ctx.drawImage(spr, Math.round(x - pad), Math.round(y - pad));
+}
+
+function drawInvader(x, y, kind, pose) {
+  const rot = (pose ? 0.13 : -0.13);
+  stamp(`i${kind}${pose}`, INV_PAD, x, y, (g, cx, cy) =>
+    cube(g, cx, cy, E.INV_SIZE * (kind === 0 ? 0.82 : kind === 1 ? 0.92 : 1), COL.inv[kind], { rot, width: 1.6 }));
+}
+
+function drawSaucer(x) {
+  stamp('saucer', SAUCER_PAD, x, E.SAUCER_Y, (g, cx, cy) =>
+    cube(g, cx, cy, 22, COL.saucer, { rot: Math.PI / 4, width: 1.8 }));
+}
+
+/* Bunkers are drawn from their cells, but a cell only changes when something
+   bites it — so each bunker is rendered to its own canvas and redrawn only when
+   its cells differ from last time. Plain fills, a lit top edge on exposed
+   cells: they are structures, not craft, so neither cubes nor spheres. */
+const bunkerCache = [];
+function bunkerKey(cells) { let k = 0, h = 0; for (const v of cells) { h = (h * 31 + v + k++) | 0; } return h; }
+function paintBunker(g, cells, ox, oy) {
+  g.fillStyle = 'rgba(64,140,90,.85)';
+  for (let r = 0; r < E.BUNKER_ROWS; r++) for (let c = 0; c < E.BUNKER_COLS; c++) {
+    if (!cells[r * E.BUNKER_COLS + c]) continue;
+    g.fillRect(ox + c * E.CELL, oy + r * E.CELL, E.CELL, E.CELL);
+  }
+  g.fillStyle = COL.bunker;
+  for (let r = 0; r < E.BUNKER_ROWS; r++) for (let c = 0; c < E.BUNKER_COLS; c++) {
+    const i = r * E.BUNKER_COLS + c;
+    if (cells[i] && (r === 0 || !cells[i - E.BUNKER_COLS])) g.fillRect(ox + c * E.CELL, oy + r * E.CELL, E.CELL, 1.5);
+  }
+}
+function drawBunker(b) {
+  const cells = world.bunkers[b], x = E.bunkerX(L, b), y = E.BUNKER_Y;
+  if (!SPRITES_OK) { paintBunker(ctx, cells, x, y); return; }
+  const key = bunkerKey(cells);
+  let c = bunkerCache[b];
+  if (!c || c.key !== key) {
+    const cvs = c?.cvs || document.createElement('canvas');
+    cvs.width = E.BUNKER_COLS * E.CELL; cvs.height = E.BUNKER_ROWS * E.CELL;
+    const g = cvs.getContext('2d');
+    g.clearRect(0, 0, cvs.width, cvs.height);
+    paintBunker(g, cells, 0, 0);
+    c = bunkerCache[b] = { cvs, key };
+  }
+  ctx.drawImage(c.cvs, x, y);
+}
+
+/* The gun is a sphere on a low mount — defenders are spheres — with a short
+   barrel. It is drawn faint while it is down after a hit. */
+function drawGun() {
+  const g = world.gun, y = L.GUN_Y;
+  const a = g.dead > 0 ? 0.25 : 1;
+  inkDot(ctx, g.x, y + 8, 22);
+  glowStroke(ctx, c => c.arc(g.x, y + 8, 22, Math.PI, 0), COL.gun, 2, GLOW_PASSES_CHEAP, a);
+  glowStroke(ctx, c => { c.moveTo(g.x, y - 12); c.lineTo(g.x, y - 26); }, COL.gun, 3, GLOW_PASSES_CHEAP, a);
+  glowDot(ctx, g.x, y - 1, 8, COL.gun, a, DOT_PASSES_CHEAP);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  const shake = reduce ? 0 : prefs.shake * gfx.flash * 6;
+  ctx.save();
+  if (shake) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+
+  // the ground and the thumb band under it, with a word on what it is for
+  ctx.fillStyle = 'rgba(14,30,35,.9)';
+  ctx.fillRect(0, L.GROUND_Y, W, H - L.GROUND_Y);
+  glowStroke(ctx, c => { c.moveTo(0, L.GROUND_Y); c.lineTo(W, L.GROUND_Y); }, COL.ground, 1.4, GLOW_PASSES_CHEAP);
+  ctx.fillStyle = 'rgba(120,146,152,.6)';
+  ctx.font = "600 17px 'Chivo Mono', monospace";
+  ctx.textAlign = 'center';
+  ctx.fillText('HOLD AND SLIDE HERE', W / 2, L.GROUND_Y + 80);
+  ctx.textAlign = 'start';
+  if (gfx.flash > 0) {
+    ctx.fillStyle = `rgba(224,80,60,${gfx.flash * 0.3})`;
+    ctx.fillRect(0, L.GUN_Y - 60, W, 100);
+  }
+
+  for (let b = 0; b < E.BUNKERS; b++) drawBunker(b);
+
+  const f = world.formation;
+  for (let r = 0; r < E.ROWS; r++) for (let c = 0; c < E.COLS; c++) {
+    if (!f.alive[r * E.COLS + c]) continue;
+    const p = E.invPos(world, c, r);
+    drawInvader(p.x, p.y, E.rowKind(r), f.pose);
+  }
+  if (world.saucer) drawSaucer(world.saucer.x);
+
+  /* Their fire: zigzags, red, so it reads as theirs. Sized for a phone, where
+     the board is drawn at about two thirds scale — the first draft's 15px
+     zigzag was a fleck there (seen on the art bench). */
+  for (const b of world.bombs) {
+    glowStroke(ctx, c => {
+      c.moveTo(b.x - 4, b.y - 20); c.lineTo(b.x + 4, b.y - 14); c.lineTo(b.x - 4, b.y - 8);
+      c.lineTo(b.x + 4, b.y - 2); c.lineTo(b.x - 2, b.y + 3);
+    }, COL.bomb, 2.2, GLOW_PASSES_CHEAP);
+  }
+  // ours: a bright bolt, long enough to see at phone scale
+  if (world.shot) {
+    const s = world.shot;
+    glowStroke(ctx, c => { c.moveTo(s.x, s.y); c.lineTo(s.x, s.y + 22); }, COL.shot, 3, GLOW_PASSES_CHEAP);
+  }
+
+  drawGun();
+  gfx.draw(ctx);
+  ctx.restore();
+}
+/* ---------- end art ---------- */
+
+/* ---------- resuming an interrupted run ----------
+   Saved when a wave is held and when the page is hidden, with Hull Breach's
+   v45 rule: a page where nothing has started leaves a stored run alone. */
+let resumeOffered = false;
+
+function saveNow() {
+  if (world.over) { clearRun(GAME_ID); return; }
+  if (!started) return;
+  saveRun(GAME_ID, E.snapshot(world), `Wave ${world.wave} · ${world.score}`);
+}
+
+addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+addEventListener('pagehide', saveNow);
+
+(function offerResume() {
+  const stored = loadRun(GAME_ID);
+  if (!stored) return;
+  resumeOffered = true;
+  showBanner('Resume run?', `You left off at <b style="color:var(--accent)">${stored.label}</b>.`, 'Continue');
+
+  const fresh = document.createElement('button');
+  fresh.type = 'button';
+  fresh.textContent = 'New run';
+  fresh.style.cssText = 'margin-left:8px;background:#1b3038;color:var(--bone)';
+  fresh.addEventListener('click', () => {
+    clearRun(GAME_ID);
+    fresh.remove();
+    resumeOffered = false;
+    showBanner('Shield Wall', 'Hold to move and fire. Let go to take cover.', 'Begin');
+  });
+  $('go').after(fresh);
+
+  // capture, so this runs before the main handler decides to reset or advance
+  $('go').addEventListener('click', function once() {
+    $('go').removeEventListener('click', once, { capture: true });
+    if (!resumeOffered) return;
+    resumeOffered = false;
+    fresh.remove();
+    if (!E.hydrate(world, stored.snap)) E.resetGame(world);
+    // a run saved on a held wave resumes into the next one
+    wasClear = world.waveClear;
+    clearRun(GAME_ID);
+    sync();
+  }, { capture: true });
+})();
+
+syncBest();
+sync();                      // makeFit already performed the first fit
+requestAnimationFrame(frame);
+</script>

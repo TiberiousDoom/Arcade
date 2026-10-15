@@ -138,6 +138,20 @@ export function makeAudio() {
     impact() { tone(110, 42, 0.5, { type: 'sawtooth', gain: 0.3 }); noise(0.45, { f: 220, gain: 0.24 }); },
     dry() { tone(240, 240, 0.05, { type: 'square', gain: 0.2 }); },
 
+    // Shield Wall. Voiced for a phone speaker from the start (see the Airburst
+    // note above and shared/audio.test.js): low notes only on square or
+    // sawtooth, which carry harmonics a small speaker can play.
+    march(pose = 0) { tone(pose ? 150 : 128, pose ? 150 : 128, 0.07, { type: 'square', gain: 0.2 }); },
+    laser() { tone(980, 420, 0.07, { type: 'sawtooth', gain: 0.2 }); },
+    invaderDown() { tone(620, 180, 0.12, { type: 'square', gain: 0.2 }); noise(0.1, { f: 1800, gain: 0.14 }); },
+    gunDown() { tone(320, 70, 0.45, { type: 'sawtooth', gain: 0.3 }); noise(0.4, { f: 400, gain: 0.24 }); },
+    chip() { noise(0.06, { f: 1500, gain: 0.2 }); },
+    saucer() { tone(700, 940, 0.18, { type: 'triangle', gain: 0.2 }); tone(940, 700, 0.18, { type: 'triangle', gain: 0.2, delay: 0.18 }); },
+    saucerDown() {
+      tone(520, 1040, 0.1, { type: 'square', gain: 0.22 });
+      tone(1040, 1560, 0.12, { type: 'square', gain: 0.22, delay: 0.09 });
+    },
+
     // shared endings
     lose() { tone(300, 90, 0.35, { type: 'sawtooth', gain: 0.28 }); },
     die() { tone(320, 80, 0.4, { type: 'sawtooth', gain: 0.3 }); noise(0.25, { f: 500, gain: 0.15 }); },

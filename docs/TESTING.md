@@ -1,24 +1,24 @@
-# Device test checklist — build v55
+# Device test checklist — build v56
 
 For a real phone, via **https://tiberiousdoom.github.io/Arcade/**. These are the
 questions a desk cannot answer — thumb reach, legibility at real size, frame
 rate, and whether the balance numbers are any good. Every item here was
 reviewed only at a desk, through node-canvas or a desktop browser.
 
-Rewritten 2026-10-13 for v49, updated for v55. The v22 checklist it replaces had sat for 27
+Rewritten 2026-10-13 for v49, updated for v56. The v22 checklist it replaces had sat for 27
 builds; the items it asked about have since been answered in feedback rounds,
 superseded by later builds, or carried forward below. When a section is
 settled, record the outcome in STATUS.md and delete the section.
 
 ---
 
-## 0. First: confirm you're on v55
+## 0. First: confirm you're on v56
 
 The service worker serves cache-first, so a phone keeps running an old build
 until the new worker takes over, and every observation below would then be
 about the wrong code.
 
-- [ ] Open any game's menu and check the bottom line reads **Arcade v55**.
+- [ ] Open any game's menu and check the bottom line reads **Arcade v56**.
 - [ ] If it doesn't: fully close the app, reopen, and reload once more. The
       first load installs the new worker, the second reads from it.
 
@@ -84,6 +84,26 @@ STATUS). Still to judge:
       pleasant?
 - [ ] **Past wave 5.** Roughly where does it start to get hard?
 - [ ] **Frame rate** on a late wave with many trails and bursts.
+
+## 3c. Shield Wall — first play (v56)
+
+Opens at Airburst wave 5 held (direct link works regardless). Everything here
+was judged at a desk and on the art bench only.
+
+- [ ] **Hold to move and fire.** Does the gun stay under your finger without
+      lag, and is a thumb in the band under the ground comfortable to steer with?
+- [ ] **Letting go to take cover.** Is it natural to stop firing by lifting,
+      or do you find yourself wanting to move without shooting your own bunkers?
+- [ ] **Bombs.** Can you see them coming in time to dodge at real size? Are the
+      aimed ones (straight down the column you're under) fair or cheap?
+- [ ] **Wave 5** — the gate to Bulkhead. A fair reach, as Airburst's was?
+- [ ] **The last-invader sprint.** Does the final one or two get fast enough
+      to be exciting without being unhittable?
+- [ ] **Sound**: the march beat, your shot, kills, the saucer. All audible on
+      the speaker? Is the march beat tiresome?
+- [ ] **Frame rate** on a full wave-1 board with bombs falling.
+- [ ] **Resume**: background it mid-wave, reopen, Continue — same invaders,
+      same bunker damage?
 
 ## 3b. Choke Point — the opening ramp (v52)
 
