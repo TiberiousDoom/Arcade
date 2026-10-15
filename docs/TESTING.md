@@ -1,24 +1,24 @@
-# Device test checklist — build v54
+# Device test checklist — build v55
 
 For a real phone, via **https://tiberiousdoom.github.io/Arcade/**. These are the
 questions a desk cannot answer — thumb reach, legibility at real size, frame
 rate, and whether the balance numbers are any good. Every item here was
 reviewed only at a desk, through node-canvas or a desktop browser.
 
-Rewritten 2026-10-13 for v49, updated for v54. The v22 checklist it replaces had sat for 27
+Rewritten 2026-10-13 for v49, updated for v55. The v22 checklist it replaces had sat for 27
 builds; the items it asked about have since been answered in feedback rounds,
 superseded by later builds, or carried forward below. When a section is
 settled, record the outcome in STATUS.md and delete the section.
 
 ---
 
-## 0. First: confirm you're on v54
+## 0. First: confirm you're on v55
 
 The service worker serves cache-first, so a phone keeps running an old build
 until the new worker takes over, and every observation below would then be
 about the wrong code.
 
-- [ ] Open any game's menu and check the bottom line reads **Arcade v54**.
+- [ ] Open any game's menu and check the bottom line reads **Arcade v55**.
 - [ ] If it doesn't: fully close the app, reopen, and reload once more. The
       first load installs the new worker, the second reads from it.
 
@@ -74,17 +74,15 @@ Nobody has reported from these waves on glass.
 
 ## 3a. Airburst — still open after round 20
 
-Round 20 settled the crosshair, firing on release, the split warning and the
-wave-5 curve (outcomes in STATUS). Still to judge:
+Round 20 settled the crosshair, firing on release, slide-off cancel, the split
+warning, the wave-5 curve, the ammunition display and legibility (outcomes in
+STATUS). Still to judge:
 
-- [ ] **Slide off to cancel**: press, drag off the board, let go — nothing fires.
+- [ ] **Sound (v55, re-voiced).** In v54 only a city being hit was audible.
+      Now: launch, burst, catch, split and an empty battery should all come
+      through a phone speaker. Do they, and is the burst too frequent to be
+      pleasant?
 - [ ] **Past wave 5.** Roughly where does it start to get hard?
-- [ ] **Sound (v54)**: launch, burst, catch, split, city lost — distinct from
-      one another, and is the burst too frequent to be pleasant?
-- [ ] **Ammunition.** Ten per battery per wave — do you run dry, and does the
-      HUD's Ammo count and the pips under each battery make that clear?
-- [ ] **Legibility.** Warheads (small red cubes) against the dark sky at real
-      size; cities (gold domes) and lost-city rubble.
 - [ ] **Frame rate** on a late wave with many trails and bursts.
 
 ## 3b. Choke Point — the opening ramp (v52)

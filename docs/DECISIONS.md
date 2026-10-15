@@ -2186,3 +2186,7 @@ Ten calls had collected across nineteen rounds of "still open" lists; they were 
 ## 2026-10-15 — Airburst's aim, settled on a phone
 
 Round 20 played v54 on glass and found the crosshair offset (64px), firing on release and the split warning all good, and wave 5 a fair reach. All three were desk guesses made in the polish pass; they now stand as tuned, and so does Shield Wall's gate at Airburst wave 5. Don't retune them without a report that disagrees.
+
+## 2026-10-15 — Sounds are judged by what a phone speaker can play
+
+Round 20 heard only Airburst's city-lost impact; the launch, burst and catch were inaudible on a phone. The burst was a 170→70Hz sine — a pure tone below a phone speaker's range — and the others were soft and short. This is the second time the library has needed this fix (Flak Battery's fire sound was the first), so it is now a test rather than a memory: `shared/audio.test.js` records what each Airburst sound asks of the speaker through a fake audio context, and fails a sine or triangle below 300Hz or a sound quieter than the fire sound. New games' sounds should be added to it.

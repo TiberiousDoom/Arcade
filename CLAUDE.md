@@ -49,7 +49,8 @@ node --test games/flak-battery/engine.test.js
 node --test games/hull-breach/engine.test.js
 node --test games/choke-point/engine.test.js
 
-# Run every engine suite at once, plus shared/ (one suite: version.test.js)
+# Run every engine suite at once, plus shared/ (version.test.js, and audio.test.js —
+# what the synthesized sounds ask of a phone speaker)
 node --test games/*/engine.test.js shared/*.test.js
 
 # Run a single test by name

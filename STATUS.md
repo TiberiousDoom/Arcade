@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-15 (v54 on main — round 20 played Airburst on a phone; next is Shield Wall, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
+Last updated: 2026-10-15 (v55 — Airburst's sounds re-voiced after round 20; next is Shield Wall, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -31,7 +31,14 @@ The first play of Airburst on glass, after the branch was merged to `main`. "It 
 - **Firing on release: good.** No complaint of lag on quick taps.
 - **The split warning: good.** It reads in time.
 - **Reaching wave 5 was "not bad"**, which is where the gate to Shield Wall will sit, so the opening curve and the gate stand. Leading the shot was learnable within that.
-- Still open (TESTING.md): slide-off cancel, where it gets hard past wave 5, sound, ammunition, legibility and frame rate on a late wave.
+- **Slide off to cancel works. Ammunition is clear. The graphics are readable** at real size.
+- **Sound: only warheads hitting were audible**, nothing from the defence. Fixed in v55, below.
+- Still open (TESTING.md): the re-voiced sounds, where it gets hard past wave 5, and frame rate on a late wave.
+
+## v55 — Airburst's sounds, re-voiced (2026-10-15)
+
+- **The defensive sounds were pitched for a desk, not a phone.** The burst was a pure 170→70Hz tone, below what a phone speaker reproduces; the launch and catch were soft and short, well under the rest of the library. Only the city-lost impact, a loud harmonic-rich buzz, came through. All five are re-voiced in the phone's range and brought up to Flak Battery's fire sound — the same fix that sound needed in an earlier round.
+- **`shared/audio.test.js`** now pins it, against a recording fake audio context: no pure tone (sine or triangle) in Airburst below 300Hz, and none of its sounds quieter than the fire sound. It fails on the v54 sounds and passes on these.
 
 ## v54 — Airburst polish pass (2026-10-14)
 

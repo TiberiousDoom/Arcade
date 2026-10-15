@@ -124,16 +124,19 @@ export function makeAudio() {
     overheat() { tone(150, 110, 0.22, { type: 'sawtooth', gain: 0.24 }); },
     breach() { tone(130, 70, 0.3, { type: 'square', gain: 0.28 }); noise(0.2, { f: 300, gain: 0.18 }); },
 
-    // Airburst. Its own sounds rather than borrowed ones: the launch is a rising
-    // whoosh, the burst a soft low thump with air in it (it fires constantly,
-    // so it must not be sharp), a catch is a short bright crack over that, and
-    // a city lost is the heaviest thing in the library because it is permanent.
-    launch() { tone(240, 820, 0.11, { type: 'triangle', gain: 0.13 }); noise(0.09, { f: 2600, gain: 0.05 }); },
-    burst() { tone(170, 70, 0.22, { type: 'sine', gain: 0.26 }); noise(0.24, { f: 650, q: 0.6, gain: 0.12 }); },
-    intercept() { tone(880, 520, 0.06, { type: 'square', gain: 0.11 }); noise(0.05, { f: 3200, gain: 0.08 }); },
-    split() { tone(1150, 1500, 0.06, { type: 'sine', gain: 0.12 }); },
+    // Airburst. Its own sounds rather than borrowed ones. Re-voiced in v55
+    // after a phone played them: only the city-lost impact was audible. The
+    // burst was a 170→70Hz *sine*, a pure tone below what a phone speaker
+    // reproduces, and the launch and catch were soft and short. The rules now,
+    // pinned by shared/audio.test.js: a sine or triangle (no harmonics to carry
+    // a low note) stays above 300Hz, and every one of these peaks at least as
+    // loud as Flak Battery's fire (0.2) — the same lesson that sound learned.
+    launch() { tone(380, 1000, 0.1, { type: 'sawtooth', gain: 0.2 }); noise(0.08, { f: 2800, gain: 0.08 }); },
+    burst() { tone(300, 120, 0.2, { type: 'square', gain: 0.2 }); noise(0.28, { f: 1000, q: 0.7, gain: 0.2 }); },
+    intercept() { tone(1100, 650, 0.08, { type: 'square', gain: 0.2 }); noise(0.06, { f: 3600, gain: 0.12 }); },
+    split() { tone(1150, 1500, 0.07, { type: 'triangle', gain: 0.2 }); },
     impact() { tone(110, 42, 0.5, { type: 'sawtooth', gain: 0.3 }); noise(0.45, { f: 220, gain: 0.24 }); },
-    dry() { tone(120, 120, 0.04, { type: 'square', gain: 0.12 }); },
+    dry() { tone(240, 240, 0.05, { type: 'square', gain: 0.2 }); },
 
     // shared endings
     lose() { tone(300, 90, 0.35, { type: 'sawtooth', gain: 0.28 }); },
