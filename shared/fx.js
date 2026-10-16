@@ -9,6 +9,7 @@
 
 export function makeFx({ reduce = false, gravity = 220 } = {}) {
   const bits = [];
+  const words = [];
   let flash = 0;
 
   return {
@@ -34,6 +35,13 @@ export function makeFx({ reduce = false, gravity = 220 } = {}) {
       }
     },
 
+    /** A score floater: a few characters that hang where something paid out,
+     *  then fade. Callers gate it on `prefs.numbers`. Under reduced motion it
+     *  still shows — it is information, not motion — but does not drift. */
+    text(x, y, str, col, life = 0.9) {
+      words.push({ x, y, str, col, life, max: life });
+    },
+
     /** Kick the screen flash, keeping any brighter flash already running. */
     hit(amount = .5) { flash = Math.max(flash, amount); },
 
@@ -46,6 +54,12 @@ export function makeFx({ reduce = false, gravity = 220 } = {}) {
         b.vy += gravity * dt;
         if (b.life <= 0) bits.splice(i, 1);
       }
+      for (let i = words.length - 1; i >= 0; i--) {
+        const w = words[i];
+        w.life -= dt;
+        if (!reduce) w.y -= 34 * dt;
+        if (w.life <= 0) words.splice(i, 1);
+      }
       if (flash > 0) flash = Math.max(0, flash - dt * decay);
     },
 
@@ -55,11 +69,23 @@ export function makeFx({ reduce = false, gravity = 220 } = {}) {
         ctx.fillStyle = b.col;
         ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
       }
+      if (words.length) {
+        ctx.save();
+        ctx.font = "700 22px 'Chivo Mono', monospace";
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const w of words) {
+          ctx.globalAlpha = Math.max(0, Math.min(1, (w.life / w.max) * 2));
+          ctx.fillStyle = w.col;
+          ctx.fillText(w.str, w.x, w.y);
+        }
+        ctx.restore();
+      }
       ctx.globalAlpha = 1;
     },
 
     /** Wipe everything — call on restart so a death flash doesn't bleed into
      *  the fresh run. */
-    clear() { bits.length = 0; flash = 0; },
+    clear() { bits.length = 0; words.length = 0; flash = 0; },
   };
 }

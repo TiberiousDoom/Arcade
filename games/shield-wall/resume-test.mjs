@@ -15,17 +15,20 @@ const background = (g) => {
 };
 
 function playAWhile(g, frames = 300) {
+  // the thumb band: the stick bottom left (centre x 118), fire bottom right
   const cv = g.window.document.getElementById('cv');
-  const send = (type, x) => cv.dispatchEvent(new g.window.PointerEvent(type,
-    { clientX: x, clientY: 1000, pointerType: 'touch', pointerId: 5, bubbles: true, cancelable: true }));
-  send('pointerdown', 300);
+  const send = (type, x, id) => cv.dispatchEvent(new g.window.PointerEvent(type,
+    { clientX: x, clientY: 1015, pointerType: 'touch', pointerId: id, bubbles: true, cancelable: true }));
+  send('pointerdown', 482, 2);                     // hold fire
+  send('pointerdown', 118, 1);
   let t = 1000;
   for (let i = 0; i < frames; i++) {
-    if (i % 30 === 0) send('pointermove', 80 + (i * 7) % 440);
+    if (i % 40 === 0) send('pointermove', 118 + (i % 80 < 40 ? 60 : -60), 1);   // sweep left and right
     t += 16.7;
     g.frame(t);
   }
-  send('pointerup', 300);
+  send('pointerup', 118, 1);
+  send('pointerup', 482, 2);
 }
 
 test('backgrounding writes a save, and a reload brings the run back', async () => {

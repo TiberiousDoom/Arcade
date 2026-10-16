@@ -201,6 +201,19 @@ test('a shot and a bomb that meet cancel out', () => {
   assert.equal(w.bombs.length, 0);
 });
 
+test('a bomb between the shot and an invader takes the shot, even within one step', () => {
+  const w = live();
+  w.bombT = 1e9; w.saucerT = 1e9;
+  leaveOnly(w, [[3, 4]]);
+  const p = E.invPos(w, 3, 4);
+  // both inside one 30fps sweep: the bomb just under the invader, the shot just under the bomb
+  w.bombs = [{ x: p.x, y: p.y + 30 }];
+  w.shot = { x: p.x, y: p.y + 40 };
+  E.step(w, 1 / 30);
+  assert.equal(w.bombs.length, 0, 'the bomb was met');
+  assert.equal(E.aliveCount(w), 1, 'and the invader behind it was not');
+});
+
 test('the saucer crosses, pays well when hit, and leaves', () => {
   const kills = [];
   const w = live({ fx: { saucerKill: (x, y, pts) => kills.push(pts) } });
@@ -371,6 +384,19 @@ test('a corrupt or foreign snapshot is refused rather than half-applied', () => 
     assert.equal(E.hydrate(w, bad), false);
     assert.equal(w.score, 77);
   }
+});
+
+test('a saved saucer that does not make sense is dropped, not trusted', () => {
+  const w = E.createWorld();
+  const snap = E.snapshot(w);
+  for (const saucer of [{ x: 100, dir: 1, points: 'lots' }, { x: 100, dir: 0, points: 100 }, { x: 100, dir: 1, points: 7 }]) {
+    const v = E.createWorld();
+    assert.equal(E.hydrate(v, { ...snap, saucer }), true, 'the rest of the run still loads');
+    assert.equal(v.saucer, null);
+  }
+  const v = E.createWorld();
+  E.hydrate(v, { ...snap, saucer: { x: 100, dir: -1, points: 300 } });
+  assert.deepEqual(v.saucer, { x: 100, dir: -1, points: 300 });
 });
 
 /* ---------- full runs ---------- */

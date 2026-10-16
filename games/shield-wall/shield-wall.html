@@ -39,15 +39,15 @@
     <canvas id="cv" width="600" height="1100"></canvas>
     <div id="banner">
       <h2>Shield Wall</h2>
-      <p id="hint">Hold to move and fire. Let go to take cover.</p>
+      <p id="hint">Stick bottom left, fire bottom right. Take cover behind the bunkers.</p>
       <button id="go">Begin</button>
     </div>
   </div>
 
   <footer>
-    <span>Hold and slide to move</span>
-    <span>The gun fires while you hold</span>
-    <span>Let go behind a bunker</span>
+    <span>Stick, bottom left, to move</span>
+    <span>Fire, bottom right — hold to keep firing</span>
+    <span>Take cover behind a bunker</span>
     <span>Do not let them land</span>
   </footer>
 </div>
@@ -78,6 +78,9 @@ const $ = id => document.getElementById(id);
 const gfx = makeFx({ reduce });
 const audio = makeAudio();
 
+const MARCH_GAP = 110;
+let lastMarch = -Infinity;
+
 /* the engine never sees these — cosmetic particles, plus sound */
 const fx = {
   shoot() { audio.laser(); },
@@ -85,8 +88,19 @@ const fx = {
   hit(x, y) { gfx.burst(x, y, COL.gun, 26, 170); gfx.hit(.7); audio.gunDown(); buzz([25, 40, 25]); },
   shield(x, y) { gfx.burst(x, y, COL.bunker, 5, 70); audio.chip(); },
   saucer() { audio.saucer(); },
-  saucerKill(x, y) { gfx.burst(x, y, COL.saucer, 22, 160); audio.saucerDown(); },
-  step(pose) { audio.march(pose); },
+  saucerKill(x, y, pts) {
+    gfx.burst(x, y, COL.saucer, 22, 160); audio.saucerDown();
+    if (prefs.numbers) gfx.text(x, y, String(pts), COL.saucer, 1.2);
+  },
+  /* The march beat, at most every MARCH_GAP ms. With one or two invaders left
+     the formation steps every 25-45ms, and each note is 70ms long, so playing
+     every step stacked notes into a buzz. The march itself is not slowed. */
+  step(pose) {
+    const t = performance.now();
+    if (t - lastMarch < MARCH_GAP) return;
+    lastMarch = t;
+    audio.march(pose);
+  },
   life() { audio.bonus(); },
 };
 
@@ -98,33 +112,58 @@ cv.width = W; cv.height = H;
 document.documentElement.style.setProperty('--board-max', W + 'px');
 
 /* ---------- input ----------
-   One finger does everything. Holding anywhere on the stage puts the gun under
-   the finger's x and keeps it firing whenever its one shot is free; letting go
-   stops firing, which is how you shelter. Only x is read, so a finger resting
-   in the band under the ground steers without covering any of the play — Hull
-   Breach's thumb band, for the same reason. Acting on press is right for a
-   gameplay surface (shared/tap.js leaves it alone). */
-let holding = null;                    // pointerId while a finger or button is down
-let keys = {};
+   Two controls in the thumb band under the ground: a stick in the bottom-left
+   corner and a fire button in the bottom-right (owner's call, v57). v56 had one
+   finger do both — hold anywhere, the gun went to the finger and fired — which
+   meant it could not move without firing, and the player's own shots wore the
+   bunkers down faster than the invaders' did. Now moving and firing are
+   separate thumbs, and taking cover means letting go of fire.
 
-function stageX(e) {
+   Each control tracks its own pointer, so both thumbs work at once and lifting
+   one never releases the other. The stick is analogue across its width: the
+   further from the centre of its base, the faster the gun goes, up to
+   E.GUN_SPEED — the same top speed as the keyboard and the test suite's player.
+   Both act on press (a gameplay surface; shared/tap.js leaves it alone). The
+   board above the ground does nothing, so a stray touch there costs nothing.
+   Geometry (STICK, FIRE) lives in the art section, which draws them. */
+const input = { stick: 0, fire: false, stickId: null, fireId: null };
+const keys = {};
+
+function boardPoint(e) {
   const r = cv.getBoundingClientRect();
-  return (e.clientX - r.left) * (W / r.width);
+  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+}
+/** -1..1 from the stick's centre, with a small dead zone so a resting thumb is still. */
+function deflect(x) {
+  const k = E.clamp((x - STICK.x) / STICK.travel, -1, 1);
+  const dead = 0.12;
+  return Math.abs(k) < dead ? 0 : Math.sign(k) * (Math.abs(k) - dead) / (1 - dead);
 }
 const surface = $('stage');
 surface.addEventListener('pointerdown', e => {
   if (e.target.closest('button')) return;   // the menu and banner buttons work normally
   e.preventDefault();
   if (pause.paused) return;
-  holding = e.pointerId;
+  const p = boardPoint(e);
+  if (p.y < CONTROLS_TOP) return;           // the board itself is not a control
+  if (p.x < W / 2) {
+    if (input.stickId !== null) return;
+    input.stickId = e.pointerId;
+    input.stick = deflect(p.x);
+  } else {
+    if (input.fireId !== null) return;
+    input.fireId = e.pointerId;
+    input.fire = true;
+  }
   try { surface.setPointerCapture(e.pointerId); } catch {}
-  E.setGun(world, stageX(e));
 });
 surface.addEventListener('pointermove', e => {
-  if (holding !== e.pointerId) return;
-  E.setGun(world, stageX(e));
+  if (e.pointerId === input.stickId) input.stick = deflect(boardPoint(e).x);
 });
-const letGo = (e) => { if (holding === e.pointerId) holding = null; };
+const letGo = (e) => {
+  if (e.pointerId === input.stickId) { input.stickId = null; input.stick = 0; }
+  if (e.pointerId === input.fireId) { input.fireId = null; input.fire = false; }
+};
 addEventListener('pointerup', letGo);
 addEventListener('pointercancel', letGo);
 for (const ev of ['selectstart', 'contextmenu', 'dragstart']) {
@@ -145,9 +184,9 @@ const pause = makeMenu({
   title: 'Shield Wall',
   lore: 'They come down in ranks, and the bunkers will not last.',
   rows: [
-    ['Move', 'Hold and slide — anywhere, the band under the ground included.'],
-    ['Fire', 'The gun fires while you hold. One shot in the air at a time.'],
-    ['Cover', 'Let go behind a bunker. Their fire wears the bunkers away, and so does yours.'],
+    ['Move', 'The stick, bottom left. Push further from its centre to go faster.'],
+    ['Fire', 'The button, bottom right. Hold it to keep firing; one shot in the air at a time.'],
+    ['Cover', 'Stop firing behind a bunker. Their fire wears the bunkers away, and so does yours.'],
   ],
   notes: [
     'The fewer that are left, the faster they march.',
@@ -175,7 +214,6 @@ $('go').addEventListener('click', () => {
   else if (world.waveClear) E.nextWave(world);
   world.running = true;
   started = true;
-  holding = null;
   gfx.clear();
   hideBanner();
   sync();
@@ -189,11 +227,12 @@ function frame(now) {
   last = now;
 
   if (world.running && !pause.paused) {
-    let kb = 0;
-    if (keys.ArrowLeft) kb -= 1;
-    if (keys.ArrowRight) kb += 1;
-    if (kb) E.nudgeGun(world, kb * E.GUN_SPEED * dt);
-    if (holding !== null || keys.Space) E.fire(world);
+    let move = input.stick;
+    if (keys.ArrowLeft) move -= 1;
+    if (keys.ArrowRight) move += 1;
+    move = E.clamp(move, -1, 1);
+    if (move) E.nudgeGun(world, move * E.GUN_SPEED * dt);
+    if (input.fire || keys.Space) E.fire(world);
     E.step(world, dt);
     sync();
   }
@@ -212,15 +251,15 @@ function onWaveClear() {
   // how far this player has got, for the cabinet's unlock chain
   recordProgress(GAME_ID, world.wavesCleared);
   saveNow();                     // a held wave is the natural place to keep
-  holding = null;
+  // each wave starts a notch lower, but only for the first LOWER_MAX of them
+  const lower = world.wave <= E.LOWER_MAX ? ' · the next wave starts lower.' : '.';
   showBanner(`Wave ${world.wave} held`,
-    `Score <b style="color:var(--accent)">${world.score}</b> · the next wave starts lower.`, 'Next wave');
+    `Score <b style="color:var(--accent)">${world.score}</b>${lower}`, 'Next wave');
   syncBest();
 }
 
 function onGameOver() {
   clearRun(GAME_ID);             // a finished run is not one to come back to
-  holding = null;
   const r = submit(GAME_ID, world.score, `Wave ${world.wave}`);
   syncBest();
   const landed = world.lives > 0 || (E.extent(world) && E.extent(world).bottom >= L.FLOOR);
@@ -236,17 +275,21 @@ function syncBest() {
   $('uiBest').textContent = b ? b.score : '—';
 }
 
+/* Called every frame; the HUD is only touched when a number changes, so a
+   phone is not asked to re-lay-out the header sixty times a second. */
+const hud = {};
+function show(id, v) { if (hud[id] !== v) { hud[id] = v; $(id).textContent = v; } }
 function sync() {
-  $('uiWave').textContent = world.wave;
-  $('uiScore').textContent = world.score;
-  $('uiLives').textContent = world.lives;
+  show('uiWave', world.wave);
+  show('uiScore', world.score);
+  show('uiLives', world.lives);
 }
 
 /* ---------- art (lifted verbatim by tools/art-bench.mjs) ----------
 
    Everything from here to the end marker is the game's drawing, and the art
    bench builds itself from exactly this text — so it depends only on: ctx, W,
-   H, L, world, gfx, prefs, reduce, E, TAU and the glow.js primitives. Keep it
+   H, L, world, input, gfx, prefs, reduce, E, TAU and the glow.js primitives. Keep it
    that way, or the bench stops building. */
 const COL = {
   inv: ['#e0503c', '#e07a3c', '#c95a8a'],   // top, middle, bottom ranks: the invaders' reds
@@ -333,6 +376,40 @@ function drawBunker(b) {
   ctx.drawImage(c.cvs, x, y);
 }
 
+/* The two controls, in the thumb band's corners. They are UI, not craft, so
+   neither cubes nor spheres: rings in the gun's colour, faint at rest and lit
+   while a thumb is on them. The stick's knob shows how far it is pushed. The
+   input code reads this geometry too. */
+const CONTROLS_TOP = L.GROUND_Y - 10;
+const BAND_MID = (L.GROUND_Y + H) / 2;
+const STICK = { x: 118, y: BAND_MID, r: 58, travel: 70 };
+const FIRE = { x: W - 118, y: BAND_MID, r: 54 };
+function drawControls() {
+  const sOn = input.stick !== 0, fOn = input.fire;
+  // the stick: a slot, a ring, arrows either side, and the knob
+  ctx.fillStyle = 'rgba(127,208,230,.07)';
+  ctx.fillRect(STICK.x - STICK.travel, STICK.y - 4, STICK.travel * 2, 8);
+  glowStroke(ctx, c => c.arc(STICK.x, STICK.y, STICK.r, 0, TAU), COL.gun, 1.6, GLOW_PASSES_CHEAP, sOn ? 0.7 : 0.35);
+  ctx.fillStyle = sOn ? 'rgba(127,208,230,.7)' : 'rgba(127,208,230,.4)';
+  for (const d of [-1, 1]) {
+    const ax = STICK.x + d * (STICK.r + 16);
+    ctx.beginPath();
+    ctx.moveTo(ax + d * 9, STICK.y); ctx.lineTo(ax - d * 5, STICK.y - 9); ctx.lineTo(ax - d * 5, STICK.y + 9);
+    ctx.fill();
+  }
+  const kx = STICK.x + input.stick * (STICK.r - 20);
+  inkDot(ctx, kx, STICK.y, 24);
+  glowDot(ctx, kx, STICK.y, 20, COL.gun, sOn ? 0.9 : 0.45, DOT_PASSES_CHEAP);
+  // fire: a ring that fills while held
+  if (fOn) { ctx.fillStyle = 'rgba(200,244,255,.16)'; ctx.beginPath(); ctx.arc(FIRE.x, FIRE.y, FIRE.r, 0, TAU); ctx.fill(); }
+  glowStroke(ctx, c => c.arc(FIRE.x, FIRE.y, FIRE.r, 0, TAU), COL.shot, fOn ? 2.4 : 1.6, GLOW_PASSES_CHEAP, fOn ? 0.95 : 0.4);
+  ctx.fillStyle = fOn ? 'rgba(220,250,255,.95)' : 'rgba(200,244,255,.55)';
+  ctx.font = "700 18px 'Chivo Mono', monospace";
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('FIRE', FIRE.x, FIRE.y);
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+}
+
 /* The gun is a sphere on a low mount — defenders are spheres — with a short
    barrel. It is drawn faint while it is down after a hit. */
 function drawGun() {
@@ -350,15 +427,11 @@ function draw() {
   ctx.save();
   if (shake) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
 
-  // the ground and the thumb band under it, with a word on what it is for
+  // the ground, and the thumb band under it where the controls sit
   ctx.fillStyle = 'rgba(14,30,35,.9)';
   ctx.fillRect(0, L.GROUND_Y, W, H - L.GROUND_Y);
   glowStroke(ctx, c => { c.moveTo(0, L.GROUND_Y); c.lineTo(W, L.GROUND_Y); }, COL.ground, 1.4, GLOW_PASSES_CHEAP);
-  ctx.fillStyle = 'rgba(120,146,152,.6)';
-  ctx.font = "600 17px 'Chivo Mono', monospace";
-  ctx.textAlign = 'center';
-  ctx.fillText('HOLD AND SLIDE HERE', W / 2, L.GROUND_Y + 80);
-  ctx.textAlign = 'start';
+  drawControls();
   if (gfx.flash > 0) {
     ctx.fillStyle = `rgba(224,80,60,${gfx.flash * 0.3})`;
     ctx.fillRect(0, L.GUN_Y - 60, W, 100);
@@ -423,7 +496,7 @@ addEventListener('pagehide', saveNow);
     clearRun(GAME_ID);
     fresh.remove();
     resumeOffered = false;
-    showBanner('Shield Wall', 'Hold to move and fire. Let go to take cover.', 'Begin');
+    showBanner('Shield Wall', 'Stick bottom left, fire bottom right. Take cover behind the bunkers.', 'Begin');
   });
   $('go').after(fresh);
 

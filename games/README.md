@@ -7,7 +7,7 @@ Each game lives in its own directory here, as `games/<name>/`, following the eng
 - **[feedline/](feedline/)** — grid/tick-based rather than continuous physics, so the engine owns its own tick clock. Also the first game with touch (swipe) controls.
 - **[choke-point/](choke-point/)** — a grid tower-defense, and the fullest example of the shared-module wiring (fit, fx, glow, help, scores, audio, plus a controls strip).
 - **[airburst/](airburst/)** — Missile Command, the smallest complete example of a game on the pattern: engine, shell, render and resume tests.
-- **[shield-wall/](shield-wall/)** — Space Invaders, the newest: one finger moves and fires, bunkers erode a cell at a time, and the formation marches faster as it thins.
+- **[shield-wall/](shield-wall/)** — Space Invaders, the newest: a corner stick and a corner fire button, bunkers erode a cell at a time, and the formation marches faster as it thins.
 
 Every game has `engine.js` + `engine.test.js`, a `<name>.html` shell, and a `CLAUDE.md` with its design notes (Claude Code loads it in that directory; read it before changing the game); all six
 add a `render-test.mjs`, and the five with mid-run saves add a `resume-test.mjs`.

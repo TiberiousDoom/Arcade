@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-10-15 (v56 — Shield Wall, the second new classic; next is Bulkhead, the last, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
+Last updated: 2026-10-16 (v57 — Shield Wall gets a corner stick and fire button, and its review fixes; next is Bulkhead, the last classic, see [docs/pre-release-plan.md](docs/pre-release-plan.md))
 
 ## Read this first
 
@@ -19,10 +19,22 @@ Serve the repo first — the shells use ES modules, so `file://` won't work:
 - **Hull Breach** ([games/hull-breach/hull-breach.html](games/hull-breach/hull-breach.html)) — playable and complete: paddle-angle steering, a **color-means-hits** brick ramp (levels 1-4 all single-hit, 5-8 introduce 2-hit, 9-12 3-hit, 13+ the 4-hit yellow), four rotating level patterns, lives, level-clear bonus.  Verified end to end in a browser (play, ball loss, game over, restart, level advance), and played on a phone each round.
 - **Feedline** ([games/feedline/feedline.html](games/feedline/feedline.html)) — playable and complete: buffered turning, deferred growth, expiring gold bonus, speed ramp, board-full win, and a nine-rung **checkpoint ladder** starting at 5% of the board, with a HUD bar showing progress to the next bank. Arrows/WASD plus swipe.  Verified in a browser (steering, reversal blocking, eating, wall death, banner, restart, bonus render), and played on a phone each round — swipe steering is the primary control, not a fallback.
 - **Airburst** ([games/airburst/airburst.html](games/airburst/airburst.html)) — new in v53: Missile Command on the engine/shell pattern, with saves, a render test and a resume test. First played on a phone in round 20 (below).
-- **Shield Wall** ([games/shield-wall/shield-wall.html](games/shield-wall/shield-wall.html)) — new in v56: Space Invaders on the same pattern, with saves, a render test, a resume test and an art bench. Not yet played on a phone.
+- **Shield Wall** ([games/shield-wall/shield-wall.html](games/shield-wall/shield-wall.html)) — new in v56, corner stick and fire button since v57: Space Invaders on the same pattern, with saves, a render test, a resume test and an art bench. Not yet played on a phone.
 - **Choke Point** ([games/choke-point/choke-point.html](games/choke-point/choke-point.html)) — playable and complete, and **winnable**: grid tower-defense, four tower classes (node/breaker/coil, plus Sever earned on Medium) that level themselves from combat XP, a persistent per-class armory of six tracks, five circuits and three difficulties all earned by winning, components economy, core integrity, per-tower targeting priority, lossless rotation. Tap or drag to build; tap or drag a built tower to move it.  Verified in a browser (build/economy, wave spawn+clear, kills, leaks→game over, score persistence, transpose rotation + pause, upgrade popup, audio mute), and played on a phone each round — touch build/move and the portrait transpose are the primary path.
 
 **All tests pass** — run them with `node --test games/*/engine.test.js shared/*.test.js` (logic) and `node --test games/*/render-test.mjs games/*/resume-test.mjs` (shells, after `npm install --no-save jsdom canvas`). The counts move every build, so they are in each build's notes rather than here.
+
+## v57 — Shield Wall: a stick and a fire button, and the review's fixes (2026-10-16)
+
+A review of v56 before anyone played it, with a simulation of the one-finger control rather than the test suite's careful player.
+
+- **New controls, the owner's call.** v56 moved the gun to wherever a finger was held and fired the whole time, so it could not move without firing. Simulated over five seeds, the player's own shots took 90-145 bites out of the bunkers a run against the bombs' 40-70. Now the thumb band holds a **stick in the bottom-left corner** (analogue: push further for faster, a small dead zone in the middle) and a **fire button in the bottom-right** (hold to keep firing). Each tracks its own thumb, so both work at once and lifting one never drops the other. The board above the ground no longer responds to touch. The test suite's player already moved at the gun's top speed and fired only when lined up, so its numbers now describe the game a player has.
+- **The march beat no longer buzzes** near the end of a wave: it plays at most every 110ms. With one invader left the formation steps every 25-45ms, and 70ms notes were stacking.
+- **The saucer shows its points** where it was hit, unless numbers are switched off in the menu. Score floaters are a new `text()` in `shared/fx.js`.
+- **A shot meets a bomb before the invader behind it**, even within one frame (it used to check invaders first).
+- **The wave banner no longer promises "the next wave starts lower"** after wave 5, the last wave that does.
+- **A corrupt saved saucer is dropped** rather than trusted with a score; the HUD is written only when a number changes.
+- Tests: 37 Shield Wall engine (two new: bomb-before-invader, saucer validation), 13 render (the stick, fire, both thumbs, a touch on the board, the floater, the banner text), 7 resume.
 
 ## v56 — Shield Wall (2026-10-15)
 

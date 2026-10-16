@@ -280,7 +280,8 @@ export function step(w, dt) {
     else {
       const y0 = s.y;
       s.y = y1;
-      if (!hitInvader(w, s, y0) && !hitSaucer(w, s, y0) && !hitBomb(w, s, y0, BOMB_SPEED(w.wave) * dt) && s.y < 40) w.shot = null;
+      // nearest first: bombs fall from below the formation, and the saucer flies above it
+      if (!hitBomb(w, s, y0, BOMB_SPEED(w.wave) * dt) && !hitInvader(w, s, y0) && !hitSaucer(w, s, y0) && s.y < 40) w.shot = null;
     }
   }
 
@@ -502,7 +503,9 @@ export function hydrate(w, s) {
   w.gun = { x: num(s.gun?.x) ? s.gun.x : w.L.W / 2, dead: num(s.gun?.dead) ? s.gun.dead : 0 };
   w.shot = s.shot && num(s.shot.x) ? { x: s.shot.x, y: s.shot.y } : null;
   w.bombs = s.bombs.filter(b => num(b.x) && num(b.y)).map(b => ({ x: b.x, y: b.y }));
-  w.saucer = s.saucer && num(s.saucer.x) ? { ...s.saucer } : null;
+  const u = s.saucer;
+  w.saucer = u && num(u.x) && (u.dir === 1 || u.dir === -1) && SAUCER_POINTS.includes(u.points)
+    ? { x: u.x, dir: u.dir, points: u.points } : null;
   w.saucerT = num(s.saucerT) ? s.saucerT : 16;
   w.bombT = num(s.bombT) ? s.bombT : 1;
   w.formation = { x: f.x, y: f.y, dir: f.dir === -1 ? -1 : 1, t: num(f.t) ? f.t : 0, pose: f.pose ? 1 : 0,

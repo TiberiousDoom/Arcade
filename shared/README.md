@@ -27,7 +27,7 @@ duplicated it (not designed up front — see [docs/DECISIONS.md](../docs/DECISIO
   loop on the returned `{ paused, pause(), resume(), toggle() }`, unchanged
   from the old `pause.js` contract. `onLevels` is optional; only Hull Breach
   passes it, to add a "Levels" entry.
-- **[fx.js](fx.js)** — `makeFx({ reduce, gravity })` gives particles and a
+- **[fx.js](fx.js)** — `makeFx({ reduce, gravity })` gives particles, score floaters (`text`, gated by the caller on `prefs.numbers`) and a
   screen-flash value. Used by Hull Breach and Feedline. **Flak Battery does not
   use it**: its bits and floaters live on the world object and are stepped
   inside its engine, which predates this module and wasn't worth churning.

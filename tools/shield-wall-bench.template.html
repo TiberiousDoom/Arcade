@@ -83,9 +83,9 @@
     <div class="notes">
       <div class="note"><h2>Staged</h2><p>A formation thinned in a few places, in both march poses (toggle Pose),
         the saucer, bombs falling, a shot rising, bunkers bitten from above and below, and the gun —
-        live, or faint while it is down. <em>Hover the board to move the gun.</em></p></div>
+        live, or faint while it is down — and the controls in use: the stick pushed right, fire held. <em>Hover the board to move the gun.</em></p></div>
       <div class="note"><h2>Live</h2><p>The real engine at the chosen wave, played by the test suite's attentive
-        player. <em>Hold the mouse on the board to take over: the gun follows and fires.</em></p></div>
+        player, which drives the same stick and fire button the game reads, so the controls show what it is doing.</p></div>
       <div class="note"><h2>What to look at</h2><p>Can the three ranks be told apart at phone size? Do their bombs read
         as theirs and your shot as yours? Does a bitten bunker still read as a bunker? Is the gun visible against the
         ground?</p></div>
@@ -106,6 +106,7 @@ const reduce = false;
 const prefs = { shake: 0 };
 const gfx = makeFx({ reduce: false });
 let world = E.createWorld({ seed: 1 });
+const input = { stick: 0, fire: false };
 
 /*__ART__*/
 
@@ -127,6 +128,8 @@ function staged() {
   E.bite(w, 2, 0 * E.BUNKER_COLS + 8, false); E.bite(w, 2, 2 * E.BUNKER_COLS + 9, false); E.bite(w, 2, 9 * E.BUNKER_COLS + 1, true);
   E.setGun(w, hoverX);
   w.gun.dead = gunDown ? 1 : 0;
+  // the controls in use: the stick pushed most of the way right, fire held
+  input.stick = 0.7; input.fire = true;
   return w;
 }
 
@@ -146,10 +149,10 @@ function renderStaged() { world = staged(); draw(); if (exposure === 'lift') lif
 /* The test suite's attentive player: lead the formation, keep out of lanes
    behind its own bunkers, dodge a bomb it has noticed. */
 const covered = (x) => { for (let y = E.BUNKER_Y; y < E.BUNKER_Y + E.BUNKER_ROWS * E.CELL; y += E.CELL) if (E.cellAt(world, x, y)) return true; return false; };
-let mouseDown = false, mouseX = 300;
+/* It plays through the same controls the game reads, so the stick and the
+   fire button on the board show what it is doing. */
 function player() {
   const w = world;
-  if (mouseDown) { E.setGun(w, mouseX); E.fire(w); return; }
   const threat = w.bombs.find(b => b.y > L.GUN_Y - 150 && Math.abs(b.x - w.gun.x) < E.GUN_W * 0.8);
   let target = w.gun.x;
   if (threat) target = w.gun.x + (threat.x > w.gun.x ? -70 : 70);
@@ -165,8 +168,11 @@ function player() {
     }
     if (best !== null) target = best;
   }
-  E.nudgeGun(w, Math.sign(target - w.gun.x) * Math.min(Math.abs(target - w.gun.x), E.GUN_SPEED / 60));
-  if (!threat && Math.abs(target - w.gun.x) < 6) E.fire(w);
+  const gap = target - w.gun.x;
+  input.stick = Math.abs(gap) < 1 ? 0 : E.clamp(gap / (E.GUN_SPEED / 60), -1, 1);
+  E.nudgeGun(w, input.stick * E.GUN_SPEED / 60);
+  input.fire = !threat && Math.abs(target - w.gun.x) < 6;
+  if (input.fire) E.fire(w);
 }
 
 function startLive() {
@@ -197,10 +203,8 @@ function startLive() {
 
 function boardX(e) { const r = cv.getBoundingClientRect(); return (e.clientX - r.left) * (W / r.width); }
 cv.addEventListener('pointermove', e => {
-  if (scene === 'staged') { hoverX = boardX(e); renderStaged(); } else mouseX = boardX(e);
+  if (scene === 'staged') { hoverX = boardX(e); renderStaged(); }
 });
-cv.addEventListener('pointerdown', e => { if (scene === 'live') { mouseDown = true; mouseX = boardX(e); } });
-addEventListener('pointerup', () => { mouseDown = false; });
 
 function seg(a, b, on) { a.setAttribute('aria-pressed', String(on)); b.setAttribute('aria-pressed', String(!on)); }
 const $ = (id) => document.getElementById(id);
